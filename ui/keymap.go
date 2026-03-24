@@ -20,6 +20,7 @@ type VaultKeyMap struct {
 	Help         key.Binding
 	Quit         key.Binding
 	CycleTheme   key.Binding
+	Generate     key.Binding
 }
 
 // ShortHelp implements help.KeyMap.
@@ -32,7 +33,7 @@ func (k VaultKeyMap) FullHelp() [][]key.Binding {
 	return [][]key.Binding{
 		{k.Up, k.Down, k.Top, k.Bottom},
 		{k.Copy, k.CopyTOTP, k.CopyUsername, k.OpenURL},
-		{k.Filter, k.Sync, k.Lock},
+		{k.Filter, k.Generate, k.Sync, k.Lock},
 		{k.ScrollDown, k.ScrollUp},
 		{k.Help, k.CycleTheme, k.Quit},
 	}
@@ -104,6 +105,10 @@ func DefaultVaultKeyMap() VaultKeyMap {
 		CycleTheme: key.NewBinding(
 			key.WithKeys("T"),
 			key.WithHelp("T", "theme"),
+		),
+		Generate: key.NewBinding(
+			key.WithKeys("p"),
+			key.WithHelp("p", "generate"),
 		),
 	}
 }

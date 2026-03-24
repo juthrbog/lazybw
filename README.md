@@ -108,11 +108,23 @@ Press `T` in the vault to open the theme picker and switch themes on the fly.
 | `u` | Copy username |
 | `o` | Open URL in browser |
 | `J` / `K` | Scroll note content in drawer |
+| `p` | Open password generator |
 | `Ctrl+r` | Sync vault |
 | `Ctrl+l` | Lock vault |
 | `T` | Open theme picker |
 | `?` | Toggle full help |
 | `q` | Lock and quit |
+
+#### Password generator
+
+| Key | Action |
+|---|---|
+| `Enter` / `r` | Regenerate |
+| `+` / `-` | Increase / decrease length (or word count) |
+| `m` / `Tab` | Toggle password / passphrase mode |
+| `1`-`4` | Toggle uppercase / lowercase / numbers / special |
+| `c` | Copy to clipboard |
+| `Esc` | Close generator |
 
 #### Filter mode
 

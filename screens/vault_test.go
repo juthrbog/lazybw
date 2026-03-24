@@ -126,3 +126,50 @@ func TestVaultSelectedItemOutOfRange(t *testing.T) {
 		t.Error("expected nil for out of range cursor")
 	}
 }
+
+func TestGenArgsPassword(t *testing.T) {
+	m := newTestVault(testItems())
+	m.genMode = "password"
+	m.genLength = 24
+	m.genUppercase = true
+	m.genLowercase = true
+	m.genNumbers = true
+	m.genSpecial = false
+
+	args := m.genArgs()
+	if args[0] != "--length" || args[1] != "24" {
+		t.Errorf("expected --length 24, got %v", args[:2])
+	}
+	hasSpecial := false
+	for _, a := range args {
+		if a == "--special" {
+			hasSpecial = true
+		}
+	}
+	if hasSpecial {
+		t.Error("--special should not be present when disabled")
+	}
+}
+
+func TestGenArgsPassphrase(t *testing.T) {
+	m := newTestVault(testItems())
+	m.genMode = "passphrase"
+	m.genWords = 5
+	m.genSeparator = "."
+	m.genCapitalize = true
+	m.genIncludeNum = false
+
+	args := m.genArgs()
+	if args[0] != "--passphrase" {
+		t.Errorf("first arg should be --passphrase, got %q", args[0])
+	}
+	hasIncludeNum := false
+	for _, a := range args {
+		if a == "--includeNumber" {
+			hasIncludeNum = true
+		}
+	}
+	if hasIncludeNum {
+		t.Error("--includeNumber should not be present when disabled")
+	}
+}

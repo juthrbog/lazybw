@@ -62,6 +62,12 @@ type LockResult struct {
 	Err error
 }
 
+// GenerateResult is returned by Generate.
+type GenerateResult struct {
+	Password string
+	Err      error
+}
+
 // execBw runs the bw CLI with the given args and session token.
 func execBw(sessionToken string, args ...string) ([]byte, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), cmdTimeout)
@@ -171,5 +177,17 @@ func GetTOTP(token, id string) tea.Cmd {
 			return TOTPResult{Err: err}
 		}
 		return TOTPResult{Code: strings.TrimSpace(string(out))}
+	}
+}
+
+// Generate runs `bw generate` with the given args.
+func Generate(args ...string) tea.Cmd {
+	return func() tea.Msg {
+		fullArgs := append([]string{"generate"}, args...)
+		out, err := execBw("", fullArgs...)
+		if err != nil {
+			return GenerateResult{Err: err}
+		}
+		return GenerateResult{Password: strings.TrimSpace(string(out))}
 	}
 }
