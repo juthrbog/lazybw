@@ -82,8 +82,17 @@ On first launch, lazybw checks `bw status` and prompts you to log in or unlock a
 | Flag | Default | Description |
 |---|---|---|
 | `--idle-timeout` | `15m` | Lock the vault after this duration of inactivity |
+| `--theme` | `catppuccin-mocha` | Color theme (see below) |
 | `--debug` | `false` | Write debug log to `$XDG_CACHE_HOME/lazybw/debug.log` |
 | `--version` | | Print version and exit |
+
+You can also set the theme via the `LAZYBW_THEME` environment variable (flag takes precedence).
+
+### Themes
+
+Available themes: `catppuccin-mocha` (default), `catppuccin-frappe`, `catppuccin-macchiato`, `catppuccin-latte`, `dracula`, `charm`, `base16`.
+
+Press `T` in the vault to open the theme picker and switch themes on the fly.
 
 ### Keybindings
 
@@ -101,6 +110,7 @@ On first launch, lazybw checks `bw status` and prompts you to log in or unlock a
 | `J` / `K` | Scroll note content in drawer |
 | `Ctrl+r` | Sync vault |
 | `Ctrl+l` | Lock vault |
+| `T` | Open theme picker |
 | `?` | Toggle full help |
 | `q` | Lock and quit |
 

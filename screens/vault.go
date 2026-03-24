@@ -10,6 +10,7 @@ import (
 	"github.com/charmbracelet/bubbles/key"
 	"github.com/charmbracelet/bubbles/spinner"
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/huh"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/juthrbog/lazybw/bwcmd"
 	"github.com/juthrbog/lazybw/session"
@@ -52,6 +53,11 @@ type VaultModel struct {
 
 	drawerScroll int
 
+	currentTheme    string
+	showThemePicker bool
+	themeForm       *huh.Form
+	selectedTheme   string
+
 	width  int
 	height int
 }
@@ -67,8 +73,9 @@ func NewVaultModel(items []bwcmd.Item, sess *session.State, width, height int) V
 		keymap:      ui.DefaultVaultKeyMap(),
 		help:        help.New(),
 		sess:        sess,
-		syncSpinner: ss,
-		width:       width,
+		syncSpinner:  ss,
+		currentTheme: ui.CurrentTheme,
+		width:        width,
 		height:      height,
 	}
 	return m
@@ -90,6 +97,9 @@ func (m VaultModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.height = msg.Height
 
 	case tea.KeyMsg:
+		if m.showThemePicker {
+			return m.updateThemePicker(msg)
+		}
 		if m.mode == modeFilter {
 			return m.updateFilter(msg)
 		}
@@ -247,6 +257,9 @@ func (m VaultModel) updateNormal(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.showHelp = !m.showHelp
 		return m, nil
 
+	case key.Matches(msg, m.keymap.CycleTheme):
+		return m.openThemePicker()
+
 	case key.Matches(msg, m.keymap.Quit):
 		return m, func() tea.Msg { return LockMsg{} }
 
@@ -353,8 +366,54 @@ func (m *VaultModel) setToast(msg string) {
 	m.toastTime = time.Now()
 }
 
+func (m VaultModel) openThemePicker() (tea.Model, tea.Cmd) {
+	m.selectedTheme = m.currentTheme
+	options := make([]huh.Option[string], len(ui.ThemeNames))
+	for i, name := range ui.ThemeNames {
+		options[i] = huh.NewOption(name, name)
+	}
+	m.themeForm = huh.NewForm(
+		huh.NewGroup(
+			huh.NewSelect[string]().
+				Title("Choose theme").
+				Options(options...).
+				Value(&m.selectedTheme),
+		),
+	)
+	if ui.HuhTheme != nil {
+		m.themeForm = m.themeForm.WithTheme(ui.HuhTheme)
+	}
+	m.showThemePicker = true
+	return m, m.themeForm.Init()
+}
+
+func (m VaultModel) updateThemePicker(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	form, cmd := m.themeForm.Update(msg)
+	if f, ok := form.(*huh.Form); ok {
+		m.themeForm = f
+	}
+
+	switch m.themeForm.State {
+	case huh.StateCompleted:
+		m.showThemePicker = false
+		ui.ApplyTheme(m.selectedTheme)
+		m.currentTheme = m.selectedTheme
+		m.setToast("Theme: " + m.selectedTheme)
+		return m, nil
+	case huh.StateAborted:
+		m.showThemePicker = false
+		return m, nil
+	}
+
+	return m, cmd
+}
+
 // ViewContent renders the vault content for the root frame.
 func (m VaultModel) ViewContent(width, contentHeight int) string {
+	if m.showThemePicker && m.themeForm != nil {
+		return ui.CenterInArea(m.themeForm.View(), width, contentHeight)
+	}
+
 	drawer := ui.RenderDrawer(ui.DrawerProps{
 		Item:         m.selectedItem(),
 		TOTPCode:     m.totpCode,
@@ -391,10 +450,14 @@ func (m VaultModel) ViewContent(width, contentHeight int) string {
 
 // FooterContent returns hints and status for the footer bar.
 func (m VaultModel) FooterContent() (hints, status string) {
+	if m.showThemePicker {
+		hints = "enter select · esc cancel"
+		return hints, ""
+	}
 	if m.mode == modeFilter {
 		hints = "esc clear · enter confirm · ↑/↓ navigate"
 	} else {
-		hints = "j/k navigate · / search · c pwd · t totp · ? help · q quit"
+		hints = "j/k navigate · / search · c pwd · t totp · T theme · ? help · q quit"
 	}
 
 	toast := m.toast

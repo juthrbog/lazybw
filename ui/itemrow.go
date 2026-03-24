@@ -8,14 +8,6 @@ import (
 	"github.com/juthrbog/lazybw/bwcmd"
 )
 
-var (
-	glyphLogin    = lipgloss.NewStyle().Foreground(ColorHighlight).Render("󰌾")
-	glyphCard     = lipgloss.NewStyle().Foreground(ColorGreen).Render("󰁯")
-	glyphNote     = lipgloss.NewStyle().Foreground(ColorYellow).Render("󱙒")
-	glyphIdentity = lipgloss.NewStyle().Foreground(ColorHighlight).Render("󰀄")
-	glyphSSHKey   = lipgloss.NewStyle().Foreground(ColorGreen).Render("󰣀")
-)
-
 // RenderItemRow renders a single item row in the vault list.
 func RenderItemRow(item bwcmd.Item, selected bool, width int) string {
 	cursor := "  "
@@ -26,15 +18,15 @@ func RenderItemRow(item bwcmd.Item, selected bool, width int) string {
 	var glyph string
 	switch item.Type {
 	case bwcmd.ItemTypeLogin:
-		glyph = glyphLogin
+		glyph = GlyphLogin
 	case bwcmd.ItemTypeCard:
-		glyph = glyphCard
+		glyph = GlyphCard
 	case bwcmd.ItemTypeSecureNote:
-		glyph = glyphNote
+		glyph = GlyphNote
 	case bwcmd.ItemTypeIdentity:
-		glyph = glyphIdentity
+		glyph = GlyphIdentity
 	case bwcmd.ItemTypeSSHKey:
-		glyph = glyphSSHKey
+		glyph = GlyphSSHKey
 	default:
 		glyph = " "
 	}
