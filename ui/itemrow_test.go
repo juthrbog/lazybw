@@ -82,6 +82,21 @@ func TestRenderItemRowIdentity(t *testing.T) {
 	}
 }
 
+func TestRenderItemRowSSHKey(t *testing.T) {
+	item := bwcmd.Item{
+		Type:   bwcmd.ItemTypeSSHKey,
+		Name:   "Server Key",
+		SSHKey: &bwcmd.SSHKey{KeyFingerprint: "SHA256:abc123"},
+	}
+	out := RenderItemRow(item, false, 60)
+	if !strings.Contains(out, "Server Key") {
+		t.Error("row should contain SSH key name")
+	}
+	if !strings.Contains(out, "SHA256:abc123") {
+		t.Error("row should contain fingerprint as description")
+	}
+}
+
 func TestRenderItemRowTruncation(t *testing.T) {
 	item := bwcmd.Item{
 		Type: bwcmd.ItemTypeLogin,

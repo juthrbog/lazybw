@@ -188,6 +188,38 @@ func TestRenderDrawerIdentity(t *testing.T) {
 	assertMinLineCount(t, out, DrawerHeight-1)
 }
 
+func TestRenderDrawerSSHKey(t *testing.T) {
+	item := &bwcmd.Item{
+		Type: bwcmd.ItemTypeSSHKey,
+		Name: "Server Key",
+		SSHKey: &bwcmd.SSHKey{
+			KeyFingerprint: "SHA256:abc123def456",
+			PublicKey:      "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAI...",
+			PrivateKey:     "-----BEGIN OPENSSH PRIVATE KEY-----\nb3Blbn...",
+		},
+	}
+	out := RenderDrawer(DrawerProps{Item: item, Width: 80})
+	if !strings.Contains(out, "Fingerprint") {
+		t.Error("SSH key drawer should contain 'Fingerprint'")
+	}
+	if !strings.Contains(out, "Public Key") {
+		t.Error("SSH key drawer should contain 'Public Key'")
+	}
+	if !strings.Contains(out, "Private Key") {
+		t.Error("SSH key drawer should contain 'Private Key'")
+	}
+	if !strings.Contains(out, "SSH Key") {
+		t.Error("separator should contain 'SSH Key'")
+	}
+	if strings.Contains(out, "BEGIN OPENSSH") {
+		t.Error("private key value should NOT appear in output")
+	}
+	if !strings.Contains(out, "••••••••••") {
+		t.Error("private key should be masked")
+	}
+	assertMinLineCount(t, out, DrawerHeight-1)
+}
+
 func assertMinLineCount(t *testing.T, output string, minExpected int) {
 	t.Helper()
 	// Count newline-separated segments. Trailing empty lines from padding

@@ -13,6 +13,7 @@ var (
 	glyphCard     = lipgloss.NewStyle().Foreground(ColorGreen).Render("󰁯")
 	glyphNote     = lipgloss.NewStyle().Foreground(ColorYellow).Render("󱙒")
 	glyphIdentity = lipgloss.NewStyle().Foreground(ColorHighlight).Render("󰀄")
+	glyphSSHKey   = lipgloss.NewStyle().Foreground(ColorGreen).Render("󰣀")
 )
 
 // RenderItemRow renders a single item row in the vault list.
@@ -32,6 +33,8 @@ func RenderItemRow(item bwcmd.Item, selected bool, width int) string {
 		glyph = glyphNote
 	case bwcmd.ItemTypeIdentity:
 		glyph = glyphIdentity
+	case bwcmd.ItemTypeSSHKey:
+		glyph = glyphSSHKey
 	default:
 		glyph = " "
 	}

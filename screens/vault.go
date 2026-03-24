@@ -199,6 +199,9 @@ func (m VaultModel) updateNormal(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			if item.Type == bwcmd.ItemTypeIdentity && item.Identity != nil && item.Identity.SSN != "" {
 				return m, session.CopyToClipboard(item.Identity.SSN, session.CopyFieldPassword)
 			}
+			if item.Type == bwcmd.ItemTypeSSHKey && item.SSHKey != nil && item.SSHKey.PrivateKey != "" {
+				return m, session.CopyToClipboard(item.SSHKey.PrivateKey, session.CopyFieldPassword)
+			}
 			return m, bwcmd.GetPassword(m.sess.Token, item.ID)
 		}
 
@@ -214,6 +217,9 @@ func (m VaultModel) updateNormal(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			}
 			if item.Identity != nil && item.Identity.Email != "" {
 				return m, session.CopyToClipboard(item.Identity.Email, session.CopyFieldUsername)
+			}
+			if item.SSHKey != nil && item.SSHKey.PublicKey != "" {
+				return m, session.CopyToClipboard(item.SSHKey.PublicKey, session.CopyFieldUsername)
 			}
 		}
 
