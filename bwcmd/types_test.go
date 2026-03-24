@@ -44,6 +44,21 @@ func TestItemDescription(t *testing.T) {
 			want: "(note)",
 		},
 		{
+			name: "identity with name",
+			item: Item{Type: ItemTypeIdentity, Identity: &Identity{FirstName: "John", LastName: "Doe"}},
+			want: "John Doe",
+		},
+		{
+			name: "identity email fallback",
+			item: Item{Type: ItemTypeIdentity, Identity: &Identity{Email: "john@test.com"}},
+			want: "john@test.com",
+		},
+		{
+			name: "identity nil",
+			item: Item{Type: ItemTypeIdentity},
+			want: "",
+		},
+		{
 			name: "unknown type",
 			item: Item{Type: 99},
 			want: "",

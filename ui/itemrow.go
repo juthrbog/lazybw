@@ -9,9 +9,10 @@ import (
 )
 
 var (
-	glyphLogin = lipgloss.NewStyle().Foreground(ColorHighlight).Render("󰌾")
-	glyphCard  = lipgloss.NewStyle().Foreground(ColorGreen).Render("󰁯")
-	glyphNote  = lipgloss.NewStyle().Foreground(ColorYellow).Render("󱙒")
+	glyphLogin    = lipgloss.NewStyle().Foreground(ColorHighlight).Render("󰌾")
+	glyphCard     = lipgloss.NewStyle().Foreground(ColorGreen).Render("󰁯")
+	glyphNote     = lipgloss.NewStyle().Foreground(ColorYellow).Render("󱙒")
+	glyphIdentity = lipgloss.NewStyle().Foreground(ColorHighlight).Render("󰀄")
 )
 
 // RenderItemRow renders a single item row in the vault list.
@@ -29,6 +30,8 @@ func RenderItemRow(item bwcmd.Item, selected bool, width int) string {
 		glyph = glyphCard
 	case bwcmd.ItemTypeSecureNote:
 		glyph = glyphNote
+	case bwcmd.ItemTypeIdentity:
+		glyph = glyphIdentity
 	default:
 		glyph = " "
 	}

@@ -67,6 +67,21 @@ func TestRenderItemRowNote(t *testing.T) {
 	}
 }
 
+func TestRenderItemRowIdentity(t *testing.T) {
+	item := bwcmd.Item{
+		Type:     bwcmd.ItemTypeIdentity,
+		Name:     "Personal ID",
+		Identity: &bwcmd.Identity{FirstName: "John", LastName: "Doe"},
+	}
+	out := RenderItemRow(item, false, 60)
+	if !strings.Contains(out, "Personal ID") {
+		t.Error("row should contain identity name")
+	}
+	if !strings.Contains(out, "John Doe") {
+		t.Error("row should contain full name as description")
+	}
+}
+
 func TestRenderItemRowTruncation(t *testing.T) {
 	item := bwcmd.Item{
 		Type: bwcmd.ItemTypeLogin,

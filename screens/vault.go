@@ -196,6 +196,9 @@ func (m VaultModel) updateNormal(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 
 	case key.Matches(msg, m.keymap.Copy):
 		if item := m.selectedItem(); item != nil {
+			if item.Type == bwcmd.ItemTypeIdentity && item.Identity != nil && item.Identity.SSN != "" {
+				return m, session.CopyToClipboard(item.Identity.SSN, session.CopyFieldPassword)
+			}
 			return m, bwcmd.GetPassword(m.sess.Token, item.ID)
 		}
 
@@ -205,8 +208,13 @@ func (m VaultModel) updateNormal(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		}
 
 	case key.Matches(msg, m.keymap.CopyUsername):
-		if item := m.selectedItem(); item != nil && item.Login != nil {
-			return m, session.CopyToClipboard(item.Login.Username, session.CopyFieldUsername)
+		if item := m.selectedItem(); item != nil {
+			if item.Login != nil {
+				return m, session.CopyToClipboard(item.Login.Username, session.CopyFieldUsername)
+			}
+			if item.Identity != nil && item.Identity.Email != "" {
+				return m, session.CopyToClipboard(item.Identity.Email, session.CopyFieldUsername)
+			}
 		}
 
 	case key.Matches(msg, m.keymap.OpenURL):

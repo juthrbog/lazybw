@@ -47,6 +47,28 @@ type SecureNote struct {
 	Type int `json:"type"`
 }
 
+// Identity holds identity-specific fields.
+type Identity struct {
+	Title          string `json:"title"`
+	FirstName      string `json:"firstName"`
+	MiddleName     string `json:"middleName"`
+	LastName       string `json:"lastName"`
+	Username       string `json:"username"`
+	Company        string `json:"company"`
+	SSN            string `json:"ssn"`
+	PassportNumber string `json:"passportNumber"`
+	LicenseNumber  string `json:"licenseNumber"`
+	Email          string `json:"email"`
+	Phone          string `json:"phone"`
+	Address1       string `json:"address1"`
+	Address2       string `json:"address2"`
+	Address3       string `json:"address3"`
+	City           string `json:"city"`
+	State          string `json:"state"`
+	PostalCode     string `json:"postalCode"`
+	Country        string `json:"country"`
+}
+
 // Item is the top-level vault item returned by `bw list items`.
 type Item struct {
 	ID             string      `json:"id"`
@@ -58,6 +80,7 @@ type Item struct {
 	Login          *Login      `json:"login,omitempty"`
 	Card           *Card       `json:"card,omitempty"`
 	SecureNote     *SecureNote `json:"secureNote,omitempty"`
+	Identity       *Identity   `json:"identity,omitempty"`
 }
 
 // FilterValue implements bubbles/list.Item. Used for fuzzy filtering.
@@ -83,6 +106,16 @@ func (i Item) Description() string {
 			return first
 		}
 		return "(note)"
+	case ItemTypeIdentity:
+		if i.Identity != nil {
+			name := strings.TrimSpace(i.Identity.FirstName + " " + i.Identity.LastName)
+			if name != "" {
+				return name
+			}
+			if i.Identity.Email != "" {
+				return i.Identity.Email
+			}
+		}
 	}
 	return ""
 }

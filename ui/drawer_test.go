@@ -155,6 +155,39 @@ func TestRenderDrawerTOTPLoading(t *testing.T) {
 	}
 }
 
+func TestRenderDrawerIdentity(t *testing.T) {
+	item := &bwcmd.Item{
+		Type: bwcmd.ItemTypeIdentity,
+		Name: "Personal",
+		Identity: &bwcmd.Identity{
+			FirstName: "John",
+			LastName:  "Doe",
+			Email:     "john@test.com",
+			Phone:     "+1-555-0123",
+			SSN:       "123-45-6789",
+			City:      "Springfield",
+			State:     "IL",
+		},
+	}
+	out := RenderDrawer(DrawerProps{Item: item, Width: 80})
+	if !strings.Contains(out, "Name") {
+		t.Error("identity drawer should contain 'Name'")
+	}
+	if !strings.Contains(out, "Email") {
+		t.Error("identity drawer should contain 'Email'")
+	}
+	if !strings.Contains(out, "Identity") {
+		t.Error("separator should contain 'Identity'")
+	}
+	if !strings.Contains(out, "•••••••••") {
+		t.Error("SSN should be masked")
+	}
+	if strings.Contains(out, "123-45-6789") {
+		t.Error("SSN value should NOT appear in output")
+	}
+	assertMinLineCount(t, out, DrawerHeight-1)
+}
+
 func assertMinLineCount(t *testing.T, output string, minExpected int) {
 	t.Helper()
 	// Count newline-separated segments. Trailing empty lines from padding

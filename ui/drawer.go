@@ -35,6 +35,8 @@ func RenderDrawer(props DrawerProps) string {
 		fields = renderCardFields(props.Item)
 	case bwcmd.ItemTypeSecureNote:
 		fields = renderNoteFields(props)
+	case bwcmd.ItemTypeIdentity:
+		fields = renderIdentityFields(props.Item)
 	default:
 		fields = []string{StyleFaint.Render("  (unsupported item type)")}
 	}
@@ -172,6 +174,86 @@ func renderNoteFields(props DrawerProps) []string {
 		result[i] = "  " + line
 	}
 	return result
+}
+
+func renderIdentityFields(item *bwcmd.Item) []string {
+	if item.Identity == nil {
+		return []string{StyleFaint.Render("  (no identity data)")}
+	}
+	id := item.Identity
+	var fields []string
+
+	// Full name.
+	var parts []string
+	for _, p := range []string{id.Title, id.FirstName, id.MiddleName, id.LastName} {
+		if p != "" {
+			parts = append(parts, p)
+		}
+	}
+	if len(parts) > 0 {
+		fields = append(fields, fieldRow("Name", strings.Join(parts, " "), ""))
+	}
+
+	if id.Email != "" {
+		fields = append(fields, fieldRow("Email", id.Email, "[u] copy"))
+	}
+	if id.Phone != "" {
+		fields = append(fields, fieldRow("Phone", id.Phone, ""))
+	}
+	if id.Company != "" {
+		fields = append(fields, fieldRow("Company", id.Company, ""))
+	}
+
+	// Sensitive fields — masked.
+	if id.SSN != "" {
+		fields = append(fields, fieldRow("SSN", "•••••••••", "[c] copy"))
+	}
+	if id.PassportNumber != "" {
+		fields = append(fields, fieldRow("Passport", "•••••••••", ""))
+	}
+	if id.LicenseNumber != "" {
+		fields = append(fields, fieldRow("License", "•••••••••", ""))
+	}
+
+	// Address.
+	addr := formatAddress(id)
+	if addr != "" {
+		fields = append(fields, fieldRow("Address", addr, ""))
+	}
+
+	if len(fields) == 0 {
+		fields = []string{StyleFaint.Render("  (empty identity)")}
+	}
+	return fields
+}
+
+func formatAddress(id *bwcmd.Identity) string {
+	var parts []string
+	for _, line := range []string{id.Address1, id.Address2, id.Address3} {
+		if line != "" {
+			parts = append(parts, line)
+		}
+	}
+	var cityState []string
+	if id.City != "" {
+		cityState = append(cityState, id.City)
+	}
+	if id.State != "" {
+		cityState = append(cityState, id.State)
+	}
+	if len(cityState) > 0 {
+		cs := strings.Join(cityState, ", ")
+		if id.PostalCode != "" {
+			cs += " " + id.PostalCode
+		}
+		parts = append(parts, cs)
+	} else if id.PostalCode != "" {
+		parts = append(parts, id.PostalCode)
+	}
+	if id.Country != "" {
+		parts = append(parts, id.Country)
+	}
+	return strings.Join(parts, ", ")
 }
 
 func fieldRow(label, value, hint string) string {
