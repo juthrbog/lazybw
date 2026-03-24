@@ -566,14 +566,14 @@ func (m VaultModel) renderGenerator(width, contentHeight int) string {
 
 	// Options.
 	if m.genMode == "password" {
-		b.WriteString(fmt.Sprintf("  Length      %d\n", m.genLength))
-		b.WriteString(fmt.Sprintf("  Uppercase   %s   Lowercase  %s   Numbers  %s   Special  %s\n",
+		fmt.Fprintf(&b, "  Length      %d\n", m.genLength)
+		fmt.Fprintf(&b, "  Uppercase   %s   Lowercase  %s   Numbers  %s   Special  %s\n",
 			checkMark(m.genUppercase), checkMark(m.genLowercase),
-			checkMark(m.genNumbers), checkMark(m.genSpecial)))
+			checkMark(m.genNumbers), checkMark(m.genSpecial))
 	} else {
-		b.WriteString(fmt.Sprintf("  Words       %d         Separator  %s\n", m.genWords, m.genSeparator))
-		b.WriteString(fmt.Sprintf("  Capitalize  %s         Include #  %s\n",
-			checkMark(m.genCapitalize), checkMark(m.genIncludeNum)))
+		fmt.Fprintf(&b, "  Words       %d         Separator  %s\n", m.genWords, m.genSeparator)
+		fmt.Fprintf(&b, "  Capitalize  %s         Include #  %s\n",
+			checkMark(m.genCapitalize), checkMark(m.genIncludeNum))
 	}
 
 	b.WriteString("\n")
