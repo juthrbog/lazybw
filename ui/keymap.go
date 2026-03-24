@@ -87,12 +87,12 @@ func DefaultVaultKeyMap() VaultKeyMap {
 			key.WithHelp("K", "scroll drawer ↑"),
 		),
 		Sync: key.NewBinding(
-			key.WithKeys("ctrl+r"),
-			key.WithHelp("ctrl+r", "sync"),
+			key.WithKeys("r"),
+			key.WithHelp("r", "sync"),
 		),
 		Lock: key.NewBinding(
-			key.WithKeys("ctrl+l"),
-			key.WithHelp("ctrl+l", "lock"),
+			key.WithKeys("l"),
+			key.WithHelp("l", "lock"),
 		),
 		Help: key.NewBinding(
 			key.WithKeys("?"),

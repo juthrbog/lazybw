@@ -60,7 +60,7 @@ simply show longer names and descriptions — no layout mode change needed.
   TOTP       843 291  ▓▓▓▓▓▓▓░░░░░  18s         [t] copy
   URL        console.aws.amazon.com             [o] open
 
-j/k navigate  /  search  c pwd  t totp  u user  ctrl+r  ?  q
+j/k navigate  /  search  c pwd  t totp  u user  r  ?  q
 ```
 
 Key observations:
@@ -157,12 +157,12 @@ Unauthenticated ──── bw login ────▶ Locked
                                       │
                                       ▼
                               ┌─── Vault ───┐
-                              │  List       │◀─── ctrl+r sync
+                              │  List       │◀─── r sync
                               │  Drawer     │
                               │  Filter (/) │
                               └─────────────┘
                                       │
-                              ctrl+l / idle timeout
+                              l / idle timeout
                                       │
                                       ▼
                                    Locked
@@ -238,8 +238,8 @@ The TOTP row is live. Once `bw get totp <id>` resolves:
 | `u` | Copy username |
 | `o` | Open first URL in browser (`xdg-open`) |
 | `/` | Enter filter mode |
-| `ctrl+r` | Sync vault (`bw sync`) |
-| `ctrl+l` | Lock vault immediately |
+| `r` | Sync vault (`bw sync`) |
+| `l` | Lock vault immediately |
 | `?` | Toggle full help |
 | `q` / `ctrl+c` | Lock + quit |
 
@@ -267,7 +267,7 @@ One line, always at the bottom. Left = context or toast; right = account info.
 
 **Normal:**
 ```
-j/k navigate  /  search  c pwd  t totp  u user  ctrl+r sync  ?  q quit
+j/k navigate  /  search  c pwd  t totp  u user  r sync  ?  q quit
 ```
 
 **With toast:**
@@ -300,8 +300,8 @@ bw status
 bw status                        # {status, userEmail, lastSync}
 bw login [email] [pw] --raw      # returns session token
 bw unlock [pw] --raw             # returns session token
-bw lock                          # on quit / ctrl+l / idle timeout
-bw sync                          # ctrl+r
+bw lock                          # on quit / l / idle timeout
+bw sync                          # r
 bw list items                    # full vault JSON
 bw get password [id]             # plaintext password for copy
 bw get totp [id]                 # current TOTP code (live)
