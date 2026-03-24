@@ -58,6 +58,19 @@ type VaultModel struct {
 	themeForm       *huh.Form
 	selectedTheme   string
 
+	showGenerator bool
+	genMode       string // "password" or "passphrase"
+	genPassword   string // current generated output
+	genLength     int
+	genUppercase  bool
+	genLowercase  bool
+	genNumbers    bool
+	genSpecial    bool
+	genWords      int
+	genSeparator  string
+	genCapitalize bool
+	genIncludeNum bool
+
 	width  int
 	height int
 }
@@ -97,6 +110,9 @@ func (m VaultModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.height = msg.Height
 
 	case tea.KeyMsg:
+		if m.showGenerator {
+			return m.updateGenerator(msg)
+		}
 		if m.showThemePicker {
 			return m.updateThemePicker(msg)
 		}
@@ -171,6 +187,14 @@ func (m VaultModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		m.items = msg.Items
 		m.applyFilter()
+		return m, nil
+
+	case bwcmd.GenerateResult:
+		if msg.Err != nil {
+			m.genPassword = "Error: " + msg.Err.Error()
+		} else {
+			m.genPassword = msg.Password
+		}
 		return m, nil
 
 	case spinner.TickMsg:
@@ -256,6 +280,9 @@ func (m VaultModel) updateNormal(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case key.Matches(msg, m.keymap.Help):
 		m.showHelp = !m.showHelp
 		return m, nil
+
+	case key.Matches(msg, m.keymap.Generate):
+		return m.openGenerator()
 
 	case key.Matches(msg, m.keymap.CycleTheme):
 		return m.openThemePicker()
@@ -408,8 +435,169 @@ func (m VaultModel) updateThemePicker(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	return m, cmd
 }
 
+func (m VaultModel) openGenerator() (tea.Model, tea.Cmd) {
+	m.showGenerator = true
+	m.genMode = "password"
+	m.genLength = 20
+	m.genUppercase = true
+	m.genLowercase = true
+	m.genNumbers = true
+	m.genSpecial = true
+	m.genWords = 4
+	m.genSeparator = "-"
+	m.genCapitalize = true
+	m.genIncludeNum = true
+	m.genPassword = "Generating…"
+	return m, bwcmd.Generate(m.genArgs()...)
+}
+
+func (m VaultModel) updateGenerator(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	switch msg.String() {
+	case "esc":
+		m.showGenerator = false
+		return m, nil
+	case "enter", "r":
+		m.genPassword = "Generating…"
+		return m, bwcmd.Generate(m.genArgs()...)
+	case "c":
+		if m.genPassword != "" && m.genPassword != "Generating…" {
+			return m, session.CopyToClipboard(m.genPassword, session.CopyFieldPassword)
+		}
+	case "m", "tab":
+		if m.genMode == "password" {
+			m.genMode = "passphrase"
+		} else {
+			m.genMode = "password"
+		}
+		m.genPassword = "Generating…"
+		return m, bwcmd.Generate(m.genArgs()...)
+	case "+", "=":
+		if m.genMode == "password" {
+			if m.genLength < 128 {
+				m.genLength++
+			}
+		} else {
+			if m.genWords < 20 {
+				m.genWords++
+			}
+		}
+		m.genPassword = "Generating…"
+		return m, bwcmd.Generate(m.genArgs()...)
+	case "-":
+		if m.genMode == "password" {
+			if m.genLength > 5 {
+				m.genLength--
+			}
+		} else {
+			if m.genWords > 2 {
+				m.genWords--
+			}
+		}
+		m.genPassword = "Generating…"
+		return m, bwcmd.Generate(m.genArgs()...)
+	case "1":
+		m.genUppercase = !m.genUppercase
+		m.genPassword = "Generating…"
+		return m, bwcmd.Generate(m.genArgs()...)
+	case "2":
+		m.genLowercase = !m.genLowercase
+		m.genPassword = "Generating…"
+		return m, bwcmd.Generate(m.genArgs()...)
+	case "3":
+		m.genNumbers = !m.genNumbers
+		m.genPassword = "Generating…"
+		return m, bwcmd.Generate(m.genArgs()...)
+	case "4":
+		m.genSpecial = !m.genSpecial
+		m.genPassword = "Generating…"
+		return m, bwcmd.Generate(m.genArgs()...)
+	}
+	return m, nil
+}
+
+func (m *VaultModel) genArgs() []string {
+	if m.genMode == "passphrase" {
+		args := []string{"--passphrase", "--words", fmt.Sprintf("%d", m.genWords), "--separator", m.genSeparator}
+		if m.genCapitalize {
+			args = append(args, "--capitalize")
+		}
+		if m.genIncludeNum {
+			args = append(args, "--includeNumber")
+		}
+		return args
+	}
+	args := []string{"--length", fmt.Sprintf("%d", m.genLength)}
+	if m.genUppercase {
+		args = append(args, "--uppercase")
+	}
+	if m.genLowercase {
+		args = append(args, "--lowercase")
+	}
+	if m.genNumbers {
+		args = append(args, "--number")
+	}
+	if m.genSpecial {
+		args = append(args, "--special")
+	}
+	return args
+}
+
+func (m VaultModel) renderGenerator(width, contentHeight int) string {
+	var b strings.Builder
+
+	sep := ui.StyleFaint.Render("── Password Generator " + strings.Repeat("─", max(0, width-24)))
+	b.WriteString(sep)
+	b.WriteString("\n\n")
+
+	// Mode indicator.
+	if m.genMode == "password" {
+		b.WriteString("  Mode        ")
+		b.WriteString(ui.StyleTitle.Render("[Password]"))
+		b.WriteString("  ")
+		b.WriteString(ui.StyleFaint.Render("Passphrase"))
+		b.WriteString("\n")
+	} else {
+		b.WriteString("  Mode        ")
+		b.WriteString(ui.StyleFaint.Render("Password"))
+		b.WriteString("  ")
+		b.WriteString(ui.StyleTitle.Render("[Passphrase]"))
+		b.WriteString("\n")
+	}
+
+	// Options.
+	if m.genMode == "password" {
+		b.WriteString(fmt.Sprintf("  Length      %d\n", m.genLength))
+		b.WriteString(fmt.Sprintf("  Uppercase   %s   Lowercase  %s   Numbers  %s   Special  %s\n",
+			checkMark(m.genUppercase), checkMark(m.genLowercase),
+			checkMark(m.genNumbers), checkMark(m.genSpecial)))
+	} else {
+		b.WriteString(fmt.Sprintf("  Words       %d         Separator  %s\n", m.genWords, m.genSeparator))
+		b.WriteString(fmt.Sprintf("  Capitalize  %s         Include #  %s\n",
+			checkMark(m.genCapitalize), checkMark(m.genIncludeNum)))
+	}
+
+	b.WriteString("\n")
+
+	// Generated output.
+	b.WriteString("  ")
+	b.WriteString(ui.StyleTitle.Render(m.genPassword))
+	b.WriteString("\n")
+
+	return ui.CenterInArea(b.String(), width, contentHeight)
+}
+
+func checkMark(v bool) string {
+	if v {
+		return ui.StyleToast.Render("✓")
+	}
+	return ui.StyleFaint.Render("·")
+}
+
 // ViewContent renders the vault content for the root frame.
 func (m VaultModel) ViewContent(width, contentHeight int) string {
+	if m.showGenerator {
+		return m.renderGenerator(width, contentHeight)
+	}
 	if m.showThemePicker && m.themeForm != nil {
 		return ui.CenterInArea(m.themeForm.View(), width, contentHeight)
 	}
@@ -450,6 +638,10 @@ func (m VaultModel) ViewContent(width, contentHeight int) string {
 
 // FooterContent returns hints and status for the footer bar.
 func (m VaultModel) FooterContent() (hints, status string) {
+	if m.showGenerator {
+		hints = "enter regen · +/- length · m mode · 1-4 toggles · c copy · esc close"
+		return hints, ""
+	}
 	if m.showThemePicker {
 		hints = "enter select · esc cancel"
 		return hints, ""
@@ -457,7 +649,7 @@ func (m VaultModel) FooterContent() (hints, status string) {
 	if m.mode == modeFilter {
 		hints = "esc clear · enter confirm · ↑/↓ navigate"
 	} else {
-		hints = "j/k navigate · / search · c pwd · t totp · T theme · ? help · q quit"
+		hints = "j/k navigate · / search · c pwd · t totp · p gen · T theme · ? help · q quit"
 	}
 
 	toast := m.toast

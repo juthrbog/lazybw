@@ -25,6 +25,8 @@ func TestDefaultVaultKeyMap(t *testing.T) {
 		{"Lock", km.Lock.Keys()},
 		{"Help", km.Help.Keys()},
 		{"Quit", km.Quit.Keys()},
+		{"CycleTheme", km.CycleTheme.Keys()},
+		{"Generate", km.Generate.Keys()},
 	}
 
 	for _, b := range bindings {
