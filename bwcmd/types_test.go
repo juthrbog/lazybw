@@ -59,6 +59,16 @@ func TestItemDescription(t *testing.T) {
 			want: "",
 		},
 		{
+			name: "ssh key with fingerprint",
+			item: Item{Type: ItemTypeSSHKey, SSHKey: &SSHKey{KeyFingerprint: "SHA256:abc123"}},
+			want: "SHA256:abc123",
+		},
+		{
+			name: "ssh key nil",
+			item: Item{Type: ItemTypeSSHKey},
+			want: "",
+		},
+		{
 			name: "unknown type",
 			item: Item{Type: 99},
 			want: "",

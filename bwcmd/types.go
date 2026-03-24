@@ -17,6 +17,7 @@ const (
 	ItemTypeSecureNote ItemType = 2
 	ItemTypeCard       ItemType = 3
 	ItemTypeIdentity   ItemType = 4
+	ItemTypeSSHKey     ItemType = 5
 )
 
 // URI represents a single URL entry on a Login item.
@@ -69,6 +70,13 @@ type Identity struct {
 	Country        string `json:"country"`
 }
 
+// SSHKey holds SSH key-specific fields.
+type SSHKey struct {
+	PrivateKey     string `json:"privateKey"`
+	PublicKey      string `json:"publicKey"`
+	KeyFingerprint string `json:"keyFingerprint"`
+}
+
 // Item is the top-level vault item returned by `bw list items`.
 type Item struct {
 	ID             string      `json:"id"`
@@ -81,6 +89,7 @@ type Item struct {
 	Card           *Card       `json:"card,omitempty"`
 	SecureNote     *SecureNote `json:"secureNote,omitempty"`
 	Identity       *Identity   `json:"identity,omitempty"`
+	SSHKey         *SSHKey     `json:"sshKey,omitempty"`
 }
 
 // FilterValue implements bubbles/list.Item. Used for fuzzy filtering.
@@ -115,6 +124,10 @@ func (i Item) Description() string {
 			if i.Identity.Email != "" {
 				return i.Identity.Email
 			}
+		}
+	case ItemTypeSSHKey:
+		if i.SSHKey != nil && i.SSHKey.KeyFingerprint != "" {
+			return i.SSHKey.KeyFingerprint
 		}
 	}
 	return ""

@@ -37,6 +37,8 @@ func RenderDrawer(props DrawerProps) string {
 		fields = renderNoteFields(props)
 	case bwcmd.ItemTypeIdentity:
 		fields = renderIdentityFields(props.Item)
+	case bwcmd.ItemTypeSSHKey:
+		fields = renderSSHKeyFields(props.Item)
 	default:
 		fields = []string{StyleFaint.Render("  (unsupported item type)")}
 	}
@@ -83,6 +85,8 @@ func itemTypeName(t bwcmd.ItemType) string {
 		return "Card"
 	case bwcmd.ItemTypeIdentity:
 		return "Identity"
+	case bwcmd.ItemTypeSSHKey:
+		return "SSH Key"
 	default:
 		return "Item"
 	}
@@ -254,6 +258,33 @@ func formatAddress(id *bwcmd.Identity) string {
 		parts = append(parts, id.Country)
 	}
 	return strings.Join(parts, ", ")
+}
+
+func renderSSHKeyFields(item *bwcmd.Item) []string {
+	if item.SSHKey == nil {
+		return []string{StyleFaint.Render("  (no SSH key data)")}
+	}
+	k := item.SSHKey
+	var fields []string
+
+	if k.KeyFingerprint != "" {
+		fields = append(fields, fieldRow("Fingerprint", k.KeyFingerprint, ""))
+	}
+
+	if k.PublicKey != "" {
+		display := k.PublicKey
+		if len(display) > 40 {
+			display = display[:40] + "…"
+		}
+		fields = append(fields, fieldRow("Public Key", display, "[u] copy"))
+	}
+
+	fields = append(fields, fieldRow("Private Key", "••••••••••", "[c] copy"))
+
+	if len(fields) == 0 {
+		fields = []string{StyleFaint.Render("  (empty SSH key)")}
+	}
+	return fields
 }
 
 func fieldRow(label, value, hint string) string {
