@@ -1,0 +1,40 @@
+version: "3"
+
+vars:
+  BINARY: dist/lazybw
+
+tasks:
+  build:
+    desc: Compile to dist/lazybw
+    cmds:
+      - mkdir -p dist
+      - go build -o {{.BINARY}} .
+    sources:
+      - "**/*.go"
+    generates:
+      - "{{.BINARY}}"
+
+  run:
+    desc: Run with go run
+    cmds:
+      - go run .
+
+  test:
+    desc: Run all tests
+    cmds:
+      - go test ./...
+
+  lint:
+    desc: Run golangci-lint
+    cmds:
+      - golangci-lint run ./...
+
+  tidy:
+    desc: Tidy go.mod / go.sum
+    cmds:
+      - go mod tidy
+
+  fmt:
+    desc: Format all Go source files
+    cmds:
+      - gofmt -l -w .
