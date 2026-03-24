@@ -1,6 +1,11 @@
 package ui
 
-import "github.com/charmbracelet/lipgloss"
+import (
+	"time"
+
+	"github.com/charmbracelet/bubbles/spinner"
+	"github.com/charmbracelet/lipgloss"
+)
 
 // Colour palette — AdaptiveColor adapts to dark/light terminal backgrounds.
 var (
@@ -10,6 +15,19 @@ var (
 	ColorYellow    = lipgloss.AdaptiveColor{Dark: "#F5A623", Light: "#C47D10"} // note glyph, TOTP warning
 	ColorRed       = lipgloss.AdaptiveColor{Dark: "#FF4F4F", Light: "#CC2222"} // errors, TOTP urgent
 	ColorFaint     = lipgloss.AdaptiveColor{Dark: "#626262", Light: "#9A9A9A"} // descriptions, secondary text
+)
+
+// Spinner definitions for loading states.
+var (
+	SpinnerUnlock = spinner.Spinner{
+		Frames: []string{"󰌾", "󰷖", "󰌆", "󰌿"},
+		FPS:    time.Second / 3,
+	}
+	SpinnerLock = spinner.Spinner{
+		Frames: []string{"󰌿", "󰌆", "󰷖", "󰌾"},
+		FPS:    time.Second / 3,
+	}
+	SpinnerLoad = spinner.Dot
 )
 
 // Pre-built styles initialised once at package load.

@@ -9,9 +9,9 @@ import (
 )
 
 var (
-	glyphLogin = lipgloss.NewStyle().Foreground(ColorHighlight).Render("●")
-	glyphCard  = lipgloss.NewStyle().Foreground(ColorGreen).Render("♦")
-	glyphNote  = lipgloss.NewStyle().Foreground(ColorYellow).Render("✎")
+	glyphLogin = lipgloss.NewStyle().Foreground(ColorHighlight).Render("󰌾")
+	glyphCard  = lipgloss.NewStyle().Foreground(ColorGreen).Render("󰁯")
+	glyphNote  = lipgloss.NewStyle().Foreground(ColorYellow).Render("󱙒")
 )
 
 // RenderItemRow renders a single item row in the vault list.

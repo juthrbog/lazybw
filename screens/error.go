@@ -1,7 +1,7 @@
 package screens
 
 import (
-	"github.com/charmbracelet/bubbletea"
+	tea "github.com/charmbracelet/bubbletea"
 	"github.com/juthrbog/lazybw/ui"
 )
 
@@ -10,15 +10,13 @@ type RetryMsg struct{}
 
 // ErrorModel displays a recoverable or fatal error with retry/quit options.
 type ErrorModel struct {
-	err    error
-	fatal  bool // if true, only Quit is offered
-	width  int
-	height int
+	err   error
+	fatal bool // if true, only Quit is offered
 }
 
 // NewErrorModel constructs an error screen.
-func NewErrorModel(err error, fatal bool, width, height int) ErrorModel {
-	return ErrorModel{err: err, fatal: fatal, width: width, height: height}
+func NewErrorModel(err error, fatal bool) ErrorModel {
+	return ErrorModel{err: err, fatal: fatal}
 }
 
 func (m ErrorModel) Init() tea.Cmd { return nil }
@@ -38,17 +36,24 @@ func (m ErrorModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
-func (m ErrorModel) View() string {
+// ViewContent returns the error content for the root to center.
+func (m ErrorModel) ViewContent() string {
 	errText := "unknown error"
 	if m.err != nil {
 		errText = m.err.Error()
 	}
+	return ui.StyleError.Render("Error: " + errText)
+}
 
-	body := ui.StyleError.Render("Error: "+errText) + "\n\n"
+// FooterHints returns the hint string for the footer.
+func (m ErrorModel) FooterHints() string {
 	if m.fatal {
-		body += ui.StyleFaint.Render("[q] quit")
-	} else {
-		body += ui.StyleFaint.Render("[r] retry  [q] quit")
+		return "q quit"
 	}
-	return body
+	return "r retry · q quit"
+}
+
+// View implements tea.Model (delegates to root frame).
+func (m ErrorModel) View() string {
+	return m.ViewContent()
 }

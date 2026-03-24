@@ -1,12 +1,9 @@
 package screens
 
 import (
-	"strings"
-
 	"github.com/charmbracelet/bubbles/spinner"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/huh"
-	"github.com/charmbracelet/lipgloss"
 	"github.com/juthrbog/lazybw/bwcmd"
 	"github.com/juthrbog/lazybw/ui"
 )
@@ -43,7 +40,8 @@ func NewLockedModel(isLogin bool) LockedModel {
 	email := ""
 	password := ""
 	s := spinner.New()
-	s.Spinner = spinner.Dot
+	s.Spinner = ui.SpinnerUnlock
+	s.Style = s.Style.Foreground(ui.ColorHighlight)
 	m := LockedModel{
 		isLogin:  isLogin,
 		email:    &email,
@@ -86,7 +84,6 @@ func (m LockedModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.state = lockedInput
 		if msg.Err != nil {
 			m.err = msg.Err
-			// Reset form for retry.
 			pw := ""
 			m.password = &pw
 			m.form = buildLockedForm(m.isLogin, m.email, m.password)
@@ -126,17 +123,11 @@ func (m LockedModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	return m, cmd
 }
 
-func (m LockedModel) View() string {
-	var body string
-
-	header := lipgloss.NewStyle().Bold(true).Foreground(ui.ColorHighlight).Render("lazybw")
-
+// ViewContent returns the screen content for the root frame to center.
+func (m LockedModel) ViewContent(width, contentHeight int) string {
 	if m.state == lockedUnlocking {
 		status := m.spinner.View() + " Unlocking…"
-		body = centerBlock(m.width, m.height,
-			header+"\n\n"+status,
-		)
-		return body
+		return ui.CenterInArea(status, width, contentHeight)
 	}
 
 	title := "Vault is locked."
@@ -144,46 +135,27 @@ func (m LockedModel) View() string {
 		title = "Log in to Bitwarden"
 	}
 
-	content := header + "\n\n" + title + "\n\n" + m.form.View()
+	content := title + "\n\n" + m.form.View()
 
 	if m.err != nil {
 		content += "\n\n" + ui.StyleError.Render(m.err.Error())
 	}
 
-	content += "\n\n" + ui.StyleFaint.Render("Enter to unlock · q to quit")
-
-	return centerBlock(m.width, m.height, content)
+	return ui.CenterInArea(content, width, contentHeight)
 }
 
-func centerBlock(width, height int, content string) string {
-	lines := strings.Split(content, "\n")
-	maxLineW := 0
-	for _, l := range lines {
-		if w := lipgloss.Width(l); w > maxLineW {
-			maxLineW = w
-		}
+// FooterContent returns hints and status for the footer bar.
+func (m LockedModel) FooterContent() (hints, status string) {
+	if m.state == lockedUnlocking {
+		return "", ""
 	}
+	if m.isLogin {
+		return "enter submit · q quit", ""
+	}
+	return "enter unlock · q quit", ""
+}
 
-	// Horizontal centering.
-	padLeft := (width - maxLineW) / 2
-	if padLeft < 0 {
-		padLeft = 0
-	}
-
-	// Vertical centering.
-	padTop := (height - len(lines)) / 2
-	if padTop < 0 {
-		padTop = 0
-	}
-
-	var b strings.Builder
-	for i := 0; i < padTop; i++ {
-		b.WriteString("\n")
-	}
-	for _, l := range lines {
-		b.WriteString(strings.Repeat(" ", padLeft))
-		b.WriteString(l)
-		b.WriteString("\n")
-	}
-	return b.String()
+// View implements tea.Model (kept for interface compliance).
+func (m LockedModel) View() string {
+	return m.ViewContent(m.width, m.height)
 }

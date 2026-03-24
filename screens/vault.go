@@ -8,6 +8,7 @@ import (
 
 	"github.com/charmbracelet/bubbles/help"
 	"github.com/charmbracelet/bubbles/key"
+	"github.com/charmbracelet/bubbles/spinner"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/juthrbog/lazybw/bwcmd"
@@ -40,8 +41,10 @@ type VaultModel struct {
 	filterStr string
 	sess      *session.State
 
-	toast     string
-	toastTime time.Time
+	toast       string
+	toastTime   time.Time
+	syncing     bool
+	syncSpinner spinner.Model
 
 	totpCode     string
 	totpSecsLeft int
@@ -55,14 +58,18 @@ type VaultModel struct {
 
 // NewVaultModel constructs the vault screen.
 func NewVaultModel(items []bwcmd.Item, sess *session.State, width, height int) VaultModel {
+	ss := spinner.New()
+	ss.Spinner = ui.SpinnerLoad
+	ss.Style = ss.Style.Foreground(ui.ColorHighlight)
 	m := VaultModel{
-		items:    items,
-		filtered: items,
-		keymap:   ui.DefaultVaultKeyMap(),
-		help:     help.New(),
-		sess:     sess,
-		width:    width,
-		height:   height,
+		items:       items,
+		filtered:    items,
+		keymap:      ui.DefaultVaultKeyMap(),
+		help:        help.New(),
+		sess:        sess,
+		syncSpinner: ss,
+		width:       width,
+		height:      height,
 	}
 	return m
 }
@@ -138,6 +145,7 @@ func (m VaultModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, tickTOTP()
 
 	case bwcmd.SyncResult:
+		m.syncing = false
 		if msg.Err != nil {
 			m.setToast("Sync failed: " + msg.Err.Error())
 			return m, nil
@@ -154,6 +162,13 @@ func (m VaultModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.items = msg.Items
 		m.applyFilter()
 		return m, nil
+
+	case spinner.TickMsg:
+		if m.syncing {
+			var cmd tea.Cmd
+			m.syncSpinner, cmd = m.syncSpinner.Update(msg)
+			return m, cmd
+		}
 	}
 
 	return m, nil
@@ -207,8 +222,9 @@ func (m VaultModel) updateNormal(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case key.Matches(msg, m.keymap.Sync):
+		m.syncing = true
 		m.setToast("Syncing…")
-		return m, bwcmd.Sync(m.sess.Token)
+		return m, tea.Batch(m.syncSpinner.Tick, bwcmd.Sync(m.sess.Token))
 
 	case key.Matches(msg, m.keymap.Lock):
 		return m, func() tea.Msg { return LockMsg{} }
@@ -323,36 +339,27 @@ func (m *VaultModel) setToast(msg string) {
 	m.toastTime = time.Now()
 }
 
-func (m VaultModel) View() string {
-	// Layout: filter bar (optional) + item list + drawer + status bar.
-	statusBar := ui.RenderStatusBar(ui.StatusBarProps{
-		Email:    m.sess.Email,
-		LastSync: formatLastSync(m.sess.LastSync),
-		Toast:    m.toast,
-		Width:    m.width,
-	})
-
+// ViewContent renders the vault content for the root frame.
+func (m VaultModel) ViewContent(width, contentHeight int) string {
 	drawer := ui.RenderDrawer(ui.DrawerProps{
 		Item:         m.selectedItem(),
 		TOTPCode:     m.totpCode,
 		TOTPSecsLeft: m.totpSecsLeft,
-		Width:        m.width,
+		Width:        width,
 		ScrollOffset: m.drawerScroll,
 	})
 
-	// Available height for the list.
-	listHeight := m.height - ui.DrawerHeight - 1 // -1 for status bar
+	listHeight := contentHeight - ui.DrawerHeight
 	if m.mode == modeFilter {
-		listHeight-- // -1 for filter bar
+		listHeight--
 	}
 	if m.showHelp {
-		listHeight -= 5 // reserve space for help
+		listHeight -= 5
 	}
 	if listHeight < 1 {
 		listHeight = 1
 	}
 
-	// Render item list with scrolling.
 	listView := m.renderList(listHeight)
 
 	var sections []string
@@ -364,9 +371,33 @@ func (m VaultModel) View() string {
 	if m.showHelp {
 		sections = append(sections, m.help.View(m.keymap))
 	}
-	sections = append(sections, statusBar)
 
 	return lipgloss.JoinVertical(lipgloss.Left, sections...)
+}
+
+// FooterContent returns hints and status for the footer bar.
+func (m VaultModel) FooterContent() (hints, status string) {
+	if m.mode == modeFilter {
+		hints = "esc clear · enter confirm · ↑/↓ navigate"
+	} else {
+		hints = "j/k navigate · / search · c pwd · t totp · ? help · q quit"
+	}
+
+	toast := m.toast
+	if m.syncing {
+		toast = m.syncSpinner.View() + " " + toast
+	}
+	if toast != "" {
+		status = ui.StyleToast.Render(toast)
+	} else {
+		status = ui.StyleFaint.Render(formatLastSync(m.sess.LastSync))
+	}
+	return hints, status
+}
+
+// View implements tea.Model (kept for interface compliance).
+func (m VaultModel) View() string {
+	return m.ViewContent(m.width, m.height)
 }
 
 func (m VaultModel) renderList(height int) string {
