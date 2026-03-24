@@ -1,5 +1,11 @@
 # lazybw
 
+[![CI](https://github.com/juthrbog/lazybw/actions/workflows/ci.yml/badge.svg)](https://github.com/juthrbog/lazybw/actions/workflows/ci.yml)
+[![Release](https://img.shields.io/github/v/release/juthrbog/lazybw)](https://github.com/juthrbog/lazybw/releases/latest)
+[![Go](https://img.shields.io/github/go-mod/go-version/juthrbog/lazybw)](https://github.com/juthrbog/lazybw/blob/main/go.mod)
+[![Go Report Card](https://goreportcard.com/badge/github.com/juthrbog/lazybw)](https://goreportcard.com/report/github.com/juthrbog/lazybw)
+[![License](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](LICENSE)
+
 A fast, keyboard-driven TUI for [Bitwarden](https://bitwarden.com) built with Go and the [Charm](https://charm.sh) ecosystem.
 
 ```
