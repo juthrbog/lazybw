@@ -59,14 +59,20 @@ func buildLockedForm(isLogin bool, email, password *string) *huh.Form {
 		EchoMode(huh.EchoModePassword).
 		Value(password)
 
+	var form *huh.Form
 	if isLogin {
 		emailField := huh.NewInput().
 			Key("email").
 			Title("Email").
 			Value(email)
-		return huh.NewForm(huh.NewGroup(emailField, pwField))
+		form = huh.NewForm(huh.NewGroup(emailField, pwField))
+	} else {
+		form = huh.NewForm(huh.NewGroup(pwField))
 	}
-	return huh.NewForm(huh.NewGroup(pwField))
+	if ui.HuhTheme != nil {
+		form = form.WithTheme(ui.HuhTheme)
+	}
+	return form
 }
 
 func (m LockedModel) Init() tea.Cmd {

@@ -10,6 +10,7 @@ import (
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/juthrbog/lazybw/ui"
 )
 
 var version = "dev"
@@ -18,11 +19,21 @@ func main() {
 	debug := flag.Bool("debug", false, "write debug log to $XDG_CACHE_HOME/lazybw/debug.log")
 	ver := flag.Bool("version", false, "print version and exit")
 	idleTimeout := flag.Duration("idle-timeout", 15*time.Minute, "lock vault after this duration of inactivity")
+	theme := flag.String("theme", "", "color theme (catppuccin-mocha, catppuccin-frappe, catppuccin-macchiato, catppuccin-latte, dracula, charm, base16)")
 	flag.Parse()
 
 	if *ver {
 		fmt.Println("lazybw", version)
 		return
+	}
+
+	// Apply theme: flag > env var > default (catppuccin-mocha).
+	themeName := *theme
+	if themeName == "" {
+		themeName = os.Getenv("LAZYBW_THEME")
+	}
+	if themeName != "" {
+		ui.ApplyTheme(themeName)
 	}
 
 	if _, err := exec.LookPath("bw"); err != nil {
