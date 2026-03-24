@@ -5,6 +5,7 @@ import (
 
 	"github.com/charmbracelet/bubbles/spinner"
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/lipgloss"
 	"github.com/juthrbog/lazybw/bwcmd"
 	"github.com/juthrbog/lazybw/screens"
 	"github.com/juthrbog/lazybw/session"
@@ -39,7 +40,7 @@ type RootModel struct {
 
 func NewRootModel(idleTimeout time.Duration) RootModel {
 	s := spinner.New()
-	s.Spinner = spinner.Dot
+	s.Spinner = ui.SpinnerLoad
 	s.Style = s.Style.Foreground(ui.ColorHighlight)
 	return RootModel{
 		state:   stateLoading,
@@ -52,7 +53,7 @@ func NewRootModel(idleTimeout time.Duration) RootModel {
 }
 
 func (m RootModel) Init() tea.Cmd {
-	return tea.Batch(bwcmd.CheckStatus(), tickIdleCheck())
+	return tea.Batch(bwcmd.CheckStatus(), tickIdleCheck(), m.spinner.Tick)
 }
 
 func (m RootModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
@@ -76,7 +77,7 @@ func (m RootModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case bwcmd.StatusResult:
 		if msg.Err != nil {
 			m.state = stateError
-			m.err = screens.NewErrorModel(msg.Err, false, m.width, m.height)
+			m.err = screens.NewErrorModel(msg.Err, false)
 			return m, nil
 		}
 		m.sess.Email = msg.Status.UserEmail
@@ -90,7 +91,6 @@ func (m RootModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.locked = screens.NewLockedModel(false)
 			return m, m.locked.Init()
 		case "unlocked":
-			// Already unlocked; try to use existing session.
 			m.state = stateLoading
 			return m, bwcmd.FetchItems(m.sess.Token)
 		default:
@@ -106,12 +106,13 @@ func (m RootModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		m.sess.Touch()
 		m.state = stateLoading
-		return m, bwcmd.FetchItems(m.sess.Token)
+		m.spinner.Spinner = ui.SpinnerLoad
+		return m, tea.Batch(bwcmd.FetchItems(m.sess.Token), m.spinner.Tick)
 
 	case bwcmd.ItemsResult:
 		if msg.Err != nil {
 			m.state = stateError
-			m.err = screens.NewErrorModel(msg.Err, false, m.width, m.height)
+			m.err = screens.NewErrorModel(msg.Err, false)
 			return m, nil
 		}
 		m.state = stateVault
@@ -120,6 +121,7 @@ func (m RootModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case screens.LockMsg:
 		m.state = stateQuitting
+		m.spinner.Spinner = ui.SpinnerLock
 		if m.sess.Token != "" {
 			token := m.sess.Token
 			m.sess.Lock()
@@ -147,6 +149,7 @@ func (m RootModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.sess.Touch()
 		if msg.String() == "ctrl+c" {
 			m.state = stateQuitting
+			m.spinner.Spinner = ui.SpinnerLock
 			if m.sess.Token != "" {
 				token := m.sess.Token
 				m.sess.Lock()
@@ -159,7 +162,7 @@ func (m RootModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	// Delegate to active child.
 	var cmd tea.Cmd
 	switch m.state {
-	case stateQuitting:
+	case stateLoading, stateQuitting:
 		m.spinner, cmd = m.spinner.Update(msg)
 		return m, cmd
 	case stateLocked, stateLogin:
@@ -180,38 +183,29 @@ func (m RootModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 func (m RootModel) View() string {
+	header := ui.RenderHeader(m.sess.Email, m.width)
+	contentHeight := m.height - 2 // header + footer
+
+	var content, hints, status string
+
 	switch m.state {
 	case stateLoading:
-		return centerBlock(m.width, m.height, "Loading…")
+		content = ui.CenterInArea(m.spinner.View()+" Loading vault…", m.width, contentHeight)
 	case stateLogin, stateLocked:
-		return m.locked.View()
+		content = m.locked.ViewContent(m.width, contentHeight)
+		hints, status = m.locked.FooterContent()
 	case stateVault:
-		return m.vault.View()
+		content = m.vault.ViewContent(m.width, contentHeight)
+		hints, status = m.vault.FooterContent()
 	case stateError:
-		return m.err.View()
+		content = ui.CenterInArea(m.err.ViewContent(), m.width, contentHeight)
+		hints = m.err.FooterHints()
 	case stateQuitting:
-		return centerBlock(m.width, m.height, m.spinner.View()+" Locking vault…")
+		content = ui.CenterInArea(m.spinner.View()+" Locking vault…", m.width, contentHeight)
 	}
-	return ""
-}
 
-func centerBlock(width, height int, content string) string {
-	padTop := height / 2
-	padLeft := (width - len(content)) / 2
-	if padTop < 0 {
-		padTop = 0
-	}
-	if padLeft < 0 {
-		padLeft = 0
-	}
-	result := ""
-	for i := 0; i < padTop; i++ {
-		result += "\n"
-	}
-	for i := 0; i < padLeft; i++ {
-		result += " "
-	}
-	return result + content
+	footer := ui.RenderFooter(hints, status, m.width)
+	return lipgloss.JoinVertical(lipgloss.Left, header, content, footer)
 }
 
 func tickIdleCheck() tea.Cmd {
