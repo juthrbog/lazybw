@@ -38,3 +38,8 @@ tasks:
     desc: Format all Go source files
     cmds:
       - gofmt -l -w .
+
+  release-dry-run:
+    desc: Test GoReleaser config locally
+    cmds:
+      - goreleaser release --snapshot --clean
