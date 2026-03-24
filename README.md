@@ -24,7 +24,7 @@ A fast, keyboard-driven TUI for [Bitwarden](https://bitwarden.com) built with Go
   TOTP       843 291  ● 18s                     [t] copy
   URL        console.aws.amazon.com             [o] open
 
-j/k navigate  /  search  c pwd  t totp  u user  ctrl+r  ?  q
+j/k navigate  /  search  c pwd  t totp  u user  r  ?  q
 ```
 
 ## Features
@@ -109,8 +109,8 @@ Press `T` in the vault to open the theme picker and switch themes on the fly.
 | `o` | Open URL in browser |
 | `J` / `K` | Scroll note content in drawer |
 | `p` | Open password generator |
-| `Ctrl+r` | Sync vault |
-| `Ctrl+l` | Lock vault |
+| `r` | Sync vault |
+| `l` | Lock vault |
 | `T` | Open theme picker |
 | `?` | Toggle full help |
 | `q` | Lock and quit |
