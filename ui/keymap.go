@@ -1,6 +1,6 @@
 package ui
 
-import "github.com/charmbracelet/bubbles/key"
+import "charm.land/bubbles/v2/key"
 
 // VaultKeyMap defines all keybindings for the main vault screen.
 type VaultKeyMap struct {
