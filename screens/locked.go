@@ -101,6 +101,10 @@ func (m LockedModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 	}
 
+	if key, ok := msg.(tea.KeyMsg); ok && key.String() == "ctrl+q" {
+		return m, tea.Quit
+	}
+
 	if m.state == lockedUnlocking {
 		var cmd tea.Cmd
 		m.spinner, cmd = m.spinner.Update(msg)
@@ -156,9 +160,9 @@ func (m LockedModel) FooterContent() (hints, status string) {
 		return "", ""
 	}
 	if m.isLogin {
-		return "enter submit · q quit", ""
+		return "enter submit · ctrl+q quit", ""
 	}
-	return "enter unlock · q quit", ""
+	return "enter unlock · ctrl+q quit", ""
 }
 
 // View implements tea.Model (kept for interface compliance).
