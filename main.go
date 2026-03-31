@@ -37,8 +37,8 @@ func main() {
 	}
 
 	if *idleTimeout < 30*time.Second {
-		fmt.Fprintf(os.Stderr, "idle-timeout must be at least 30s (got %s)\n", *idleTimeout)
-		os.Exit(1)
+		fmt.Fprintf(os.Stderr, "Warning: idle-timeout minimum is 30s (got %s), using 30s\n", *idleTimeout)
+		*idleTimeout = 30 * time.Second
 	}
 
 	if _, err := exec.LookPath("bw"); err != nil {
