@@ -17,8 +17,11 @@ import (
 	"github.com/juthrbog/lazybw/ui"
 )
 
-// LockMsg tells the root model to lock the vault.
+// LockMsg tells the root model to lock the vault and show the unlock screen.
 type LockMsg struct{}
+
+// QuitMsg tells the root model to lock the vault and exit.
+type QuitMsg struct{}
 
 // TOTPTickMsg fires every second to update the TOTP countdown.
 type TOTPTickMsg struct{}
@@ -56,7 +59,7 @@ type VaultModel struct {
 	currentTheme    string
 	showThemePicker bool
 	themeForm       *huh.Form
-	selectedTheme   string
+	selectedTheme   *string
 
 	showGenerator bool
 	genMode       string // "password" or "passphrase"
@@ -205,6 +208,10 @@ func (m VaultModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 	}
 
+	if m.showThemePicker && m.themeForm != nil {
+		return m.updateThemePicker(msg)
+	}
+
 	return m, nil
 }
 
@@ -288,7 +295,7 @@ func (m VaultModel) updateNormal(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m.openThemePicker()
 
 	case key.Matches(msg, m.keymap.Quit):
-		return m, func() tea.Msg { return LockMsg{} }
+		return m, func() tea.Msg { return QuitMsg{} }
 
 	case key.Matches(msg, m.keymap.ScrollDown):
 		m.drawerScroll++
@@ -394,7 +401,8 @@ func (m *VaultModel) setToast(msg string) {
 }
 
 func (m VaultModel) openThemePicker() (tea.Model, tea.Cmd) {
-	m.selectedTheme = m.currentTheme
+	selected := m.currentTheme
+	m.selectedTheme = &selected
 	options := make([]huh.Option[string], len(ui.ThemeNames))
 	for i, name := range ui.ThemeNames {
 		options[i] = huh.NewOption(name, name)
@@ -404,7 +412,7 @@ func (m VaultModel) openThemePicker() (tea.Model, tea.Cmd) {
 			huh.NewSelect[string]().
 				Title("Choose theme").
 				Options(options...).
-				Value(&m.selectedTheme),
+				Value(m.selectedTheme),
 		),
 	)
 	if ui.HuhTheme != nil {
@@ -414,7 +422,12 @@ func (m VaultModel) openThemePicker() (tea.Model, tea.Cmd) {
 	return m, m.themeForm.Init()
 }
 
-func (m VaultModel) updateThemePicker(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+func (m VaultModel) updateThemePicker(msg tea.Msg) (tea.Model, tea.Cmd) {
+	if key, ok := msg.(tea.KeyMsg); ok && key.Type == tea.KeyEscape {
+		m.showThemePicker = false
+		return m, nil
+	}
+
 	form, cmd := m.themeForm.Update(msg)
 	if f, ok := form.(*huh.Form); ok {
 		m.themeForm = f
@@ -423,9 +436,9 @@ func (m VaultModel) updateThemePicker(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	switch m.themeForm.State {
 	case huh.StateCompleted:
 		m.showThemePicker = false
-		ui.ApplyTheme(m.selectedTheme)
-		m.currentTheme = m.selectedTheme
-		m.setToast("Theme: " + m.selectedTheme)
+		ui.ApplyTheme(*m.selectedTheme)
+		m.currentTheme = *m.selectedTheme
+		m.setToast("Theme: " + *m.selectedTheme)
 		return m, nil
 	case huh.StateAborted:
 		m.showThemePicker = false

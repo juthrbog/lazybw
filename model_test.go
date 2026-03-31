@@ -138,6 +138,47 @@ func TestRootLockMsg(t *testing.T) {
 	if m.state != stateQuitting {
 		t.Errorf("state = %d, want stateQuitting (%d)", m.state, stateQuitting)
 	}
+	if m.lockFor != intentLock {
+		t.Errorf("lockFor = %d, want intentLock (%d)", m.lockFor, intentLock)
+	}
+}
+
+func TestRootQuitMsg(t *testing.T) {
+	m := NewRootModel(15 * time.Minute)
+	m.sess.SetToken("test-token")
+
+	msg := screens.QuitMsg{}
+	updated, _ := m.Update(msg)
+	m = updated.(RootModel)
+
+	if m.state != stateQuitting {
+		t.Errorf("state = %d, want stateQuitting (%d)", m.state, stateQuitting)
+	}
+	if m.lockFor != intentQuit {
+		t.Errorf("lockFor = %d, want intentQuit (%d)", m.lockFor, intentQuit)
+	}
+}
+
+func TestRootIdleLock(t *testing.T) {
+	m := NewRootModel(1 * time.Millisecond)
+	m.state = stateVault
+	m.sess.SetToken("test-token")
+	m.sess.LastActive = time.Now().Add(-time.Second)
+	m.width = 80
+	m.height = 24
+
+	updated, _ := m.Update(idleCheckMsg{})
+	m = updated.(RootModel)
+
+	if m.state != stateLocked {
+		t.Errorf("state = %d, want stateLocked (%d)", m.state, stateLocked)
+	}
+	if m.sess.Token != "" {
+		t.Error("token should be cleared after idle lock")
+	}
+	if m.lockFor != intentLock {
+		t.Errorf("lockFor = %d, want intentLock (%d)", m.lockFor, intentLock)
+	}
 }
 
 func TestRootRetryMsg(t *testing.T) {

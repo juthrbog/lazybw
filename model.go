@@ -23,12 +23,20 @@ const (
 	stateQuitting
 )
 
+type lockIntent int
+
+const (
+	intentLock lockIntent = iota // return to unlock screen
+	intentQuit                   // exit the application
+)
+
 // idleCheckMsg fires periodically to check for idle timeout.
 type idleCheckMsg struct{}
 
 // RootModel is the top-level BubbleTea model.
 type RootModel struct {
 	state   appState
+	lockFor lockIntent
 	sess    *session.State
 	locked  screens.LockedModel
 	vault   screens.VaultModel
@@ -120,6 +128,20 @@ func (m RootModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, m.vault.Init()
 
 	case screens.LockMsg:
+		m.lockFor = intentLock
+		m.spinner.Spinner = ui.SpinnerLock
+		if m.sess.Token != "" {
+			m.state = stateQuitting
+			token := m.sess.Token
+			m.sess.Lock()
+			return m, tea.Batch(m.spinner.Tick, bwcmd.Lock(token))
+		}
+		m.state = stateLocked
+		m.locked = screens.NewLockedModel(false)
+		return m, m.locked.Init()
+
+	case screens.QuitMsg:
+		m.lockFor = intentQuit
 		m.state = stateQuitting
 		m.spinner.Spinner = ui.SpinnerLock
 		if m.sess.Token != "" {
@@ -130,7 +152,12 @@ func (m RootModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, tea.Quit
 
 	case bwcmd.LockResult:
-		return m, tea.Quit
+		if m.lockFor == intentQuit {
+			return m, tea.Quit
+		}
+		m.state = stateLocked
+		m.locked = screens.NewLockedModel(false)
+		return m, tea.Batch(m.locked.Init(), tickIdleCheck())
 
 	case screens.RetryMsg:
 		m.state = stateLoading
@@ -138,16 +165,19 @@ func (m RootModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case idleCheckMsg:
 		if m.state == stateVault && m.sess.IsIdle() {
+			token := m.sess.Token
 			m.sess.Lock()
+			m.lockFor = intentLock
 			m.state = stateLocked
 			m.locked = screens.NewLockedModel(false)
-			return m, tea.Batch(bwcmd.Lock(m.sess.Token), m.locked.Init(), tickIdleCheck())
+			return m, tea.Batch(bwcmd.Lock(token), m.locked.Init(), tickIdleCheck())
 		}
 		return m, tickIdleCheck()
 
 	case tea.KeyMsg:
 		m.sess.Touch()
 		if msg.String() == "ctrl+c" {
+			m.lockFor = intentQuit
 			m.state = stateQuitting
 			m.spinner.Spinner = ui.SpinnerLock
 			if m.sess.Token != "" {
