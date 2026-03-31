@@ -5,12 +5,10 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/charmbracelet/lipgloss"
-	"github.com/muesli/termenv"
 )
 
 func TestMain(m *testing.M) {
-	lipgloss.SetColorProfile(termenv.Ascii)
+	os.Setenv("NO_COLOR", "1")
 	os.Exit(m.Run())
 }
 

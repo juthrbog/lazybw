@@ -1,9 +1,9 @@
 package screens
 
 import (
-	"github.com/charmbracelet/bubbles/spinner"
-	tea "github.com/charmbracelet/bubbletea"
-	"github.com/charmbracelet/huh"
+	"charm.land/bubbles/v2/spinner"
+	tea "charm.land/bubbletea/v2"
+	"charm.land/huh/v2"
 	"github.com/juthrbog/lazybw/bwcmd"
 	"github.com/juthrbog/lazybw/ui"
 )
@@ -69,6 +69,7 @@ func buildLockedForm(isLogin bool, email, password *string) *huh.Form {
 	} else {
 		form = huh.NewForm(huh.NewGroup(pwField))
 	}
+	form = form.WithWidth(40)
 	if ui.HuhTheme != nil {
 		form = form.WithTheme(ui.HuhTheme)
 	}
@@ -101,7 +102,7 @@ func (m LockedModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 	}
 
-	if key, ok := msg.(tea.KeyMsg); ok && key.String() == "ctrl+q" {
+	if key, ok := msg.(tea.KeyPressMsg); ok && key.String() == "ctrl+q" {
 		return m, tea.Quit
 	}
 
@@ -166,6 +167,6 @@ func (m LockedModel) FooterContent() (hints, status string) {
 }
 
 // View implements tea.Model (kept for interface compliance).
-func (m LockedModel) View() string {
-	return m.ViewContent(m.width, m.height)
+func (m LockedModel) View() tea.View {
+	return tea.NewView(m.ViewContent(m.width, m.height))
 }

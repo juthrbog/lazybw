@@ -6,14 +6,12 @@ import (
 	"testing"
 	"time"
 
-	"github.com/charmbracelet/lipgloss"
 	"github.com/juthrbog/lazybw/bwcmd"
 	"github.com/juthrbog/lazybw/screens"
-	"github.com/muesli/termenv"
 )
 
 func TestMain(m *testing.M) {
-	lipgloss.SetColorProfile(termenv.Ascii)
+	os.Setenv("NO_COLOR", "1")
 	os.Exit(m.Run())
 }
 

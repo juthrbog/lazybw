@@ -9,7 +9,7 @@ import (
 	"path/filepath"
 	"time"
 
-	tea "github.com/charmbracelet/bubbletea"
+	tea "charm.land/bubbletea/v2"
 	"github.com/juthrbog/lazybw/ui"
 )
 
@@ -56,8 +56,6 @@ func main() {
 
 	p := tea.NewProgram(
 		NewRootModel(*idleTimeout),
-		tea.WithAltScreen(),
-		tea.WithMouseCellMotion(),
 	)
 
 	if _, err := p.Run(); err != nil {

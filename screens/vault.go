@@ -6,12 +6,12 @@ import (
 	"strings"
 	"time"
 
-	"github.com/charmbracelet/bubbles/help"
-	"github.com/charmbracelet/bubbles/key"
-	"github.com/charmbracelet/bubbles/spinner"
-	tea "github.com/charmbracelet/bubbletea"
-	"github.com/charmbracelet/huh"
-	"github.com/charmbracelet/lipgloss"
+	"charm.land/bubbles/v2/help"
+	"charm.land/bubbles/v2/key"
+	"charm.land/bubbles/v2/spinner"
+	tea "charm.land/bubbletea/v2"
+	"charm.land/huh/v2"
+	"charm.land/lipgloss/v2"
 	"github.com/juthrbog/lazybw/bwcmd"
 	"github.com/juthrbog/lazybw/session"
 	"github.com/juthrbog/lazybw/ui"
@@ -112,7 +112,7 @@ func (m VaultModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.width = msg.Width
 		m.height = msg.Height
 
-	case tea.KeyMsg:
+	case tea.KeyPressMsg:
 		if m.showGenerator {
 			return m.updateGenerator(msg)
 		}
@@ -215,7 +215,7 @@ func (m VaultModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
-func (m VaultModel) updateNormal(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+func (m VaultModel) updateNormal(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	switch {
 	case key.Matches(msg, m.keymap.Down):
 		m.moveCursor(1)
@@ -311,7 +311,7 @@ func (m VaultModel) updateNormal(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
-func (m VaultModel) updateFilter(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+func (m VaultModel) updateFilter(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	switch msg.String() {
 	case "esc":
 		m.mode = modeNormal
@@ -414,7 +414,7 @@ func (m VaultModel) openThemePicker() (tea.Model, tea.Cmd) {
 				Options(options...).
 				Value(m.selectedTheme),
 		),
-	)
+	).WithWidth(40)
 	if ui.HuhTheme != nil {
 		m.themeForm = m.themeForm.WithTheme(ui.HuhTheme)
 	}
@@ -423,7 +423,7 @@ func (m VaultModel) openThemePicker() (tea.Model, tea.Cmd) {
 }
 
 func (m VaultModel) updateThemePicker(msg tea.Msg) (tea.Model, tea.Cmd) {
-	if key, ok := msg.(tea.KeyMsg); ok && key.Type == tea.KeyEscape {
+	if key, ok := msg.(tea.KeyPressMsg); ok && key.String() == "esc" {
 		m.showThemePicker = false
 		return m, nil
 	}
@@ -464,7 +464,7 @@ func (m VaultModel) openGenerator() (tea.Model, tea.Cmd) {
 	return m, bwcmd.Generate(m.genArgs()...)
 }
 
-func (m VaultModel) updateGenerator(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+func (m VaultModel) updateGenerator(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	switch msg.String() {
 	case "esc":
 		m.showGenerator = false
@@ -678,8 +678,8 @@ func (m VaultModel) FooterContent() (hints, status string) {
 }
 
 // View implements tea.Model (kept for interface compliance).
-func (m VaultModel) View() string {
-	return m.ViewContent(m.width, m.height)
+func (m VaultModel) View() tea.View {
+	return tea.NewView(m.ViewContent(m.width, m.height))
 }
 
 func (m VaultModel) renderList(height int) string {
