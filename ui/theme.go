@@ -1,11 +1,12 @@
 package ui
 
 import (
+	"image/color"
 	"time"
 
-	"github.com/charmbracelet/bubbles/spinner"
-	"github.com/charmbracelet/huh"
-	"github.com/charmbracelet/lipgloss"
+	"charm.land/bubbles/v2/spinner"
+	"charm.land/huh/v2"
+	"charm.land/lipgloss/v2"
 
 	catppuccin "github.com/catppuccin/go"
 )
@@ -24,14 +25,18 @@ var ThemeNames = []string{
 // CurrentTheme holds the name of the active theme.
 var CurrentTheme = "catppuccin-mocha"
 
+// IsDark tracks whether the terminal has a dark background.
+// Updated by the root model on tea.BackgroundColorMsg.
+var IsDark = true
+
 // Colour palette — set by ApplyTheme.
 var (
-	ColorHighlight lipgloss.AdaptiveColor
-	ColorSubtle    lipgloss.AdaptiveColor
-	ColorGreen     lipgloss.AdaptiveColor
-	ColorYellow    lipgloss.AdaptiveColor
-	ColorRed       lipgloss.AdaptiveColor
-	ColorFaint     lipgloss.AdaptiveColor
+	ColorHighlight color.Color
+	ColorSubtle    color.Color
+	ColorGreen     color.Color
+	ColorYellow    color.Color
+	ColorRed       color.Color
+	ColorFaint     color.Color
 )
 
 // Spinner definitions for loading states.
@@ -59,7 +64,7 @@ var (
 )
 
 // HuhTheme is applied to huh forms (unlock/login screen).
-var HuhTheme *huh.Theme
+var HuhTheme huh.Theme
 
 // Glyph variables — re-rendered by initStyles after theme change.
 var (
@@ -81,67 +86,71 @@ func ApplyTheme(name string) {
 	switch name {
 	case "catppuccin-mocha":
 		applyCatppuccin(catppuccin.Mocha, catppuccin.Latte)
-		HuhTheme = huh.ThemeCatppuccin()
+		HuhTheme = huh.ThemeFunc(huh.ThemeCatppuccin)
 	case "catppuccin-frappe":
 		applyCatppuccin(catppuccin.Frappe, catppuccin.Latte)
-		HuhTheme = huh.ThemeCatppuccin()
+		HuhTheme = huh.ThemeFunc(huh.ThemeCatppuccin)
 	case "catppuccin-macchiato":
 		applyCatppuccin(catppuccin.Macchiato, catppuccin.Latte)
-		HuhTheme = huh.ThemeCatppuccin()
+		HuhTheme = huh.ThemeFunc(huh.ThemeCatppuccin)
 	case "catppuccin-latte":
 		applyCatppuccin(catppuccin.Latte, catppuccin.Latte)
-		HuhTheme = huh.ThemeCatppuccin()
+		HuhTheme = huh.ThemeFunc(huh.ThemeCatppuccin)
 	case "dracula":
 		applyDracula()
-		HuhTheme = huh.ThemeDracula()
+		HuhTheme = huh.ThemeFunc(huh.ThemeDracula)
 	case "charm":
 		applyCharm()
-		HuhTheme = huh.ThemeCharm()
+		HuhTheme = huh.ThemeFunc(huh.ThemeCharm)
 	case "base16":
 		applyBase16()
-		HuhTheme = huh.ThemeBase16()
+		HuhTheme = huh.ThemeFunc(huh.ThemeBase16)
 	default:
 		applyCatppuccin(catppuccin.Mocha, catppuccin.Latte)
-		HuhTheme = huh.ThemeCatppuccin()
+		HuhTheme = huh.ThemeFunc(huh.ThemeCatppuccin)
 	}
 
 	initStyles()
 }
 
 func applyCatppuccin(dark, light catppuccin.Flavor) {
-	ColorHighlight = lipgloss.AdaptiveColor{Dark: dark.Mauve().Hex, Light: light.Mauve().Hex}
-	ColorSubtle = lipgloss.AdaptiveColor{Dark: dark.Surface0().Hex, Light: light.Surface0().Hex}
-	ColorGreen = lipgloss.AdaptiveColor{Dark: dark.Green().Hex, Light: light.Green().Hex}
-	ColorYellow = lipgloss.AdaptiveColor{Dark: dark.Yellow().Hex, Light: light.Yellow().Hex}
-	ColorRed = lipgloss.AdaptiveColor{Dark: dark.Red().Hex, Light: light.Red().Hex}
-	ColorFaint = lipgloss.AdaptiveColor{Dark: dark.Overlay0().Hex, Light: light.Overlay0().Hex}
+	ld := lipgloss.LightDark(IsDark)
+	ColorHighlight = ld(lipgloss.Color(light.Mauve().Hex), lipgloss.Color(dark.Mauve().Hex))
+	ColorSubtle = ld(lipgloss.Color(light.Surface0().Hex), lipgloss.Color(dark.Surface0().Hex))
+	ColorGreen = ld(lipgloss.Color(light.Green().Hex), lipgloss.Color(dark.Green().Hex))
+	ColorYellow = ld(lipgloss.Color(light.Yellow().Hex), lipgloss.Color(dark.Yellow().Hex))
+	ColorRed = ld(lipgloss.Color(light.Red().Hex), lipgloss.Color(dark.Red().Hex))
+	ColorFaint = ld(lipgloss.Color(light.Overlay0().Hex), lipgloss.Color(dark.Overlay0().Hex))
 }
 
 func applyDracula() {
-	ColorHighlight = lipgloss.AdaptiveColor{Dark: "#bd93f9", Light: "#7c3aed"}
-	ColorSubtle = lipgloss.AdaptiveColor{Dark: "#44475a", Light: "#D9DCCF"}
-	ColorGreen = lipgloss.AdaptiveColor{Dark: "#50fa7b", Light: "#027A4F"}
-	ColorYellow = lipgloss.AdaptiveColor{Dark: "#f1fa8c", Light: "#C47D10"}
-	ColorRed = lipgloss.AdaptiveColor{Dark: "#ff5555", Light: "#CC2222"}
-	ColorFaint = lipgloss.AdaptiveColor{Dark: "#6272a4", Light: "#9A9A9A"}
+	ld := lipgloss.LightDark(IsDark)
+	ColorHighlight = ld(lipgloss.Color("#7c3aed"), lipgloss.Color("#bd93f9"))
+	ColorSubtle = ld(lipgloss.Color("#D9DCCF"), lipgloss.Color("#44475a"))
+	ColorGreen = ld(lipgloss.Color("#027A4F"), lipgloss.Color("#50fa7b"))
+	ColorYellow = ld(lipgloss.Color("#C47D10"), lipgloss.Color("#f1fa8c"))
+	ColorRed = ld(lipgloss.Color("#CC2222"), lipgloss.Color("#ff5555"))
+	ColorFaint = ld(lipgloss.Color("#9A9A9A"), lipgloss.Color("#6272a4"))
 }
 
 func applyCharm() {
-	ColorHighlight = lipgloss.AdaptiveColor{Dark: "#7D56F4", Light: "#5A3ECC"}
-	ColorSubtle = lipgloss.AdaptiveColor{Dark: "#383838", Light: "#D9DCCF"}
-	ColorGreen = lipgloss.AdaptiveColor{Dark: "#04B575", Light: "#027A4F"}
-	ColorYellow = lipgloss.AdaptiveColor{Dark: "#F5A623", Light: "#C47D10"}
-	ColorRed = lipgloss.AdaptiveColor{Dark: "#FF4F4F", Light: "#CC2222"}
-	ColorFaint = lipgloss.AdaptiveColor{Dark: "#626262", Light: "#9A9A9A"}
+	ld := lipgloss.LightDark(IsDark)
+	ColorHighlight = ld(lipgloss.Color("#5A3ECC"), lipgloss.Color("#7D56F4"))
+	ColorSubtle = ld(lipgloss.Color("#D9DCCF"), lipgloss.Color("#383838"))
+	ColorGreen = ld(lipgloss.Color("#027A4F"), lipgloss.Color("#04B575"))
+	ColorYellow = ld(lipgloss.Color("#C47D10"), lipgloss.Color("#F5A623"))
+	ColorRed = ld(lipgloss.Color("#CC2222"), lipgloss.Color("#FF4F4F"))
+	ColorFaint = ld(lipgloss.Color("#9A9A9A"), lipgloss.Color("#626262"))
 }
 
 func applyBase16() {
-	ColorHighlight = lipgloss.AdaptiveColor{Dark: "#a16946", Light: "#a16946"}
-	ColorSubtle = lipgloss.AdaptiveColor{Dark: "#383838", Light: "#D9DCCF"}
-	ColorGreen = lipgloss.AdaptiveColor{Dark: "#a1b56c", Light: "#027A4F"}
-	ColorYellow = lipgloss.AdaptiveColor{Dark: "#f7ca88", Light: "#C47D10"}
-	ColorRed = lipgloss.AdaptiveColor{Dark: "#ab4642", Light: "#CC2222"}
-	ColorFaint = lipgloss.AdaptiveColor{Dark: "#585858", Light: "#9A9A9A"}
+	ld := lipgloss.LightDark(IsDark)
+	ColorHighlight = ld(lipgloss.Color("#a16946"), lipgloss.Color("#a16946"))
+	ColorSubtle = ld(lipgloss.Color("#D9DCCF"), lipgloss.Color("#383838"))
+	ColorGreen = ld(lipgloss.Color("#027A4F"), lipgloss.Color("#a1b56c"))
+	ColorYellow = ld(lipgloss.Color("#C47D10"), lipgloss.Color("#f7ca88"))
+	ColorRed = ld(lipgloss.Color("#CC2222"), lipgloss.Color("#ab4642"))
+	ColorFaint = ld(lipgloss.Color("#9A9A9A"), lipgloss.Color("#585858"))
 }
 
 func initStyles() {

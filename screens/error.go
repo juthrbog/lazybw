@@ -1,7 +1,7 @@
 package screens
 
 import (
-	tea "github.com/charmbracelet/bubbletea"
+	tea "charm.land/bubbletea/v2"
 	"github.com/juthrbog/lazybw/ui"
 )
 
@@ -23,7 +23,7 @@ func (m ErrorModel) Init() tea.Cmd { return nil }
 
 func (m ErrorModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
-	case tea.KeyMsg:
+	case tea.KeyPressMsg:
 		switch msg.String() {
 		case "r":
 			if !m.fatal {
@@ -54,6 +54,6 @@ func (m ErrorModel) FooterHints() string {
 }
 
 // View implements tea.Model (delegates to root frame).
-func (m ErrorModel) View() string {
-	return m.ViewContent()
+func (m ErrorModel) View() tea.View {
+	return tea.NewView(m.ViewContent())
 }

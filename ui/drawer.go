@@ -2,9 +2,10 @@ package ui
 
 import (
 	"fmt"
+	"image/color"
 	"strings"
 
-	"github.com/charmbracelet/lipgloss"
+	"charm.land/lipgloss/v2"
 	"github.com/juthrbog/lazybw/bwcmd"
 )
 
@@ -324,7 +325,7 @@ func renderTOTP(code string, secsLeft int) string {
 	}
 
 	// Color based on urgency.
-	var color lipgloss.AdaptiveColor
+	var color color.Color
 	switch {
 	case secsLeft > 15:
 		color = ColorGreen

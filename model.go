@@ -3,9 +3,9 @@ package main
 import (
 	"time"
 
-	"github.com/charmbracelet/bubbles/spinner"
-	tea "github.com/charmbracelet/bubbletea"
-	"github.com/charmbracelet/lipgloss"
+	"charm.land/bubbles/v2/spinner"
+	tea "charm.land/bubbletea/v2"
+	"charm.land/lipgloss/v2"
 	"github.com/juthrbog/lazybw/bwcmd"
 	"github.com/juthrbog/lazybw/screens"
 	"github.com/juthrbog/lazybw/session"
@@ -61,7 +61,7 @@ func NewRootModel(idleTimeout time.Duration) RootModel {
 }
 
 func (m RootModel) Init() tea.Cmd {
-	return tea.Batch(bwcmd.CheckStatus(), tickIdleCheck(), m.spinner.Tick)
+	return tea.Batch(bwcmd.CheckStatus(), tickIdleCheck(), m.spinner.Tick, func() tea.Msg { return tea.RequestBackgroundColor() })
 }
 
 func (m RootModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
@@ -80,6 +80,12 @@ func (m RootModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.vault = updated.(screens.VaultModel)
 			return m, cmd
 		}
+		return m, nil
+
+	case tea.BackgroundColorMsg:
+		ui.IsDark = msg.IsDark()
+		ui.ApplyTheme(ui.CurrentTheme)
+		m.spinner.Style = m.spinner.Style.Foreground(ui.ColorHighlight)
 		return m, nil
 
 	case bwcmd.StatusResult:
@@ -174,7 +180,7 @@ func (m RootModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		return m, tickIdleCheck()
 
-	case tea.KeyMsg:
+	case tea.KeyPressMsg:
 		m.sess.Touch()
 		if msg.String() == "ctrl+c" {
 			m.lockFor = intentQuit
@@ -212,7 +218,7 @@ func (m RootModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	return m, cmd
 }
 
-func (m RootModel) View() string {
+func (m RootModel) View() tea.View {
 	header := ui.RenderHeader(m.sess.Email, m.width)
 	contentHeight := m.height - 2 // header + footer
 
@@ -235,7 +241,10 @@ func (m RootModel) View() string {
 	}
 
 	footer := ui.RenderFooter(hints, status, m.width)
-	return lipgloss.JoinVertical(lipgloss.Left, header, content, footer)
+	v := tea.NewView(lipgloss.JoinVertical(lipgloss.Left, header, content, footer))
+	v.AltScreen = true
+	v.MouseMode = tea.MouseModeCellMotion
+	return v
 }
 
 func tickIdleCheck() tea.Cmd {

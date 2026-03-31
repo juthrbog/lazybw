@@ -6,13 +6,11 @@ import (
 	"strings"
 	"testing"
 
-	tea "github.com/charmbracelet/bubbletea"
-	"github.com/charmbracelet/lipgloss"
-	"github.com/muesli/termenv"
+	tea "charm.land/bubbletea/v2"
 )
 
 func TestMain(m *testing.M) {
-	lipgloss.SetColorProfile(termenv.Ascii)
+	_ = os.Setenv("NO_COLOR", "1")
 	os.Exit(m.Run())
 }
 
@@ -56,7 +54,7 @@ func TestErrorFooterHintsFatal(t *testing.T) {
 
 func TestErrorUpdateRetryNonFatal(t *testing.T) {
 	m := NewErrorModel(errors.New("err"), false)
-	updated, cmd := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("r")})
+	updated, cmd := m.Update(tea.KeyPressMsg{Text: "r"})
 	_ = updated
 	if cmd == nil {
 		t.Fatal("expected command from retry key")
@@ -69,7 +67,7 @@ func TestErrorUpdateRetryNonFatal(t *testing.T) {
 
 func TestErrorUpdateRetryFatal(t *testing.T) {
 	m := NewErrorModel(errors.New("err"), true)
-	_, cmd := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("r")})
+	_, cmd := m.Update(tea.KeyPressMsg{Text: "r"})
 	if cmd != nil {
 		t.Error("fatal error should not respond to retry key")
 	}
@@ -77,7 +75,7 @@ func TestErrorUpdateRetryFatal(t *testing.T) {
 
 func TestErrorUpdateQuit(t *testing.T) {
 	m := NewErrorModel(errors.New("err"), false)
-	_, cmd := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("q")})
+	_, cmd := m.Update(tea.KeyPressMsg{Text: "q"})
 	if cmd == nil {
 		t.Fatal("expected quit command")
 	}
