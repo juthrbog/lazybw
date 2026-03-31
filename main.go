@@ -18,7 +18,7 @@ var version = "dev"
 func main() {
 	debug := flag.Bool("debug", false, "write debug log to $XDG_CACHE_HOME/lazybw/debug.log")
 	ver := flag.Bool("version", false, "print version and exit")
-	idleTimeout := flag.Duration("idle-timeout", 15*time.Minute, "lock vault after this duration of inactivity")
+	idleTimeout := flag.Duration("idle-timeout", 15*time.Minute, "lock vault after this duration of inactivity (minimum 30s)")
 	theme := flag.String("theme", "", "color theme (catppuccin-mocha, catppuccin-frappe, catppuccin-macchiato, catppuccin-latte, dracula, charm, base16)")
 	flag.Parse()
 
@@ -34,6 +34,11 @@ func main() {
 	}
 	if themeName != "" {
 		ui.ApplyTheme(themeName)
+	}
+
+	if *idleTimeout < 30*time.Second {
+		fmt.Fprintf(os.Stderr, "Warning: idle-timeout minimum is 30s (got %s), using 30s\n", *idleTimeout)
+		*idleTimeout = 30 * time.Second
 	}
 
 	if _, err := exec.LookPath("bw"); err != nil {
