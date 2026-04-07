@@ -45,7 +45,7 @@ func TestVaultItemFilterValue(t *testing.T) {
 		Name:  "Gmail",
 		Login: &bwcmd.Login{Username: "user@gmail.com"},
 	}
-	vi := VaultItem{item}
+	vi := VaultItem{Item: item}
 	fv := vi.FilterValue()
 	if !strings.Contains(fv, "Gmail") {
 		t.Errorf("FilterValue should contain name, got %q", fv)
@@ -85,6 +85,65 @@ func TestToListItems(t *testing.T) {
 		if vi.Name != items[i].Name {
 			t.Errorf("item %d: expected %q, got %q", i, items[i].Name, vi.Name)
 		}
+	}
+}
+
+func groupTestItems() []bwcmd.Item {
+	return []bwcmd.Item{
+		{ID: "1", Type: bwcmd.ItemTypeLogin, Name: "GitHub", Login: &bwcmd.Login{Username: "dev@example.com"}},
+		{ID: "2", Type: bwcmd.ItemTypeLogin, Name: "GitHub (Work)", Login: &bwcmd.Login{Username: "work@company.com"}},
+		{ID: "3", Type: bwcmd.ItemTypeLogin, Name: "GitHub (Personal)", Login: &bwcmd.Login{Username: "me@example.com"}},
+		{ID: "4", Type: bwcmd.ItemTypeLogin, Name: "Gmail", Login: &bwcmd.Login{Username: "user@gmail.com"}},
+	}
+}
+
+func TestSelectedItemNilForGroupHeader(t *testing.T) {
+	m := newTestVault(groupTestItems())
+	m.groups.enabled = true
+	m.rebuildListItems()
+	m.list.Select(0) // select the group header (collapsed)
+	if m.selectedItem() != nil {
+		t.Error("selectedItem should return nil for a group header")
+	}
+}
+
+func TestSelectedItemForExpandedChild(t *testing.T) {
+	m := newTestVault(groupTestItems())
+	m.groups.enabled = true
+	m.groups.toggle("github") // expand
+	m.rebuildListItems()
+	m.list.Select(1) // first child: "GitHub"
+	item := m.selectedItem()
+	if item == nil {
+		t.Fatal("expected non-nil item for expanded child")
+	}
+	if item.Name != "GitHub" {
+		t.Errorf("expected 'GitHub', got %q", item.Name)
+	}
+}
+
+func TestToggleGroupingRebuilds(t *testing.T) {
+	m := newTestVault(groupTestItems())
+
+	// Initially grouping is off — 4 flat items.
+	if len(m.list.Items()) != 4 {
+		t.Fatalf("expected 4 items, got %d", len(m.list.Items()))
+	}
+
+	// Enable grouping.
+	m.groups.toggleGrouping()
+	m.rebuildListItems()
+
+	// Expect: Header(Discord) + Gmail = 2 items (collapsed).
+	if len(m.list.Items()) != 2 {
+		t.Fatalf("expected 2 items with grouping, got %d", len(m.list.Items()))
+	}
+
+	// Disable grouping.
+	m.groups.toggleGrouping()
+	m.rebuildListItems()
+	if len(m.list.Items()) != 4 {
+		t.Fatalf("expected 4 items without grouping, got %d", len(m.list.Items()))
 	}
 }
 

@@ -172,10 +172,12 @@ The vault is a single state with sub-modes, not separate screens:
 - **Normal** — list + drawer visible; j/k moves cursor, drawer updates instantly
 - **Filter** — `/` activates an inline search input above the list; live fuzzy
   filter; Esc clears and returns to Normal
+- **Grouped** — `ctrl+g` toggles collapsible groups; items with similar names
+  are bucketed under group headers. Enter expands/collapses a group. Grouping
+  flattens automatically during filter mode.
 - **Error overlay** — non-fatal errors shown in a centred box; r to retry, q to quit
 
-There is no separate Detail screen. The drawer replaces it. Enter is reserved
-for a future "edit item" action.
+There is no separate Detail screen. The drawer replaces it.
 
 ---
 
@@ -240,6 +242,8 @@ The TOTP row is live. Once `bw get totp <id>` resolves:
 | `/` | Enter filter mode |
 | `r` | Sync vault (`bw sync`) |
 | `l` | Lock vault immediately |
+| `ctrl+g` | Toggle item grouping |
+| `Enter` | Expand / collapse group header |
 | `?` | Toggle full help |
 | `q` / `ctrl+c` | Lock + quit |
 
@@ -357,6 +361,7 @@ lazybw/
 ├── screens/
 │   ├── locked.go           # Unlock / login form (huh)
 │   ├── vault.go            # List + drawer composite view
+│   ├── grouping.go         # Collapsible group logic + item grouping algorithm
 │   └── error.go            # Error overlay
 ├── ui/
 │   ├── theme.go            # Colour palette + styles
