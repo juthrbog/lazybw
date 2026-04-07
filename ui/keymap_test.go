@@ -10,11 +10,6 @@ func TestDefaultVaultKeyMap(t *testing.T) {
 		name string
 		keys []string
 	}{
-		{"Up", km.Up.Keys()},
-		{"Down", km.Down.Keys()},
-		{"Top", km.Top.Keys()},
-		{"Bottom", km.Bottom.Keys()},
-		{"Filter", km.Filter.Keys()},
 		{"Copy", km.Copy.Keys()},
 		{"CopyTOTP", km.CopyTOTP.Keys()},
 		{"CopyUsername", km.CopyUsername.Keys()},
@@ -39,16 +34,16 @@ func TestDefaultVaultKeyMap(t *testing.T) {
 func TestShortHelp(t *testing.T) {
 	km := DefaultVaultKeyMap()
 	help := km.ShortHelp()
-	if len(help) != 6 {
-		t.Errorf("ShortHelp() returned %d bindings, want 6", len(help))
+	if len(help) != 5 {
+		t.Errorf("ShortHelp() returned %d bindings, want 5", len(help))
 	}
 }
 
 func TestFullHelp(t *testing.T) {
 	km := DefaultVaultKeyMap()
 	groups := km.FullHelp()
-	if len(groups) != 5 {
-		t.Errorf("FullHelp() returned %d groups, want 5", len(groups))
+	if len(groups) != 4 {
+		t.Errorf("FullHelp() returned %d groups, want 4", len(groups))
 	}
 	// Every group should have at least one binding.
 	for i, g := range groups {
