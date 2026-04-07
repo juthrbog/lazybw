@@ -119,6 +119,13 @@ func (m VaultModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if m.showThemePicker {
 			return m.updateThemePicker(msg)
 		}
+		if m.showHelp {
+			if key.Matches(msg, key.NewBinding(key.WithKeys("esc"))) {
+				m.showHelp = false
+				return m, nil
+			}
+			return m, nil
+		}
 		if m.mode == modeFilter {
 			return m.updateFilter(msg)
 		}
@@ -555,22 +562,21 @@ func (m *VaultModel) genArgs() []string {
 	return args
 }
 
-func (m VaultModel) renderGenerator(width, contentHeight int) string {
+func (m VaultModel) renderGeneratorCard() string {
 	var b strings.Builder
 
-	sep := ui.StyleFaint.Render("── Password Generator " + strings.Repeat("─", max(0, width-24)))
-	b.WriteString(sep)
+	b.WriteString(ui.StyleTitle.Render("Password Generator"))
 	b.WriteString("\n\n")
 
 	// Mode indicator.
 	if m.genMode == "password" {
-		b.WriteString("  Mode        ")
+		b.WriteString("Mode        ")
 		b.WriteString(ui.StyleTitle.Render("[Password]"))
 		b.WriteString("  ")
 		b.WriteString(ui.StyleFaint.Render("Passphrase"))
 		b.WriteString("\n")
 	} else {
-		b.WriteString("  Mode        ")
+		b.WriteString("Mode        ")
 		b.WriteString(ui.StyleFaint.Render("Password"))
 		b.WriteString("  ")
 		b.WriteString(ui.StyleTitle.Render("[Passphrase]"))
@@ -579,24 +585,22 @@ func (m VaultModel) renderGenerator(width, contentHeight int) string {
 
 	// Options.
 	if m.genMode == "password" {
-		fmt.Fprintf(&b, "  Length      %d\n", m.genLength)
-		fmt.Fprintf(&b, "  Uppercase   %s   Lowercase  %s   Numbers  %s   Special  %s\n",
+		fmt.Fprintf(&b, "Length      %d\n", m.genLength)
+		fmt.Fprintf(&b, "Uppercase   %s   Lowercase  %s   Numbers  %s   Special  %s\n",
 			checkMark(m.genUppercase), checkMark(m.genLowercase),
 			checkMark(m.genNumbers), checkMark(m.genSpecial))
 	} else {
-		fmt.Fprintf(&b, "  Words       %d         Separator  %s\n", m.genWords, m.genSeparator)
-		fmt.Fprintf(&b, "  Capitalize  %s         Include #  %s\n",
+		fmt.Fprintf(&b, "Words       %d         Separator  %s\n", m.genWords, m.genSeparator)
+		fmt.Fprintf(&b, "Capitalize  %s         Include #  %s\n",
 			checkMark(m.genCapitalize), checkMark(m.genIncludeNum))
 	}
 
 	b.WriteString("\n")
 
 	// Generated output.
-	b.WriteString("  ")
 	b.WriteString(ui.StyleTitle.Render(m.genPassword))
-	b.WriteString("\n")
 
-	return ui.CenterInArea(b.String(), width, contentHeight)
+	return b.String()
 }
 
 func checkMark(v bool) string {
@@ -608,13 +612,23 @@ func checkMark(v bool) string {
 
 // ViewContent renders the vault content for the root frame.
 func (m VaultModel) ViewContent(width, contentHeight int) string {
+	bg := m.renderVaultContent(width, contentHeight)
+
 	if m.showGenerator {
-		return m.renderGenerator(width, contentHeight)
+		return ui.RenderOverlay(bg, m.renderGeneratorCard(), width, contentHeight)
 	}
 	if m.showThemePicker && m.themeForm != nil {
-		return ui.CenterInArea(m.themeForm.View(), width, contentHeight)
+		return ui.RenderOverlay(bg, m.themeForm.View(), width, contentHeight)
+	}
+	if m.showHelp {
+		return ui.RenderOverlay(bg, m.help.View(m.keymap), width, contentHeight)
 	}
 
+	return bg
+}
+
+// renderVaultContent renders the normal vault layout (filter + list + drawer).
+func (m VaultModel) renderVaultContent(width, contentHeight int) string {
 	drawer := ui.RenderDrawer(ui.DrawerProps{
 		Item:         m.selectedItem(),
 		TOTPCode:     m.totpCode,
@@ -626,9 +640,6 @@ func (m VaultModel) ViewContent(width, contentHeight int) string {
 	listHeight := contentHeight - ui.DrawerHeight
 	if m.mode == modeFilter {
 		listHeight--
-	}
-	if m.showHelp {
-		listHeight -= 5
 	}
 	if listHeight < 1 {
 		listHeight = 1
@@ -642,9 +653,6 @@ func (m VaultModel) ViewContent(width, contentHeight int) string {
 		sections = append(sections, filterBar)
 	}
 	sections = append(sections, listView, drawer)
-	if m.showHelp {
-		sections = append(sections, m.help.View(m.keymap))
-	}
 
 	return lipgloss.JoinVertical(lipgloss.Left, sections...)
 }
@@ -657,6 +665,10 @@ func (m VaultModel) FooterContent() (hints, status string) {
 	}
 	if m.showThemePicker {
 		hints = "enter select · esc cancel"
+		return hints, ""
+	}
+	if m.showHelp {
+		hints = "esc close"
 		return hints, ""
 	}
 	if m.mode == modeFilter {
