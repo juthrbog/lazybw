@@ -2,12 +2,14 @@ package screens
 
 import (
 	"fmt"
+	"io"
 	"os/exec"
 	"strings"
 	"time"
 
 	"charm.land/bubbles/v2/help"
 	"charm.land/bubbles/v2/key"
+	"charm.land/bubbles/v2/list"
 	"charm.land/bubbles/v2/spinner"
 	tea "charm.land/bubbletea/v2"
 	"charm.land/huh/v2"
@@ -26,24 +28,39 @@ type QuitMsg struct{}
 // TOTPTickMsg fires every second to update the TOTP countdown.
 type TOTPTickMsg struct{}
 
-type vaultMode int
+// VaultItem wraps bwcmd.Item to implement list.Item.
+type VaultItem struct{ bwcmd.Item }
 
-const (
-	modeNormal vaultMode = iota
-	modeFilter
-)
+// FilterValue returns the string used for fuzzy filtering.
+func (v VaultItem) FilterValue() string { return v.Name + " " + v.Description() }
+
+// VaultDelegate renders vault items using the existing row renderer.
+type VaultDelegate struct{}
+
+func (d VaultDelegate) Render(w io.Writer, m list.Model, index int, item list.Item) {
+	vi := item.(VaultItem)
+	_, _ = fmt.Fprint(w, ui.RenderItemRow(vi.Item, index == m.Index(), m.Width()))
+}
+
+func (d VaultDelegate) Height() int                               { return 1 }
+func (d VaultDelegate) Spacing() int                              { return 0 }
+func (d VaultDelegate) Update(msg tea.Msg, m *list.Model) tea.Cmd { return nil }
+
+func toListItems(items []bwcmd.Item) []list.Item {
+	li := make([]list.Item, len(items))
+	for i, item := range items {
+		li[i] = VaultItem{item}
+	}
+	return li
+}
 
 // VaultModel is the main vault browsing screen.
 type VaultModel struct {
-	items     []bwcmd.Item
-	filtered  []bwcmd.Item
-	cursor    int
-	keymap    ui.VaultKeyMap
-	help      help.Model
-	showHelp  bool
-	mode      vaultMode
-	filterStr string
-	sess      *session.State
+	list     list.Model
+	keymap   ui.VaultKeyMap
+	help     help.Model
+	showHelp bool
+	sess     *session.State
 
 	toast       string
 	toastTime   time.Time
@@ -83,16 +100,32 @@ func NewVaultModel(items []bwcmd.Item, sess *session.State, width, height int) V
 	ss := spinner.New()
 	ss.Spinner = ui.SpinnerLoad
 	ss.Style = ss.Style.Foreground(ui.ColorHighlight)
+
+	l := list.New(toListItems(items), VaultDelegate{}, width, height-ui.DrawerHeight)
+	l.Title = ""
+	l.SetShowTitle(false)
+	l.SetShowFilter(true)
+	l.SetShowStatusBar(true)
+	l.SetShowPagination(false)
+	l.SetShowHelp(false)
+	l.SetStatusBarItemName("item", "items")
+	l.DisableQuitKeybindings()
+
+	// Resolve key conflicts: list defaults bind l/u/?  which clash with our keybinds.
+	l.KeyMap.NextPage.SetKeys("right", "pgdown")
+	l.KeyMap.PrevPage.SetKeys("left", "pgup")
+	l.KeyMap.ShowFullHelp.SetEnabled(false)
+	l.KeyMap.CloseFullHelp.SetEnabled(false)
+
 	m := VaultModel{
-		items:       items,
-		filtered:    items,
-		keymap:      ui.DefaultVaultKeyMap(),
-		help:        help.New(),
-		sess:        sess,
+		list:         l,
+		keymap:       ui.DefaultVaultKeyMap(),
+		help:         help.New(),
+		sess:         sess,
 		syncSpinner:  ss,
 		currentTheme: ui.CurrentTheme,
 		width:        width,
-		height:      height,
+		height:       height,
 	}
 	return m
 }
@@ -107,10 +140,14 @@ func (m VaultModel) Init() tea.Cmd {
 }
 
 func (m VaultModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+	var cmds []tea.Cmd
+
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
 		m.width = msg.Width
 		m.height = msg.Height
+		m.list.SetSize(msg.Width, msg.Height-ui.DrawerHeight)
+		return m, nil
 
 	case tea.KeyPressMsg:
 		if m.showGenerator {
@@ -126,10 +163,21 @@ func (m VaultModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			return m, nil
 		}
-		if m.mode == modeFilter {
-			return m.updateFilter(msg)
+		// When not filtering, intercept our action keys before the list.
+		if !m.list.SettingFilter() {
+			if model, cmd, handled := m.handleActionKeys(msg); handled {
+				return model, cmd
+			}
 		}
-		return m.updateNormal(msg)
+		// Forward to list for navigation, filtering, etc.
+		prevIdx := m.list.Index()
+		var cmd tea.Cmd
+		m.list, cmd = m.list.Update(msg)
+		cmds = append(cmds, cmd)
+		if m.list.Index() != prevIdx {
+			cmds = append(cmds, m.onCursorChange())
+		}
+		return m, tea.Batch(cmds...)
 
 	case bwcmd.PasswordResult:
 		if msg.Err != nil {
@@ -172,7 +220,6 @@ func (m VaultModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case TOTPTickMsg:
 		m.totpSecsLeft--
 		if m.totpSecsLeft <= 0 {
-			// Refetch TOTP code for new period.
 			if item := m.selectedItem(); item != nil && item.Login != nil && item.Login.Totp != "" {
 				m.totpSecsLeft = 30
 				return m, tea.Batch(tickTOTP(), bwcmd.GetTOTP(m.sess.Token, item.ID))
@@ -195,9 +242,8 @@ func (m VaultModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.setToast("Load failed: " + msg.Err.Error())
 			return m, nil
 		}
-		m.items = msg.Items
-		m.applyFilter()
-		return m, nil
+		cmd := m.list.SetItems(toListItems(msg.Items))
+		return m, cmd
 
 	case bwcmd.GenerateResult:
 		if msg.Err != nil {
@@ -219,55 +265,47 @@ func (m VaultModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m.updateThemePicker(msg)
 	}
 
-	return m, nil
+	// Forward non-key messages to the list (e.g. filter debounce timers).
+	prevIdx := m.list.Index()
+	var cmd tea.Cmd
+	m.list, cmd = m.list.Update(msg)
+	cmds = append(cmds, cmd)
+	if m.list.Index() != prevIdx {
+		cmds = append(cmds, m.onCursorChange())
+	}
+	return m, tea.Batch(cmds...)
 }
 
-func (m VaultModel) updateNormal(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
+// handleActionKeys processes app-specific keybinds (copy, sync, lock, etc.).
+// Returns (model, cmd, true) if handled, or (zero, nil, false) to let the list handle the key.
+func (m VaultModel) handleActionKeys(msg tea.KeyPressMsg) (tea.Model, tea.Cmd, bool) {
 	switch {
-	case key.Matches(msg, m.keymap.Down):
-		m.moveCursor(1)
-		return m, m.onCursorChange()
-
-	case key.Matches(msg, m.keymap.Up):
-		m.moveCursor(-1)
-		return m, m.onCursorChange()
-
-	case key.Matches(msg, m.keymap.Top):
-		m.cursor = 0
-		return m, m.onCursorChange()
-
-	case key.Matches(msg, m.keymap.Bottom):
-		if len(m.filtered) > 0 {
-			m.cursor = len(m.filtered) - 1
-		}
-		return m, m.onCursorChange()
-
 	case key.Matches(msg, m.keymap.Copy):
 		if item := m.selectedItem(); item != nil {
 			if item.Type == bwcmd.ItemTypeIdentity && item.Identity != nil && item.Identity.SSN != "" {
-				return m, session.CopyToClipboard(item.Identity.SSN, session.CopyFieldPassword)
+				return m, session.CopyToClipboard(item.Identity.SSN, session.CopyFieldPassword), true
 			}
 			if item.Type == bwcmd.ItemTypeSSHKey && item.SSHKey != nil && item.SSHKey.PrivateKey != "" {
-				return m, session.CopyToClipboard(item.SSHKey.PrivateKey, session.CopyFieldPassword)
+				return m, session.CopyToClipboard(item.SSHKey.PrivateKey, session.CopyFieldPassword), true
 			}
-			return m, bwcmd.GetPassword(m.sess.Token, item.ID)
+			return m, bwcmd.GetPassword(m.sess.Token, item.ID), true
 		}
 
 	case key.Matches(msg, m.keymap.CopyTOTP):
 		if m.totpCode != "" {
-			return m, session.CopyToClipboard(m.totpCode, session.CopyFieldTOTP)
+			return m, session.CopyToClipboard(m.totpCode, session.CopyFieldTOTP), true
 		}
 
 	case key.Matches(msg, m.keymap.CopyUsername):
 		if item := m.selectedItem(); item != nil {
 			if item.Login != nil {
-				return m, session.CopyToClipboard(item.Login.Username, session.CopyFieldUsername)
+				return m, session.CopyToClipboard(item.Login.Username, session.CopyFieldUsername), true
 			}
 			if item.Identity != nil && item.Identity.Email != "" {
-				return m, session.CopyToClipboard(item.Identity.Email, session.CopyFieldUsername)
+				return m, session.CopyToClipboard(item.Identity.Email, session.CopyFieldUsername), true
 			}
 			if item.SSHKey != nil && item.SSHKey.PublicKey != "" {
-				return m, session.CopyToClipboard(item.SSHKey.PublicKey, session.CopyFieldUsername)
+				return m, session.CopyToClipboard(item.SSHKey.PublicKey, session.CopyFieldUsername), true
 			}
 		}
 
@@ -277,108 +315,43 @@ func (m VaultModel) updateNormal(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 			cmd := exec.Command("xdg-open", url)
 			_ = cmd.Start()
 		}
-
-	case key.Matches(msg, m.keymap.Filter):
-		m.mode = modeFilter
-		m.filterStr = ""
-		return m, nil
+		return m, nil, true
 
 	case key.Matches(msg, m.keymap.Sync):
 		m.syncing = true
 		m.setToast("Syncing…")
-		return m, tea.Batch(m.syncSpinner.Tick, bwcmd.Sync(m.sess.Token))
+		return m, tea.Batch(m.syncSpinner.Tick, bwcmd.Sync(m.sess.Token)), true
 
 	case key.Matches(msg, m.keymap.Lock):
-		return m, func() tea.Msg { return LockMsg{} }
+		return m, func() tea.Msg { return LockMsg{} }, true
 
 	case key.Matches(msg, m.keymap.Help):
 		m.showHelp = !m.showHelp
-		return m, nil
+		return m, nil, true
 
 	case key.Matches(msg, m.keymap.Generate):
-		return m.openGenerator()
+		model, cmd := m.openGenerator()
+		return model, cmd, true
 
 	case key.Matches(msg, m.keymap.CycleTheme):
-		return m.openThemePicker()
+		model, cmd := m.openThemePicker()
+		return model, cmd, true
 
 	case key.Matches(msg, m.keymap.Quit):
-		return m, func() tea.Msg { return QuitMsg{} }
+		return m, func() tea.Msg { return QuitMsg{} }, true
 
 	case key.Matches(msg, m.keymap.ScrollDown):
 		m.drawerScroll++
-		return m, nil
+		return m, nil, true
 
 	case key.Matches(msg, m.keymap.ScrollUp):
 		if m.drawerScroll > 0 {
 			m.drawerScroll--
 		}
-		return m, nil
+		return m, nil, true
 	}
 
-	return m, nil
-}
-
-func (m VaultModel) updateFilter(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
-	switch msg.String() {
-	case "esc":
-		m.mode = modeNormal
-		m.filterStr = ""
-		m.applyFilter()
-		return m, nil
-	case "enter":
-		m.mode = modeNormal
-		return m, nil
-	case "backspace":
-		if len(m.filterStr) > 0 {
-			m.filterStr = m.filterStr[:len(m.filterStr)-1]
-			m.applyFilter()
-		}
-		return m, nil
-	case "up":
-		m.moveCursor(-1)
-		return m, m.onCursorChange()
-	case "down":
-		m.moveCursor(1)
-		return m, m.onCursorChange()
-	default:
-		if len(msg.String()) == 1 {
-			m.filterStr += msg.String()
-			m.applyFilter()
-		}
-		return m, nil
-	}
-}
-
-func (m *VaultModel) applyFilter() {
-	if m.filterStr == "" {
-		m.filtered = m.items
-	} else {
-		var filtered []bwcmd.Item
-		query := strings.ToLower(m.filterStr)
-		for _, item := range m.items {
-			if strings.Contains(strings.ToLower(item.Name), query) ||
-				strings.Contains(strings.ToLower(item.Description()), query) {
-				filtered = append(filtered, item)
-			}
-		}
-		m.filtered = filtered
-	}
-	if m.cursor >= len(m.filtered) {
-		m.cursor = max(0, len(m.filtered)-1)
-	}
-}
-
-func (m *VaultModel) moveCursor(delta int) {
-	m.cursor += delta
-	if m.cursor < 0 {
-		m.cursor = 0
-	}
-	if m.cursor >= len(m.filtered) {
-		m.cursor = len(m.filtered) - 1
-	}
-	if m.cursor < 0 {
-		m.cursor = 0
-	}
+	return m, nil, false
 }
 
 func (m *VaultModel) onCursorChange() tea.Cmd {
@@ -396,10 +369,12 @@ func (m *VaultModel) onCursorChange() tea.Cmd {
 }
 
 func (m *VaultModel) selectedItem() *bwcmd.Item {
-	if m.cursor < 0 || m.cursor >= len(m.filtered) {
+	item := m.list.SelectedItem()
+	if item == nil {
 		return nil
 	}
-	return &m.filtered[m.cursor]
+	vi := item.(VaultItem)
+	return &vi.Item
 }
 
 func (m *VaultModel) setToast(msg string) {
@@ -627,7 +602,7 @@ func (m VaultModel) ViewContent(width, contentHeight int) string {
 	return bg
 }
 
-// renderVaultContent renders the normal vault layout (filter + list + drawer).
+// renderVaultContent renders the normal vault layout (list + drawer).
 func (m VaultModel) renderVaultContent(width, contentHeight int) string {
 	drawer := ui.RenderDrawer(ui.DrawerProps{
 		Item:         m.selectedItem(),
@@ -637,24 +612,10 @@ func (m VaultModel) renderVaultContent(width, contentHeight int) string {
 		ScrollOffset: m.drawerScroll,
 	})
 
-	listHeight := contentHeight - ui.DrawerHeight
-	if m.mode == modeFilter {
-		listHeight--
-	}
-	if listHeight < 1 {
-		listHeight = 1
-	}
+	m.list.SetSize(width, contentHeight-ui.DrawerHeight)
+	listView := m.list.View()
 
-	listView := m.renderList(listHeight)
-
-	var sections []string
-	if m.mode == modeFilter {
-		filterBar := ui.StyleTitle.Render("/") + m.filterStr + "█"
-		sections = append(sections, filterBar)
-	}
-	sections = append(sections, listView, drawer)
-
-	return lipgloss.JoinVertical(lipgloss.Left, sections...)
+	return lipgloss.JoinVertical(lipgloss.Left, listView, drawer)
 }
 
 // FooterContent returns hints and status for the footer bar.
@@ -671,7 +632,7 @@ func (m VaultModel) FooterContent() (hints, status string) {
 		hints = "esc close"
 		return hints, ""
 	}
-	if m.mode == modeFilter {
+	if m.list.SettingFilter() {
 		hints = "esc clear · enter confirm · ↑/↓ navigate"
 	} else {
 		hints = "j/k navigate · / search · c pwd · t totp · p gen · T theme · ? help · q quit"
@@ -694,51 +655,7 @@ func (m VaultModel) View() tea.View {
 	return tea.NewView(m.ViewContent(m.width, m.height))
 }
 
-func (m VaultModel) renderList(height int) string {
-	if len(m.filtered) == 0 {
-		empty := ui.StyleFaint.Render("  No items found")
-		lines := []string{empty}
-		for len(lines) < height {
-			lines = append(lines, "")
-		}
-		return strings.Join(lines, "\n")
-	}
 
-	// Compute scroll window.
-	start := 0
-	if m.cursor >= height {
-		start = m.cursor - height + 1
-	}
-	end := start + height
-	if end > len(m.filtered) {
-		end = len(m.filtered)
-		start = max(0, end-height)
-	}
-
-	var lines []string
-	for i := start; i < end; i++ {
-		lines = append(lines, ui.RenderItemRow(m.filtered[i], i == m.cursor, m.width))
-	}
-
-	// Pad remaining lines.
-	for len(lines) < height {
-		lines = append(lines, "")
-	}
-
-	// Show count in bottom-right of list area.
-	countStr := ui.StyleFaint.Render(fmt.Sprintf("%d / %d", m.cursor+1, len(m.filtered)))
-	if len(lines) > 0 {
-		last := lines[len(lines)-1]
-		lastW := lipgloss.Width(last)
-		countW := lipgloss.Width(countStr)
-		gap := m.width - lastW - countW
-		if gap > 0 {
-			lines[len(lines)-1] = last + strings.Repeat(" ", gap) + countStr
-		}
-	}
-
-	return strings.Join(lines, "\n")
-}
 
 func formatLastSync(t time.Time) string {
 	if t.IsZero() {

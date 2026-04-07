@@ -2,13 +2,9 @@ package ui
 
 import "charm.land/bubbles/v2/key"
 
-// VaultKeyMap defines all keybindings for the main vault screen.
+// VaultKeyMap defines app-specific keybindings for the main vault screen.
+// Navigation (j/k, g/G, /, pgup/pgdn) is handled by the embedded bubbles/list.
 type VaultKeyMap struct {
-	Up           key.Binding
-	Down         key.Binding
-	Top          key.Binding
-	Bottom       key.Binding
-	Filter       key.Binding
 	Copy         key.Binding
 	CopyTOTP     key.Binding
 	CopyUsername key.Binding
@@ -25,15 +21,14 @@ type VaultKeyMap struct {
 
 // ShortHelp implements help.KeyMap.
 func (k VaultKeyMap) ShortHelp() []key.Binding {
-	return []key.Binding{k.Filter, k.Copy, k.CopyTOTP, k.CopyUsername, k.Help, k.Quit}
+	return []key.Binding{k.Copy, k.CopyTOTP, k.CopyUsername, k.Help, k.Quit}
 }
 
 // FullHelp implements help.KeyMap.
 func (k VaultKeyMap) FullHelp() [][]key.Binding {
 	return [][]key.Binding{
-		{k.Up, k.Down, k.Top, k.Bottom},
 		{k.Copy, k.CopyTOTP, k.CopyUsername, k.OpenURL},
-		{k.Filter, k.Generate, k.Sync, k.Lock},
+		{k.Generate, k.Sync, k.Lock},
 		{k.ScrollDown, k.ScrollUp},
 		{k.Help, k.CycleTheme, k.Quit},
 	}
@@ -42,26 +37,6 @@ func (k VaultKeyMap) FullHelp() [][]key.Binding {
 // DefaultVaultKeyMap returns the standard bindings for the vault screen.
 func DefaultVaultKeyMap() VaultKeyMap {
 	return VaultKeyMap{
-		Up: key.NewBinding(
-			key.WithKeys("k", "up"),
-			key.WithHelp("k/↑", "up"),
-		),
-		Down: key.NewBinding(
-			key.WithKeys("j", "down"),
-			key.WithHelp("j/↓", "down"),
-		),
-		Top: key.NewBinding(
-			key.WithKeys("g", "home"),
-			key.WithHelp("g", "top"),
-		),
-		Bottom: key.NewBinding(
-			key.WithKeys("G", "end"),
-			key.WithHelp("G", "bottom"),
-		),
-		Filter: key.NewBinding(
-			key.WithKeys("/"),
-			key.WithHelp("/", "search"),
-		),
 		Copy: key.NewBinding(
 			key.WithKeys("c"),
 			key.WithHelp("c", "copy pwd"),
