@@ -29,15 +29,6 @@ func TestVaultFooterContentNormalMode(t *testing.T) {
 	}
 }
 
-func TestVaultFooterContentFilterMode(t *testing.T) {
-	m := newTestVault(testItems())
-	m.mode = modeFilter
-	hints, _ := m.FooterContent()
-	if !strings.Contains(hints, "esc clear") {
-		t.Errorf("filter mode hints should contain 'esc clear', got %q", hints)
-	}
-}
-
 func TestVaultFooterContentWithToast(t *testing.T) {
 	m := newTestVault(testItems())
 	m.setToast("Password copied")
@@ -47,62 +38,26 @@ func TestVaultFooterContentWithToast(t *testing.T) {
 	}
 }
 
-func TestVaultApplyFilterEmpty(t *testing.T) {
-	m := newTestVault(testItems())
-	m.filterStr = ""
-	m.applyFilter()
-	if len(m.filtered) != len(m.items) {
-		t.Errorf("empty filter should show all items, got %d", len(m.filtered))
+func TestVaultItemFilterValue(t *testing.T) {
+	item := bwcmd.Item{
+		ID:    "1",
+		Type:  bwcmd.ItemTypeLogin,
+		Name:  "Gmail",
+		Login: &bwcmd.Login{Username: "user@gmail.com"},
 	}
-}
-
-func TestVaultApplyFilterMatch(t *testing.T) {
-	m := newTestVault(testItems())
-	m.filterStr = "gmail"
-	m.applyFilter()
-	if len(m.filtered) != 1 {
-		t.Errorf("expected 1 match, got %d", len(m.filtered))
+	vi := VaultItem{item}
+	fv := vi.FilterValue()
+	if !strings.Contains(fv, "Gmail") {
+		t.Errorf("FilterValue should contain name, got %q", fv)
 	}
-	if m.filtered[0].Name != "Gmail" {
-		t.Errorf("expected Gmail, got %q", m.filtered[0].Name)
-	}
-}
-
-func TestVaultApplyFilterNoMatch(t *testing.T) {
-	m := newTestVault(testItems())
-	m.filterStr = "zzzzz"
-	m.applyFilter()
-	if len(m.filtered) != 0 {
-		t.Errorf("expected 0 matches, got %d", len(m.filtered))
-	}
-}
-
-func TestVaultApplyFilterByDescription(t *testing.T) {
-	m := newTestVault(testItems())
-	m.filterStr = "user@gmail"
-	m.applyFilter()
-	if len(m.filtered) != 1 {
-		t.Errorf("expected 1 match by description, got %d", len(m.filtered))
-	}
-}
-
-func TestVaultMoveCursorBounds(t *testing.T) {
-	m := newTestVault(testItems())
-
-	m.moveCursor(-10)
-	if m.cursor != 0 {
-		t.Errorf("cursor should clamp to 0, got %d", m.cursor)
-	}
-
-	m.moveCursor(100)
-	if m.cursor != 2 {
-		t.Errorf("cursor should clamp to len-1, got %d", m.cursor)
+	if !strings.Contains(fv, "user@gmail.com") {
+		t.Errorf("FilterValue should contain description, got %q", fv)
 	}
 }
 
 func TestVaultSelectedItemInRange(t *testing.T) {
 	m := newTestVault(testItems())
-	m.cursor = 1
+	m.list.Select(1)
 	item := m.selectedItem()
 	if item == nil {
 		t.Fatal("expected non-nil item")
@@ -119,11 +74,17 @@ func TestVaultSelectedItemEmptyList(t *testing.T) {
 	}
 }
 
-func TestVaultSelectedItemOutOfRange(t *testing.T) {
-	m := newTestVault(testItems())
-	m.cursor = 99
-	if m.selectedItem() != nil {
-		t.Error("expected nil for out of range cursor")
+func TestToListItems(t *testing.T) {
+	items := testItems()
+	li := toListItems(items)
+	if len(li) != len(items) {
+		t.Errorf("expected %d list items, got %d", len(items), len(li))
+	}
+	for i, item := range li {
+		vi := item.(VaultItem)
+		if vi.Name != items[i].Name {
+			t.Errorf("item %d: expected %q, got %q", i, items[i].Name, vi.Name)
+		}
 	}
 }
 
