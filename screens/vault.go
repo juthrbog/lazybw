@@ -29,7 +29,10 @@ type QuitMsg struct{}
 type TOTPTickMsg struct{}
 
 // VaultItem wraps bwcmd.Item to implement list.Item.
-type VaultItem struct{ bwcmd.Item }
+type VaultItem struct {
+	bwcmd.Item
+	Indent bool // true when displayed as child of an expanded group
+}
 
 // FilterValue returns the string used for fuzzy filtering.
 func (v VaultItem) FilterValue() string { return v.Name + " " + v.Description() }
@@ -38,8 +41,13 @@ func (v VaultItem) FilterValue() string { return v.Name + " " + v.Description() 
 type VaultDelegate struct{}
 
 func (d VaultDelegate) Render(w io.Writer, m list.Model, index int, item list.Item) {
-	vi := item.(VaultItem)
-	_, _ = fmt.Fprint(w, ui.RenderItemRow(vi.Item, index == m.Index(), m.Width()))
+	selected := index == m.Index()
+	switch v := item.(type) {
+	case GroupHeaderItem:
+		_, _ = fmt.Fprint(w, ui.RenderGroupRow(v.BaseKey, v.Count, v.Expanded, selected, m.Width()))
+	case VaultItem:
+		_, _ = fmt.Fprint(w, ui.RenderItemRow(v.Item, selected, m.Width(), v.Indent))
+	}
 }
 
 func (d VaultDelegate) Height() int                               { return 1 }
@@ -49,7 +57,7 @@ func (d VaultDelegate) Update(msg tea.Msg, m *list.Model) tea.Cmd { return nil }
 func toListItems(items []bwcmd.Item) []list.Item {
 	li := make([]list.Item, len(items))
 	for i, item := range items {
-		li[i] = VaultItem{item}
+		li[i] = VaultItem{Item: item}
 	}
 	return li
 }
@@ -61,6 +69,9 @@ type VaultModel struct {
 	help     help.Model
 	showHelp bool
 	sess     *session.State
+
+	rawItems []bwcmd.Item
+	groups   groupState
 
 	toast       string
 	toastTime   time.Time
@@ -122,6 +133,8 @@ func NewVaultModel(items []bwcmd.Item, sess *session.State, width, height int) V
 		keymap:       ui.DefaultVaultKeyMap(),
 		help:         help.New(),
 		sess:         sess,
+		rawItems:     items,
+		groups:       newGroupState(),
 		syncSpinner:  ss,
 		currentTheme: ui.CurrentTheme,
 		width:        width,
@@ -170,10 +183,20 @@ func (m VaultModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 		}
 		// Forward to list for navigation, filtering, etc.
+		prevFilter := m.list.FilterState()
 		prevIdx := m.list.Index()
 		var cmd tea.Cmd
 		m.list, cmd = m.list.Update(msg)
 		cmds = append(cmds, cmd)
+		// Flatten groups while filtering, restore on filter clear.
+		if fs := m.list.FilterState(); fs != prevFilter && m.groups.enabled {
+			switch fs {
+			case list.Filtering:
+				cmds = append(cmds, m.list.SetItems(toListItems(m.rawItems)))
+			case list.Unfiltered:
+				cmds = append(cmds, m.rebuildListItems())
+			}
+		}
 		if m.list.Index() != prevIdx {
 			cmds = append(cmds, m.onCursorChange())
 		}
@@ -242,7 +265,8 @@ func (m VaultModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.setToast("Load failed: " + msg.Err.Error())
 			return m, nil
 		}
-		cmd := m.list.SetItems(toListItems(msg.Items))
+		m.rawItems = msg.Items
+		cmd := m.rebuildListItems()
 		return m, cmd
 
 	case bwcmd.GenerateResult:
@@ -349,6 +373,21 @@ func (m VaultModel) handleActionKeys(msg tea.KeyPressMsg) (tea.Model, tea.Cmd, b
 			m.drawerScroll--
 		}
 		return m, nil, true
+
+	case key.Matches(msg, m.keymap.ToggleGrouping):
+		m.groups.toggleGrouping()
+		cmd := m.rebuildListItems()
+		m.setToast(groupToastMessage(m.groups.enabled))
+		return m, cmd, true
+
+	case key.Matches(msg, m.keymap.ToggleExpand):
+		if sel := m.list.SelectedItem(); sel != nil {
+			if gh, ok := sel.(GroupHeaderItem); ok {
+				m.groups.toggle(gh.BaseKey)
+				cmd := m.rebuildListItems()
+				return m, cmd, true
+			}
+		}
 	}
 
 	return m, nil, false
@@ -373,8 +412,18 @@ func (m *VaultModel) selectedItem() *bwcmd.Item {
 	if item == nil {
 		return nil
 	}
-	vi := item.(VaultItem)
-	return &vi.Item
+	switch v := item.(type) {
+	case VaultItem:
+		return &v.Item
+	case GroupHeaderItem:
+		return nil
+	default:
+		return nil
+	}
+}
+
+func (m *VaultModel) rebuildListItems() tea.Cmd {
+	return m.list.SetItems(buildGroupedItems(m.rawItems, m.groups))
 }
 
 func (m *VaultModel) setToast(msg string) {
@@ -635,7 +684,7 @@ func (m VaultModel) FooterContent() (hints, status string) {
 	if m.list.SettingFilter() {
 		hints = "esc clear · enter confirm · ↑/↓ navigate"
 	} else {
-		hints = "j/k navigate · / search · c pwd · t totp · p gen · T theme · ? help · q quit"
+		hints = "j/k navigate · / search · c pwd · t totp · ctrl+g group · p gen · T theme · ? help · q quit"
 	}
 
 	toast := m.toast

@@ -22,6 +22,8 @@ func TestDefaultVaultKeyMap(t *testing.T) {
 		{"Quit", km.Quit.Keys()},
 		{"CycleTheme", km.CycleTheme.Keys()},
 		{"Generate", km.Generate.Keys()},
+		{"ToggleGrouping", km.ToggleGrouping.Keys()},
+		{"ToggleExpand", km.ToggleExpand.Keys()},
 	}
 
 	for _, b := range bindings {
@@ -34,16 +36,16 @@ func TestDefaultVaultKeyMap(t *testing.T) {
 func TestShortHelp(t *testing.T) {
 	km := DefaultVaultKeyMap()
 	help := km.ShortHelp()
-	if len(help) != 5 {
-		t.Errorf("ShortHelp() returned %d bindings, want 5", len(help))
+	if len(help) != 6 {
+		t.Errorf("ShortHelp() returned %d bindings, want 6", len(help))
 	}
 }
 
 func TestFullHelp(t *testing.T) {
 	km := DefaultVaultKeyMap()
 	groups := km.FullHelp()
-	if len(groups) != 4 {
-		t.Errorf("FullHelp() returned %d groups, want 4", len(groups))
+	if len(groups) != 5 {
+		t.Errorf("FullHelp() returned %d groups, want 5", len(groups))
 	}
 	// Every group should have at least one binding.
 	for i, g := range groups {

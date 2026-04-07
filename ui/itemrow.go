@@ -8,11 +8,47 @@ import (
 	"github.com/juthrbog/lazybw/bwcmd"
 )
 
-// RenderItemRow renders a single item row in the vault list.
-func RenderItemRow(item bwcmd.Item, selected bool, width int) string {
+// RenderGroupRow renders a collapsible group header row.
+func RenderGroupRow(baseName string, count int, expanded, selected bool, width int) string {
 	cursor := "  "
 	if selected {
 		cursor = "▶ "
+	}
+
+	chevron := "▶"
+	if expanded {
+		chevron = "▼"
+	}
+
+	label := fmt.Sprintf("%s%s  %s (%d)", cursor, chevron, baseName, count)
+
+	// Pad to full width.
+	gap := width - lipgloss.Width(label)
+	if gap > 0 {
+		label += strings.Repeat(" ", gap)
+	}
+
+	if selected {
+		label = StyleSelected.Render(label)
+	} else {
+		label = StyleFaint.Render(label)
+	}
+
+	return label
+}
+
+// RenderItemRow renders a single item row in the vault list.
+func RenderItemRow(item bwcmd.Item, selected bool, width int, indent bool) string {
+	cursor := "  "
+	if indent {
+		cursor = "    "
+	}
+	if selected {
+		if indent {
+			cursor = "  ▶ "
+		} else {
+			cursor = "▶ "
+		}
 	}
 
 	var glyph string

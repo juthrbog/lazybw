@@ -5,23 +5,25 @@ import "charm.land/bubbles/v2/key"
 // VaultKeyMap defines app-specific keybindings for the main vault screen.
 // Navigation (j/k, g/G, /, pgup/pgdn) is handled by the embedded bubbles/list.
 type VaultKeyMap struct {
-	Copy         key.Binding
-	CopyTOTP     key.Binding
-	CopyUsername key.Binding
-	OpenURL      key.Binding
-	ScrollDown   key.Binding
-	ScrollUp     key.Binding
-	Sync         key.Binding
-	Lock         key.Binding
-	Help         key.Binding
-	Quit         key.Binding
-	CycleTheme   key.Binding
-	Generate     key.Binding
+	Copy           key.Binding
+	CopyTOTP       key.Binding
+	CopyUsername   key.Binding
+	OpenURL        key.Binding
+	ScrollDown     key.Binding
+	ScrollUp       key.Binding
+	Sync           key.Binding
+	Lock           key.Binding
+	Help           key.Binding
+	Quit           key.Binding
+	CycleTheme     key.Binding
+	Generate       key.Binding
+	ToggleGrouping key.Binding
+	ToggleExpand   key.Binding
 }
 
 // ShortHelp implements help.KeyMap.
 func (k VaultKeyMap) ShortHelp() []key.Binding {
-	return []key.Binding{k.Copy, k.CopyTOTP, k.CopyUsername, k.Help, k.Quit}
+	return []key.Binding{k.Copy, k.CopyTOTP, k.CopyUsername, k.ToggleGrouping, k.Help, k.Quit}
 }
 
 // FullHelp implements help.KeyMap.
@@ -30,6 +32,7 @@ func (k VaultKeyMap) FullHelp() [][]key.Binding {
 		{k.Copy, k.CopyTOTP, k.CopyUsername, k.OpenURL},
 		{k.Generate, k.Sync, k.Lock},
 		{k.ScrollDown, k.ScrollUp},
+		{k.ToggleGrouping, k.ToggleExpand},
 		{k.Help, k.CycleTheme, k.Quit},
 	}
 }
@@ -84,6 +87,14 @@ func DefaultVaultKeyMap() VaultKeyMap {
 		Generate: key.NewBinding(
 			key.WithKeys("p"),
 			key.WithHelp("p", "generate"),
+		),
+		ToggleGrouping: key.NewBinding(
+			key.WithKeys("ctrl+g"),
+			key.WithHelp("ctrl+g", "group"),
+		),
+		ToggleExpand: key.NewBinding(
+			key.WithKeys("enter"),
+			key.WithHelp("enter", "expand/collapse"),
 		),
 	}
 }

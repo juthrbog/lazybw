@@ -34,6 +34,7 @@ j/k navigate  /  search  c pwd  t totp  u user  r  ?  q
 - **Live TOTP countdown** -- current code with a depleting countdown indicator, color-coded by urgency
 - **Full item type support** -- logins, cards, and secure notes with type-specific detail views
 - **Fuzzy search** -- press `/` to filter your vault in real time
+- **Item grouping** -- similar items collapse into expandable groups (`Ctrl+G` to toggle)
 - **Security-conscious** -- session token in memory only, clipboard auto-clears after 60s, idle lock after 15 minutes
 - **Single binary** -- no runtime dependencies beyond `bw`
 
@@ -111,6 +112,8 @@ Press `T` in the vault to open the theme picker and switch themes on the fly.
 | `p` | Open password generator |
 | `r` | Sync vault |
 | `l` | Lock vault |
+| `Ctrl+G` | Toggle item grouping |
+| `Enter` | Expand / collapse group |
 | `T` | Open theme picker |
 | `?` | Toggle full help |
 | `q` | Lock and quit |

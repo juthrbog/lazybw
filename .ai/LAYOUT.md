@@ -170,6 +170,31 @@ full help is toggled (`?`), the help text reduces the list height.
 When filter mode is active, a filter input row appears at the top of
 the content area, further reducing list height by 1.
 
+When grouping is enabled (`Ctrl+G`), similar items collapse under
+group headers:
+
+```
+  󰌾  Datadog                       ops@example.com
+  ▶  github (3)
+  󰌾  Gmail                         user@example.com
+```
+
+Expanding a group (`Enter`) shows indented children:
+
+```
+  󰌾  Datadog                       ops@example.com
+  ▼  github (3)
+    󰌾  GitHub                       dev@example.com
+    󰌾  GitHub (Work)                work@company.com
+    󰌾  GitHub (Personal)            me@example.com
+  󰌾  Gmail                         user@example.com
+```
+
+Group headers show `▶`/`▼` indicators and the child count. The drawer
+displays "No item selected" when a collapsed group header is focused,
+and normal item details when an expanded child is focused. Grouping
+flattens to a normal list while the filter is active.
+
 ### Error
 
 Vertically and horizontally centered within the content area:
