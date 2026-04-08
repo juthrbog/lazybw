@@ -19,6 +19,10 @@ type VaultKeyMap struct {
 	Generate       key.Binding
 	ToggleGrouping key.Binding
 	ToggleExpand   key.Binding
+	DrawerGrow     key.Binding
+	DrawerShrink   key.Binding
+	DrawerReset    key.Binding
+	DrawerToggle   key.Binding
 }
 
 // ShortHelp implements help.KeyMap.
@@ -31,7 +35,7 @@ func (k VaultKeyMap) FullHelp() [][]key.Binding {
 	return [][]key.Binding{
 		{k.Copy, k.CopyTOTP, k.CopyUsername, k.OpenURL},
 		{k.Generate, k.Sync, k.Lock},
-		{k.ScrollDown, k.ScrollUp},
+		{k.ScrollDown, k.ScrollUp, k.DrawerGrow, k.DrawerShrink, k.DrawerReset, k.DrawerToggle},
 		{k.ToggleGrouping, k.ToggleExpand},
 		{k.Help, k.CycleTheme, k.Quit},
 	}
@@ -50,6 +54,9 @@ func (k VaultKeyMap) HelpBindings() []HelpBinding {
 		{Key: "g/G", Desc: "jump to top/bottom", Category: "Navigation"},
 		{Key: "/", Desc: "filter", Category: "Navigation"},
 		{Key: "J/K", Desc: "scroll drawer", Category: "Navigation"},
+		{Key: "+/-", Desc: "resize drawer", Category: "Navigation"},
+		{Key: "=", Desc: "reset drawer height", Category: "Navigation"},
+		{Key: "d", Desc: "toggle drawer overlay", Category: "Navigation"},
 		// Vault
 		{Key: "p", Desc: "generate password", Category: "Vault"},
 		{Key: "r", Desc: "sync", Category: "Vault"},
@@ -121,6 +128,22 @@ func DefaultVaultKeyMap() VaultKeyMap {
 		ToggleExpand: key.NewBinding(
 			key.WithKeys("enter"),
 			key.WithHelp("enter", "expand/collapse"),
+		),
+		DrawerGrow: key.NewBinding(
+			key.WithKeys("+"),
+			key.WithHelp("+", "grow drawer"),
+		),
+		DrawerShrink: key.NewBinding(
+			key.WithKeys("-"),
+			key.WithHelp("-", "shrink drawer"),
+		),
+		DrawerReset: key.NewBinding(
+			key.WithKeys("="),
+			key.WithHelp("=", "reset drawer"),
+		),
+		DrawerToggle: key.NewBinding(
+			key.WithKeys("d"),
+			key.WithHelp("d", "toggle overlay"),
 		),
 	}
 }

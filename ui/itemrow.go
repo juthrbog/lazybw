@@ -51,21 +51,7 @@ func RenderItemRow(item bwcmd.Item, selected bool, width int, indent bool) strin
 		}
 	}
 
-	var glyph string
-	switch item.Type {
-	case bwcmd.ItemTypeLogin:
-		glyph = GlyphLogin
-	case bwcmd.ItemTypeCard:
-		glyph = GlyphCard
-	case bwcmd.ItemTypeSecureNote:
-		glyph = GlyphNote
-	case bwcmd.ItemTypeIdentity:
-		glyph = GlyphIdentity
-	case bwcmd.ItemTypeSSHKey:
-		glyph = GlyphSSHKey
-	default:
-		glyph = " "
-	}
+	glyph := ItemGlyph(item.Type)
 
 	name := item.Name
 	desc := item.Description()

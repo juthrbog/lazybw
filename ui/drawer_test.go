@@ -12,7 +12,7 @@ func TestRenderDrawerNilItem(t *testing.T) {
 	if !strings.Contains(out, "No item selected") {
 		t.Error("nil item should show 'No item selected'")
 	}
-	assertMinLineCount(t, out, DrawerHeight-1)
+	assertMinLineCount(t, out, DefaultDrawerHeight-1)
 }
 
 func TestRenderDrawerLogin(t *testing.T) {
@@ -34,7 +34,7 @@ func TestRenderDrawerLogin(t *testing.T) {
 	if !strings.Contains(out, "Login") {
 		t.Error("separator should contain type name")
 	}
-	assertMinLineCount(t, out, DrawerHeight-1)
+	assertMinLineCount(t, out, DefaultDrawerHeight-1)
 }
 
 func TestRenderDrawerLoginWithTOTP(t *testing.T) {
@@ -79,7 +79,7 @@ func TestRenderDrawerCard(t *testing.T) {
 	if !strings.Contains(out, "Card") {
 		t.Error("separator should contain type 'Card'")
 	}
-	assertMinLineCount(t, out, DrawerHeight-1)
+	assertMinLineCount(t, out, DefaultDrawerHeight-1)
 }
 
 func TestRenderDrawerSecureNote(t *testing.T) {
@@ -92,7 +92,7 @@ func TestRenderDrawerSecureNote(t *testing.T) {
 	if !strings.Contains(out, "line1") {
 		t.Error("note drawer should contain note text")
 	}
-	assertMinLineCount(t, out, DrawerHeight-1)
+	assertMinLineCount(t, out, DefaultDrawerHeight-1)
 }
 
 func TestRenderDrawerSecureNoteScroll(t *testing.T) {
@@ -185,7 +185,7 @@ func TestRenderDrawerIdentity(t *testing.T) {
 	if strings.Contains(out, "123-45-6789") {
 		t.Error("SSN value should NOT appear in output")
 	}
-	assertMinLineCount(t, out, DrawerHeight-1)
+	assertMinLineCount(t, out, DefaultDrawerHeight-1)
 }
 
 func TestRenderDrawerSSHKey(t *testing.T) {
@@ -217,7 +217,41 @@ func TestRenderDrawerSSHKey(t *testing.T) {
 	if !strings.Contains(out, "••••••••••") {
 		t.Error("private key should be masked")
 	}
-	assertMinLineCount(t, out, DrawerHeight-1)
+	assertMinLineCount(t, out, DefaultDrawerHeight-1)
+}
+
+func TestFieldRowTruncation(t *testing.T) {
+	longURL := "https://amazonwebservices.benchprep.com/purchasing/checkout/very-long-path"
+	out := fieldRow("URL", longURL, "[o] open", 60)
+	if !strings.Contains(out, "[o] open") {
+		t.Error("hint should always be visible after truncation")
+	}
+	if !strings.Contains(out, "…") {
+		t.Error("long value should be truncated with ellipsis")
+	}
+}
+
+func TestFieldRowNoTruncation(t *testing.T) {
+	out := fieldRow("URL", "https://short.io", "[o] open", 80)
+	if !strings.Contains(out, "https://short.io") {
+		t.Error("short value should not be truncated")
+	}
+	if strings.Contains(out, "…") {
+		t.Error("short value should not have ellipsis")
+	}
+}
+
+func TestRenderDrawerCustomHeight(t *testing.T) {
+	item := &bwcmd.Item{
+		Type:  bwcmd.ItemTypeLogin,
+		Name:  "Test",
+		Login: &bwcmd.Login{Username: "user"},
+	}
+	out := RenderDrawer(DrawerProps{Item: item, Width: 60, Height: 12})
+	lines := strings.Split(out, "\n")
+	if len(lines) != 12 {
+		t.Errorf("drawer with Height=12 should have 12 lines, got %d", len(lines))
+	}
 }
 
 func assertMinLineCount(t *testing.T, output string, minExpected int) {

@@ -9,7 +9,7 @@ import (
 	"github.com/juthrbog/lazybw/bwcmd"
 )
 
-const DrawerHeight = 8
+const DefaultDrawerHeight = 8
 
 // DrawerProps carries everything the drawer renderer needs.
 type DrawerProps struct {
@@ -17,63 +17,117 @@ type DrawerProps struct {
 	TOTPCode     string
 	TOTPSecsLeft int
 	Width        int
+	Height       int  // 0 means DefaultDrawerHeight
+	AutoHeight   bool // true = size to content (no padding/truncation)
 	ScrollOffset int
 }
 
 // RenderDrawer renders the detail drawer for the selected vault item.
 func RenderDrawer(props DrawerProps) string {
-	if props.Item == nil {
-		return renderNoSelection(props.Width)
+	h := props.Height
+	if h <= 0 {
+		h = DefaultDrawerHeight
 	}
 
-	sep := renderSeparator(props.Item.Name, ItemTypeName(props.Item.Type), props.Width)
+	if props.Item == nil {
+		return renderNoSelection(props.Width, h)
+	}
+
+	header := renderHeaderCard(props.Item.Name, props.Item.Type, props.Width)
+	// In inline mode, add a gradient separator above the header card
+	// to visually distinguish the drawer from the list.
+	var sep string
+	if props.AutoHeight {
+		sep = header
+	} else {
+		sep = RenderGradientLine(props.Width) + "\n" + header
+	}
+	// Header lines: 2 for inline (gradient + card), 1 for overlay (card only).
+	headerLines := 2
+	if props.AutoHeight {
+		headerLines = 1
+	}
+	maxFields := h - headerLines
 	var fields []string
 
 	switch props.Item.Type {
 	case bwcmd.ItemTypeLogin:
 		fields = renderLoginFields(props)
 	case bwcmd.ItemTypeCard:
-		fields = renderCardFields(props.Item)
+		fields = renderCardFields(props.Item, props.Width)
 	case bwcmd.ItemTypeSecureNote:
-		fields = renderNoteFields(props)
+		fields = renderNoteFields(props, maxFields)
 	case bwcmd.ItemTypeIdentity:
-		fields = renderIdentityFields(props.Item)
+		fields = renderIdentityFields(props.Item, props.Width)
 	case bwcmd.ItemTypeSSHKey:
-		fields = renderSSHKeyFields(props.Item)
+		fields = renderSSHKeyFields(props.Item, props.Width)
 	default:
 		fields = []string{StyleFaint.Render("  (unsupported item type)")}
 	}
 
-	// Pad or truncate to fixed height (DrawerHeight - 1 for separator).
-	maxFields := DrawerHeight - 1
-	if len(fields) > maxFields {
-		fields = fields[:maxFields]
-	}
-	for len(fields) < maxFields {
-		fields = append(fields, "")
+	if !props.AutoHeight {
+		if len(fields) > maxFields {
+			fields = fields[:maxFields]
+		}
+		for len(fields) < maxFields {
+			fields = append(fields, "")
+		}
 	}
 
 	return sep + "\n" + strings.Join(fields, "\n")
 }
 
-func renderNoSelection(width int) string {
-	sep := StyleFaint.Render("── No item selected " + strings.Repeat("─", max(0, width-21)))
-	hint := StyleFaint.Render("  Navigate with j/k or search with /")
-	lines := []string{sep, hint}
-	for len(lines) < DrawerHeight {
+func renderNoSelection(width, height int) string {
+	lines := []string{
+		RenderGradientLine(width),
+		StyleFaint.Render("  No item selected — navigate with j/k or search with /"),
+	}
+	for len(lines) < height {
 		lines = append(lines, "")
 	}
 	return strings.Join(lines, "\n")
 }
 
-func renderSeparator(name, typeName string, width int) string {
-	left := "── " + name + " "
-	right := " " + typeName + " ─"
-	fill := width - lipgloss.Width(left) - lipgloss.Width(right)
+func renderHeaderCard(name string, itemType bwcmd.ItemType, width int) string {
+	glyph := ItemGlyph(itemType)
+	badge := StyleHeaderBadge.Render(ItemTypeName(itemType))
+	badgeW := lipgloss.Width(badge)
+
+	// Truncate name if it won't fit.
+	left := "  " + glyph + "  " + StyleTitle.Render(name)
+	leftW := lipgloss.Width(left)
+	maxLeft := width - badgeW - 1
+	if leftW > maxLeft {
+		for lipgloss.Width(name) > 0 && lipgloss.Width("  "+glyph+"  "+StyleTitle.Render(name+"…")) > maxLeft {
+			name = name[:len(name)-1]
+		}
+		left = "  " + glyph + "  " + StyleTitle.Render(name+"…")
+		leftW = lipgloss.Width(left)
+	}
+
+	fill := width - leftW - badgeW
 	if fill < 1 {
 		fill = 1
 	}
-	return StyleFaint.Render(left + strings.Repeat("─", fill) + right)
+	return left + strings.Repeat(" ", fill) + badge
+}
+
+// ItemGlyph returns the themed glyph string for the given item type.
+func ItemGlyph(t bwcmd.ItemType) string {
+	switch t {
+	case bwcmd.ItemTypeLogin:
+		return GlyphLogin
+	case bwcmd.ItemTypeCard:
+		return GlyphCard
+	case bwcmd.ItemTypeSecureNote:
+		return GlyphNote
+	case bwcmd.ItemTypeIdentity:
+		return GlyphIdentity
+	case bwcmd.ItemTypeSSHKey:
+		return GlyphSSHKey
+	default:
+		return " "
+	}
 }
 
 func ItemTypeName(t bwcmd.ItemType) string {
@@ -95,6 +149,7 @@ func ItemTypeName(t bwcmd.ItemType) string {
 
 func renderLoginFields(props DrawerProps) []string {
 	item := props.Item
+	w := props.Width
 	var fields []string
 
 	username := ""
@@ -104,21 +159,21 @@ func renderLoginFields(props DrawerProps) []string {
 		password = item.Login.Password
 	}
 
-	fields = append(fields, fieldRow("Username", username, "[u] copy"))
+	fields = append(fields, fieldRow("Username", username, "[u] copy", w))
 
 	pwDisplay := "••••••••••" //nolint:gosec // display mask, not a credential
 	if password == "" {
 		pwDisplay = StyleFaint.Render("(none)")
 	}
-	fields = append(fields, fieldRow("Password", pwDisplay, "[c] copy"))
+	fields = append(fields, fieldRow("Password", pwDisplay, "[c] copy", w))
 
 	if item.Login != nil && item.Login.Totp != "" {
 		totpDisplay := renderTOTP(props.TOTPCode, props.TOTPSecsLeft)
-		fields = append(fields, fieldRow("TOTP", totpDisplay, "[t] copy"))
+		fields = append(fields, fieldRow("TOTP", totpDisplay, "[t] copy", w))
 	}
 
 	if item.Login != nil && len(item.Login.URIs) > 0 {
-		fields = append(fields, fieldRow("URL", item.Login.URIs[0].URI, "[o] open"))
+		fields = append(fields, fieldRow("URL", item.Login.URIs[0].URI, "[o] open", w))
 	}
 
 	notes := "(none)"
@@ -126,37 +181,37 @@ func renderLoginFields(props DrawerProps) []string {
 		first, _, _ := strings.Cut(item.Notes, "\n")
 		notes = first
 	}
-	fields = append(fields, fieldRow("Notes", StyleFaint.Render(notes), ""))
+	fields = append(fields, fieldRow("Notes", StyleFaint.Render(notes), "", w))
 
 	return fields
 }
 
-func renderCardFields(item *bwcmd.Item) []string {
+func renderCardFields(item *bwcmd.Item, width int) []string {
 	if item.Card == nil {
 		return []string{StyleFaint.Render("  (no card data)")}
 	}
 	c := item.Card
 	var fields []string
 
-	fields = append(fields, fieldRow("Cardholder", c.CardholderName, ""))
+	fields = append(fields, fieldRow("Cardholder", c.CardholderName, "", width))
 
 	numDisplay := "••••••••••••"
 	if len(c.Number) >= 4 {
 		numDisplay = "•••• •••• •••• " + c.Number[len(c.Number)-4:]
 	}
-	fields = append(fields, fieldRow("Number", numDisplay, "[c] copy"))
+	fields = append(fields, fieldRow("Number", numDisplay, "[c] copy", width))
 
 	expiry := ""
 	if c.ExpMonth != "" && c.ExpYear != "" {
 		expiry = fmt.Sprintf("%s/%s", c.ExpMonth, c.ExpYear)
 	}
-	fields = append(fields, fieldRow("Expiry", expiry, ""))
-	fields = append(fields, fieldRow("CVV", "•••", "[v] copy"))
+	fields = append(fields, fieldRow("Expiry", expiry, "", width))
+	fields = append(fields, fieldRow("CVV", "•••", "[v] copy", width))
 
 	return fields
 }
 
-func renderNoteFields(props DrawerProps) []string {
+func renderNoteFields(props DrawerProps, maxLines int) []string {
 	notes := props.Item.Notes
 	if notes == "" {
 		return []string{StyleFaint.Render("  (empty note)")}
@@ -169,8 +224,7 @@ func renderNoteFields(props DrawerProps) []string {
 		lines = lines[props.ScrollOffset:]
 	}
 
-	maxLines := DrawerHeight - 1
-	if len(lines) > maxLines {
+	if maxLines > 0 && len(lines) > maxLines {
 		lines = lines[:maxLines]
 	}
 
@@ -181,7 +235,7 @@ func renderNoteFields(props DrawerProps) []string {
 	return result
 }
 
-func renderIdentityFields(item *bwcmd.Item) []string {
+func renderIdentityFields(item *bwcmd.Item, width int) []string {
 	if item.Identity == nil {
 		return []string{StyleFaint.Render("  (no identity data)")}
 	}
@@ -196,34 +250,34 @@ func renderIdentityFields(item *bwcmd.Item) []string {
 		}
 	}
 	if len(parts) > 0 {
-		fields = append(fields, fieldRow("Name", strings.Join(parts, " "), ""))
+		fields = append(fields, fieldRow("Name", strings.Join(parts, " "), "", width))
 	}
 
 	if id.Email != "" {
-		fields = append(fields, fieldRow("Email", id.Email, "[u] copy"))
+		fields = append(fields, fieldRow("Email", id.Email, "[u] copy", width))
 	}
 	if id.Phone != "" {
-		fields = append(fields, fieldRow("Phone", id.Phone, ""))
+		fields = append(fields, fieldRow("Phone", id.Phone, "", width))
 	}
 	if id.Company != "" {
-		fields = append(fields, fieldRow("Company", id.Company, ""))
+		fields = append(fields, fieldRow("Company", id.Company, "", width))
 	}
 
 	// Sensitive fields — masked.
 	if id.SSN != "" {
-		fields = append(fields, fieldRow("SSN", "•••••••••", "[c] copy"))
+		fields = append(fields, fieldRow("SSN", "•••••••••", "[c] copy", width))
 	}
 	if id.PassportNumber != "" {
-		fields = append(fields, fieldRow("Passport", "•••••••••", ""))
+		fields = append(fields, fieldRow("Passport", "•••••••••", "", width))
 	}
 	if id.LicenseNumber != "" {
-		fields = append(fields, fieldRow("License", "•••••••••", ""))
+		fields = append(fields, fieldRow("License", "•••••••••", "", width))
 	}
 
 	// Address.
 	addr := formatAddress(id)
 	if addr != "" {
-		fields = append(fields, fieldRow("Address", addr, ""))
+		fields = append(fields, fieldRow("Address", addr, "", width))
 	}
 
 	if len(fields) == 0 {
@@ -261,7 +315,7 @@ func formatAddress(id *bwcmd.Identity) string {
 	return strings.Join(parts, ", ")
 }
 
-func renderSSHKeyFields(item *bwcmd.Item) []string {
+func renderSSHKeyFields(item *bwcmd.Item, width int) []string {
 	if item.SSHKey == nil {
 		return []string{StyleFaint.Render("  (no SSH key data)")}
 	}
@@ -269,18 +323,15 @@ func renderSSHKeyFields(item *bwcmd.Item) []string {
 	var fields []string
 
 	if k.KeyFingerprint != "" {
-		fields = append(fields, fieldRow("Fingerprint", k.KeyFingerprint, ""))
+		fields = append(fields, fieldRow("Fingerprint", k.KeyFingerprint, "", width))
 	}
 
 	if k.PublicKey != "" {
-		display := k.PublicKey
-		if len(display) > 40 {
-			display = display[:40] + "…"
-		}
-		fields = append(fields, fieldRow("Public Key", display, "[u] copy"))
+		// fieldRow handles truncation, so pass the full key.
+		fields = append(fields, fieldRow("Public Key", k.PublicKey, "[u] copy", width))
 	}
 
-	fields = append(fields, fieldRow("Private Key", "••••••••••", "[c] copy"))
+	fields = append(fields, fieldRow("Private Key", "••••••••••", "[c] copy", width))
 
 	if len(fields) == 0 {
 		fields = []string{StyleFaint.Render("  (empty SSH key)")}
@@ -288,13 +339,37 @@ func renderSSHKeyFields(item *bwcmd.Item) []string {
 	return fields
 }
 
-func fieldRow(label, value, hint string) string {
-	labelStyle := lipgloss.NewStyle().Width(12).Align(lipgloss.Left)
+func fieldRow(label, value, hint string, width int) string {
+	const indent = 2
+	const labelWidth = 12
+	const gap = 2 // space between value and hint
+
+	labelStyle := lipgloss.NewStyle().Width(labelWidth).Align(lipgloss.Left)
+	renderedHint := ""
+	hintWidth := 0
+	if hint != "" {
+		renderedHint = StyleFaint.Render(hint)
+		hintWidth = gap + lipgloss.Width(renderedHint)
+	}
+
+	// Truncate value if it exceeds available space.
+	maxValue := width - indent - labelWidth - hintWidth
+	if maxValue < 1 {
+		maxValue = 1
+	}
+	if lipgloss.Width(value) > maxValue {
+		// Strip to fit, accounting for the ellipsis character.
+		for lipgloss.Width(value) > maxValue-1 && len(value) > 0 {
+			value = value[:len(value)-1]
+		}
+		value += "…"
+	}
+
 	left := "  " + labelStyle.Render(label) + value
-	if hint == "" {
+	if renderedHint == "" {
 		return left
 	}
-	return left + "  " + StyleFaint.Render(hint)
+	return left + "  " + renderedHint
 }
 
 func renderTOTP(code string, secsLeft int) string {
