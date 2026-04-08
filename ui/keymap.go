@@ -37,6 +37,32 @@ func (k VaultKeyMap) FullHelp() [][]key.Binding {
 	}
 }
 
+// HelpBindings returns categorized bindings for the help overlay.
+func (k VaultKeyMap) HelpBindings() []HelpBinding {
+	return []HelpBinding{
+		// Copy
+		{Key: "c", Desc: "copy password", Category: "Copy"},
+		{Key: "t", Desc: "copy TOTP", Category: "Copy"},
+		{Key: "u", Desc: "copy username", Category: "Copy"},
+		{Key: "o", Desc: "open URL", Category: "Copy"},
+		// Navigation
+		{Key: "j/k", Desc: "move up/down", Category: "Navigation"},
+		{Key: "g/G", Desc: "jump to top/bottom", Category: "Navigation"},
+		{Key: "/", Desc: "filter", Category: "Navigation"},
+		{Key: "J/K", Desc: "scroll drawer", Category: "Navigation"},
+		// Vault
+		{Key: "p", Desc: "generate password", Category: "Vault"},
+		{Key: "r", Desc: "sync", Category: "Vault"},
+		{Key: "l", Desc: "lock", Category: "Vault"},
+		{Key: "ctrl+g", Desc: "toggle grouping", Category: "Vault"},
+		{Key: "enter", Desc: "expand/collapse", Category: "Vault"},
+		// UI
+		{Key: "?", Desc: "help", Category: "UI"},
+		{Key: "T", Desc: "cycle theme", Category: "UI"},
+		{Key: "q", Desc: "quit", Category: "UI"},
+	}
+}
+
 // DefaultVaultKeyMap returns the standard bindings for the vault screen.
 func DefaultVaultKeyMap() VaultKeyMap {
 	return VaultKeyMap{

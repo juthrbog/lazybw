@@ -33,10 +33,10 @@ func TestErrorViewContentNilError(t *testing.T) {
 func TestErrorFooterHintsNonFatal(t *testing.T) {
 	m := NewErrorModel(errors.New("err"), false)
 	hints := m.FooterHints()
-	if !strings.Contains(hints, "r retry") {
+	if !hasHintKey(hints, "r") {
 		t.Error("non-fatal should show retry hint")
 	}
-	if !strings.Contains(hints, "q quit") {
+	if !hasHintKey(hints, "q") {
 		t.Error("should show quit hint")
 	}
 }
@@ -44,10 +44,10 @@ func TestErrorFooterHintsNonFatal(t *testing.T) {
 func TestErrorFooterHintsFatal(t *testing.T) {
 	m := NewErrorModel(errors.New("err"), true)
 	hints := m.FooterHints()
-	if strings.Contains(hints, "retry") {
+	if hasHintKey(hints, "r") {
 		t.Error("fatal should not show retry")
 	}
-	if !strings.Contains(hints, "q quit") {
+	if !hasHintKey(hints, "q") {
 		t.Error("should show quit hint")
 	}
 }

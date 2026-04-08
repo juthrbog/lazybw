@@ -54,3 +54,33 @@ func TestFullHelp(t *testing.T) {
 		}
 	}
 }
+
+func TestHelpBindings(t *testing.T) {
+	km := DefaultVaultKeyMap()
+	bindings := km.HelpBindings()
+
+	if len(bindings) == 0 {
+		t.Fatal("HelpBindings() returned no bindings")
+	}
+
+	// Check all expected categories are present.
+	categories := make(map[string]bool)
+	for _, b := range bindings {
+		categories[b.Category] = true
+	}
+	for _, cat := range []string{"Copy", "Navigation", "Vault", "UI"} {
+		if !categories[cat] {
+			t.Errorf("missing category %q", cat)
+		}
+	}
+
+	// Every binding should have a key and description.
+	for _, b := range bindings {
+		if b.Key == "" {
+			t.Errorf("binding with empty key in category %q", b.Category)
+		}
+		if b.Desc == "" {
+			t.Errorf("binding %q has empty description", b.Key)
+		}
+	}
+}

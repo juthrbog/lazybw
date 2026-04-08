@@ -24,8 +24,8 @@ func testItems() []bwcmd.Item {
 func TestVaultFooterContentNormalMode(t *testing.T) {
 	m := newTestVault(testItems())
 	hints, _ := m.FooterContent()
-	if !strings.Contains(hints, "j/k navigate") {
-		t.Errorf("normal mode hints should contain navigation, got %q", hints)
+	if !hasHintKey(hints, "j/k") {
+		t.Errorf("normal mode hints should contain navigation, got %v", hints)
 	}
 }
 
@@ -151,8 +151,8 @@ func TestQuitConfirmationShowsHints(t *testing.T) {
 	m := newTestVault(testItems())
 	m.confirmingQuit = true
 	hints, _ := m.FooterContent()
-	if !strings.Contains(hints, "y yes") {
-		t.Errorf("confirmation hints should contain 'y yes', got %q", hints)
+	if !hasHintKey(hints, "y") || !hasHintDesc(hints, "yes") {
+		t.Errorf("confirmation hints should contain 'y yes', got %v", hints)
 	}
 }
 

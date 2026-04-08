@@ -7,7 +7,6 @@ import (
 	"strings"
 	"time"
 
-	"charm.land/bubbles/v2/help"
 	"charm.land/bubbles/v2/key"
 	"charm.land/bubbles/v2/list"
 	"charm.land/bubbles/v2/spinner"
@@ -66,8 +65,7 @@ func toListItems(items []bwcmd.Item) []list.Item {
 type VaultModel struct {
 	list     list.Model
 	keymap   ui.VaultKeyMap
-	help     help.Model
-	showHelp bool
+	help ui.HelpOverlay
 	sess     *session.State
 
 	rawItems []bwcmd.Item
@@ -118,7 +116,7 @@ func NewVaultModel(items []bwcmd.Item, sess *session.State, width, height int) V
 	l.Title = ""
 	l.SetShowTitle(false)
 	l.SetShowFilter(true)
-	l.SetShowStatusBar(true)
+	l.SetShowStatusBar(false)
 	l.SetShowPagination(false)
 	l.SetShowHelp(false)
 	l.SetStatusBarItemName("item", "items")
@@ -133,7 +131,7 @@ func NewVaultModel(items []bwcmd.Item, sess *session.State, width, height int) V
 	m := VaultModel{
 		list:         l,
 		keymap:       ui.DefaultVaultKeyMap(),
-		help:         help.New(),
+		help:         ui.NewHelpOverlay(),
 		sess:         sess,
 		rawItems:     items,
 		groups:       newGroupState(),
@@ -171,12 +169,10 @@ func (m VaultModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if m.showThemePicker {
 			return m.updateThemePicker(msg)
 		}
-		if m.showHelp {
-			if key.Matches(msg, key.NewBinding(key.WithKeys("esc"))) {
-				m.showHelp = false
-				return m, nil
-			}
-			return m, nil
+		if m.help.Visible() {
+			var cmd tea.Cmd
+			m.help, cmd = m.help.Update(msg)
+			return m, cmd
 		}
 		if m.confirmingQuit {
 			switch msg.String() {
@@ -363,7 +359,8 @@ func (m VaultModel) handleActionKeys(msg tea.KeyPressMsg) (tea.Model, tea.Cmd, b
 		return m, func() tea.Msg { return LockMsg{} }, true
 
 	case key.Matches(msg, m.keymap.Help):
-		m.showHelp = !m.showHelp
+		contentHeight := m.height - 2 // header + footer
+		m.help.Show(m.keymap.HelpBindings(), m.width, contentHeight)
 		return m, nil, true
 
 	case key.Matches(msg, m.keymap.Generate):
@@ -434,6 +431,15 @@ func (m *VaultModel) selectedItem() *bwcmd.Item {
 	default:
 		return nil
 	}
+}
+
+// HeaderInfo returns the item count and selected item type name for the header.
+func (m VaultModel) HeaderInfo() (int, string) {
+	count := len(m.list.Items())
+	if item := m.selectedItem(); item != nil {
+		return count, ui.ItemTypeName(item.Type)
+	}
+	return count, ""
 }
 
 func (m *VaultModel) rebuildListItems() tea.Cmd {
@@ -658,8 +664,8 @@ func (m VaultModel) ViewContent(width, contentHeight int) string {
 	if m.showThemePicker && m.themeForm != nil {
 		return ui.RenderOverlay(bg, m.themeForm.View(), width, contentHeight)
 	}
-	if m.showHelp {
-		return ui.RenderOverlay(bg, m.help.View(m.keymap), width, contentHeight)
+	if m.help.Visible() {
+		return ui.RenderOverlay(bg, m.help.View(), width, contentHeight)
 	}
 	if m.confirmingQuit {
 		return ui.RenderOverlay(bg, m.renderQuitConfirm(), width, contentHeight)
@@ -701,29 +707,57 @@ func (m VaultModel) renderVaultContent(width, contentHeight int) string {
 }
 
 // FooterContent returns hints and status for the footer bar.
-func (m VaultModel) FooterContent() (hints, status string) {
+func (m VaultModel) FooterContent() ([]ui.HintBinding, string) {
 	if m.confirmingQuit {
-		hints = "y yes · n no"
-		return hints, ""
+		return []ui.HintBinding{
+			{Key: "y", Desc: "yes"},
+			{Key: "n", Desc: "no"},
+		}, ""
 	}
 	if m.showGenerator {
-		hints = "enter regen · +/- length · m mode · 1-4 toggles · c copy · esc close"
-		return hints, ""
+		return []ui.HintBinding{
+			{Key: "enter", Desc: "regen"},
+			{Key: "+/-", Desc: "length"},
+			{Key: "m", Desc: "mode"},
+			{Key: "1-4", Desc: "toggles"},
+			{Key: "c", Desc: "copy"},
+			{Key: "esc", Desc: "close"},
+		}, ""
 	}
 	if m.showThemePicker {
-		hints = "enter select · esc cancel"
-		return hints, ""
+		return []ui.HintBinding{
+			{Key: "enter", Desc: "select"},
+			{Key: "esc", Desc: "cancel"},
+		}, ""
 	}
-	if m.showHelp {
-		hints = "esc close"
-		return hints, ""
-	}
-	if m.list.SettingFilter() {
-		hints = "esc clear · enter confirm · ↑/↓ navigate"
-	} else {
-		hints = "j/k navigate · / search · c pwd · t totp · ctrl+g group · p gen · T theme · ? help · q quit"
+	if m.help.Visible() {
+		return []ui.HintBinding{
+			{Key: "esc", Desc: "close"},
+		}, ""
 	}
 
+	var hints []ui.HintBinding
+	if m.list.SettingFilter() {
+		hints = []ui.HintBinding{
+			{Key: "esc", Desc: "clear"},
+			{Key: "enter", Desc: "confirm"},
+			{Key: "↑/↓", Desc: "navigate"},
+		}
+	} else {
+		hints = []ui.HintBinding{
+			{Key: "j/k", Desc: "navigate"},
+			{Key: "/", Desc: "search"},
+			{Key: "c", Desc: "pwd"},
+			{Key: "t", Desc: "totp"},
+			{Key: "ctrl+g", Desc: "group"},
+			{Key: "p", Desc: "gen"},
+			{Key: "T", Desc: "theme"},
+			{Key: "?", Desc: "help"},
+			{Key: "q", Desc: "quit"},
+		}
+	}
+
+	var status string
 	toast := m.toast
 	if m.syncing {
 		toast = m.syncSpinner.View() + " " + toast

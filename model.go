@@ -219,10 +219,21 @@ func (m RootModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 func (m RootModel) View() tea.View {
-	header := ui.RenderHeader(m.sess.Email, m.width)
-	contentHeight := m.height - 2 // header + footer
+	hd := ui.HeaderData{
+		Email: m.sess.Email,
+		Width: m.width,
+	}
+	if m.state == stateVault {
+		hd.ItemCount, hd.SelectedType = m.vault.HeaderInfo()
+	}
+	header := ui.RenderHeader(hd)
+	contentHeight := m.height - 3 // header (2 lines) + footer
 
-	var content, hints, status string
+	var (
+		content string
+		hints   []ui.HintBinding
+		status  string
+	)
 
 	switch m.state {
 	case stateLoading:
