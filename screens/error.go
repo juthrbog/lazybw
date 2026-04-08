@@ -45,12 +45,15 @@ func (m ErrorModel) ViewContent() string {
 	return ui.StyleError.Render("Error: " + errText)
 }
 
-// FooterHints returns the hint string for the footer.
-func (m ErrorModel) FooterHints() string {
+// FooterHints returns the hint bindings for the footer.
+func (m ErrorModel) FooterHints() []ui.HintBinding {
 	if m.fatal {
-		return "q quit"
+		return []ui.HintBinding{{Key: "q", Desc: "quit"}}
 	}
-	return "r retry · q quit"
+	return []ui.HintBinding{
+		{Key: "r", Desc: "retry"},
+		{Key: "q", Desc: "quit"},
+	}
 }
 
 // View implements tea.Model (delegates to root frame).

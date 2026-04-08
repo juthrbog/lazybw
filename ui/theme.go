@@ -37,6 +37,8 @@ var (
 	ColorYellow    color.Color
 	ColorRed       color.Color
 	ColorFaint     color.Color
+	GradientFrom   color.Color
+	GradientTo     color.Color
 )
 
 // Spinner definitions for loading states.
@@ -61,6 +63,12 @@ var (
 	StyleStatusBar lipgloss.Style
 	StyleToast     lipgloss.Style
 	StyleError     lipgloss.Style
+	StyleHintKey   lipgloss.Style
+	StyleHintDesc  lipgloss.Style
+	StyleHintSep   lipgloss.Style
+	StyleHelpGroup   lipgloss.Style
+	StyleHelpKey     lipgloss.Style
+	StyleHeaderBadge lipgloss.Style
 )
 
 // HuhTheme is applied to huh forms (unlock/login screen).
@@ -121,6 +129,8 @@ func applyCatppuccin(dark, light catppuccin.Flavor) {
 	ColorYellow = ld(lipgloss.Color(light.Yellow().Hex), lipgloss.Color(dark.Yellow().Hex))
 	ColorRed = ld(lipgloss.Color(light.Red().Hex), lipgloss.Color(dark.Red().Hex))
 	ColorFaint = ld(lipgloss.Color(light.Overlay0().Hex), lipgloss.Color(dark.Overlay0().Hex))
+	GradientFrom = ld(lipgloss.Color(light.Mauve().Hex), lipgloss.Color(dark.Mauve().Hex))
+	GradientTo = ld(lipgloss.Color(light.Blue().Hex), lipgloss.Color(dark.Blue().Hex))
 }
 
 func applyDracula() {
@@ -131,6 +141,8 @@ func applyDracula() {
 	ColorYellow = ld(lipgloss.Color("#C47D10"), lipgloss.Color("#f1fa8c"))
 	ColorRed = ld(lipgloss.Color("#CC2222"), lipgloss.Color("#ff5555"))
 	ColorFaint = ld(lipgloss.Color("#9A9A9A"), lipgloss.Color("#6272a4"))
+	GradientFrom = ld(lipgloss.Color("#7c3aed"), lipgloss.Color("#bd93f9"))
+	GradientTo = ld(lipgloss.Color("#db2777"), lipgloss.Color("#ff79c6"))
 }
 
 func applyCharm() {
@@ -141,6 +153,8 @@ func applyCharm() {
 	ColorYellow = ld(lipgloss.Color("#C47D10"), lipgloss.Color("#F5A623"))
 	ColorRed = ld(lipgloss.Color("#CC2222"), lipgloss.Color("#FF4F4F"))
 	ColorFaint = ld(lipgloss.Color("#9A9A9A"), lipgloss.Color("#626262"))
+	GradientFrom = ld(lipgloss.Color("#db2777"), lipgloss.Color("#ff70a0"))
+	GradientTo = ld(lipgloss.Color("#4338ca"), lipgloss.Color("#7571f9"))
 }
 
 func applyBase16() {
@@ -151,6 +165,8 @@ func applyBase16() {
 	ColorYellow = ld(lipgloss.Color("#C47D10"), lipgloss.Color("#f7ca88"))
 	ColorRed = ld(lipgloss.Color("#CC2222"), lipgloss.Color("#ab4642"))
 	ColorFaint = ld(lipgloss.Color("#9A9A9A"), lipgloss.Color("#585858"))
+	GradientFrom = ld(lipgloss.Color("#0097a7"), lipgloss.Color("#00bcd4"))
+	GradientTo = ld(lipgloss.Color("#1565c0"), lipgloss.Color("#2196f3"))
 }
 
 func initStyles() {
@@ -179,6 +195,29 @@ func initStyles() {
 	StyleError = lipgloss.NewStyle().
 		Foreground(ColorRed).
 		Bold(true)
+
+	StyleHintKey = lipgloss.NewStyle().
+		Bold(true).
+		Foreground(ColorHighlight)
+
+	StyleHintDesc = lipgloss.NewStyle().
+		Foreground(ColorFaint)
+
+	StyleHintSep = lipgloss.NewStyle().
+		Foreground(ColorFaint)
+
+	StyleHelpGroup = lipgloss.NewStyle().
+		Bold(true).
+		Foreground(ColorHighlight)
+
+	StyleHelpKey = lipgloss.NewStyle().
+		Width(14)
+
+	StyleHeaderBadge = lipgloss.NewStyle().
+		Bold(true).
+		Foreground(ColorSubtle).
+		Background(ColorHighlight).
+		Padding(0, 1)
 
 	// Re-render glyphs with new colors.
 	GlyphLogin = lipgloss.NewStyle().Foreground(ColorHighlight).Render("󰌾")

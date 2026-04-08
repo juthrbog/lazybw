@@ -3,13 +3,33 @@ package screens
 import (
 	"strings"
 	"testing"
+
+	"github.com/juthrbog/lazybw/ui"
 )
+
+func hasHintDesc(hints []ui.HintBinding, desc string) bool {
+	for _, h := range hints {
+		if h.Desc == desc {
+			return true
+		}
+	}
+	return false
+}
+
+func hasHintKey(hints []ui.HintBinding, key string) bool {
+	for _, h := range hints {
+		if h.Key == key {
+			return true
+		}
+	}
+	return false
+}
 
 func TestLockedFooterContentUnlock(t *testing.T) {
 	m := NewLockedModel(false)
 	hints, status := m.FooterContent()
-	if !strings.Contains(hints, "unlock") {
-		t.Errorf("unlock mode hints should contain 'unlock', got %q", hints)
+	if !hasHintDesc(hints, "unlock") {
+		t.Errorf("unlock mode hints should contain 'unlock', got %v", hints)
 	}
 	if status != "" {
 		t.Errorf("status should be empty, got %q", status)
@@ -19,8 +39,8 @@ func TestLockedFooterContentUnlock(t *testing.T) {
 func TestLockedFooterContentLogin(t *testing.T) {
 	m := NewLockedModel(true)
 	hints, _ := m.FooterContent()
-	if !strings.Contains(hints, "submit") {
-		t.Errorf("login mode hints should contain 'submit', got %q", hints)
+	if !hasHintDesc(hints, "submit") {
+		t.Errorf("login mode hints should contain 'submit', got %v", hints)
 	}
 }
 
@@ -28,8 +48,8 @@ func TestLockedFooterContentUnlocking(t *testing.T) {
 	m := NewLockedModel(false)
 	m.state = lockedUnlocking
 	hints, status := m.FooterContent()
-	if hints != "" {
-		t.Errorf("unlocking hints should be empty, got %q", hints)
+	if hints != nil {
+		t.Errorf("unlocking hints should be nil, got %v", hints)
 	}
 	if status != "" {
 		t.Errorf("unlocking status should be empty, got %q", status)

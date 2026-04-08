@@ -1,48 +1,68 @@
 package ui
 
 import (
+	"fmt"
 	"strings"
 
 	"charm.land/lipgloss/v2"
 )
 
-// RenderHeader renders the always-visible header bar.
-func RenderHeader(email string, width int) string {
-	left := lipgloss.NewStyle().Bold(true).Foreground(ColorHighlight).Render("lazybw")
+// HeaderData holds the values needed to render the header bar.
+type HeaderData struct {
+	Email        string
+	ItemCount    int
+	SelectedType string
+	Width        int
+}
 
-	if email == "" {
-		return StyleStatusBar.Width(width).Render(left)
+// RenderHeader renders the 2-line header: title bar + gradient separator.
+func RenderHeader(data HeaderData) string {
+	title := GradientText(" 󰊙 lazybw", GradientFrom, GradientTo)
+
+	// Build components left-to-right.
+	parts := []string{title}
+	if data.Email != "" {
+		parts = append(parts, " "+StyleHeaderBadge.Render(data.Email))
+	}
+	if data.Width >= 80 && data.ItemCount > 0 {
+		parts = append(parts, " "+StyleFaint.Render(fmt.Sprintf("%d items", data.ItemCount)))
+	}
+	if data.Width >= 60 && data.SelectedType != "" {
+		parts = append(parts, " "+StyleFaint.Render(data.SelectedType))
 	}
 
-	leftW := lipgloss.Width(left)
-	rightW := lipgloss.Width(email)
-	gap := width - leftW - rightW - 2 // 2 for padding(0,1)
-	if gap < 1 {
-		gap = 1
+	bar := strings.Join(parts, "")
+	barW := lipgloss.Width(bar)
+	if pad := data.Width - barW; pad > 0 {
+		bar += strings.Repeat(" ", pad)
 	}
 
-	content := left + strings.Repeat(" ", gap) + email
-	return StyleStatusBar.Width(width).Render(content)
+	return bar + "\n" + RenderGradientLine(data.Width)
 }
 
 // RenderFooter renders the always-visible footer bar with hints and status.
-func RenderFooter(hints, status string, width int) string {
-	left := StyleFaint.Render(hints)
+func RenderFooter(hints []HintBinding, status string, width int) string {
 	right := status
 
-	if left == "" && right == "" {
-		return StyleStatusBar.Width(width).Render("")
+	if len(hints) == 0 && right == "" {
+		return strings.Repeat(" ", width)
 	}
 
-	leftW := lipgloss.Width(left)
 	rightW := lipgloss.Width(right)
-	gap := width - leftW - rightW - 2 // 2 for padding(0,1)
+	// Reserve space for right side + 1-char padding each side + minimum gap.
+	availHints := width - rightW - 3
+	if availHints < 0 {
+		availHints = 0
+	}
+
+	left := RenderHints(hints, availHints)
+	leftW := lipgloss.Width(left)
+	gap := width - leftW - rightW - 2 // 1-char padding each side
 	if gap < 1 {
 		gap = 1
 	}
 
-	content := left + strings.Repeat(" ", gap) + right
-	return StyleStatusBar.Width(width).Render(content)
+	return " " + left + strings.Repeat(" ", gap) + right + " "
 }
 
 // CenterInArea centers content both vertically and horizontally

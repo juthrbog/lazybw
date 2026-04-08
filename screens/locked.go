@@ -156,14 +156,20 @@ func (m LockedModel) ViewContent(width, contentHeight int) string {
 }
 
 // FooterContent returns hints and status for the footer bar.
-func (m LockedModel) FooterContent() (hints, status string) {
+func (m LockedModel) FooterContent() ([]ui.HintBinding, string) {
 	if m.state == lockedUnlocking {
-		return "", ""
+		return nil, ""
 	}
 	if m.isLogin {
-		return "enter submit · ctrl+q quit", ""
+		return []ui.HintBinding{
+			{Key: "enter", Desc: "submit"},
+			{Key: "ctrl+q", Desc: "quit"},
+		}, ""
 	}
-	return "enter unlock · ctrl+q quit", ""
+	return []ui.HintBinding{
+		{Key: "enter", Desc: "unlock"},
+		{Key: "ctrl+q", Desc: "quit"},
+	}, ""
 }
 
 // View implements tea.Model (kept for interface compliance).

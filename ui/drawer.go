@@ -26,7 +26,7 @@ func RenderDrawer(props DrawerProps) string {
 		return renderNoSelection(props.Width)
 	}
 
-	sep := renderSeparator(props.Item.Name, itemTypeName(props.Item.Type), props.Width)
+	sep := renderSeparator(props.Item.Name, ItemTypeName(props.Item.Type), props.Width)
 	var fields []string
 
 	switch props.Item.Type {
@@ -76,7 +76,7 @@ func renderSeparator(name, typeName string, width int) string {
 	return StyleFaint.Render(left + strings.Repeat("─", fill) + right)
 }
 
-func itemTypeName(t bwcmd.ItemType) string {
+func ItemTypeName(t bwcmd.ItemType) string {
 	switch t {
 	case bwcmd.ItemTypeLogin:
 		return "Login"
