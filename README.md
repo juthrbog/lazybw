@@ -1,12 +1,16 @@
-# lazybw
+<h1 align="center">lazybw</h1>
 
-[![CI](https://github.com/juthrbog/lazybw/actions/workflows/ci.yml/badge.svg)](https://github.com/juthrbog/lazybw/actions/workflows/ci.yml)
-[![Release](https://img.shields.io/github/v/release/juthrbog/lazybw)](https://github.com/juthrbog/lazybw/releases/latest)
-[![Go](https://img.shields.io/github/go-mod/go-version/juthrbog/lazybw)](https://github.com/juthrbog/lazybw/blob/main/go.mod)
-[![Go Report Card](https://goreportcard.com/badge/github.com/juthrbog/lazybw)](https://goreportcard.com/report/github.com/juthrbog/lazybw)
-[![License](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](LICENSE)
+<p align="center">
+  A fast, keyboard-driven TUI for <a href="https://bitwarden.com">Bitwarden</a> built with Go and the <a href="https://charm.sh">Charm</a> ecosystem.
+</p>
 
-A fast, keyboard-driven TUI for [Bitwarden](https://bitwarden.com) built with Go and the [Charm](https://charm.sh) ecosystem.
+<p align="center">
+  <a href="https://github.com/juthrbog/lazybw/actions/workflows/ci.yml"><img src="https://github.com/juthrbog/lazybw/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
+  <a href="https://github.com/juthrbog/lazybw/releases/latest"><img src="https://img.shields.io/github/v/release/juthrbog/lazybw" alt="Release"></a>
+  <a href="https://github.com/juthrbog/lazybw/blob/main/go.mod"><img src="https://img.shields.io/github/go-mod/go-version/juthrbog/lazybw" alt="Go"></a>
+  <a href="https://goreportcard.com/report/github.com/juthrbog/lazybw"><img src="https://goreportcard.com/badge/github.com/juthrbog/lazybw" alt="Go Report Card"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/license-Apache%202.0-blue.svg" alt="License"></a>
+</p>
 
 ```
   ●  Gmail                           user@gmail.com
@@ -27,6 +31,12 @@ A fast, keyboard-driven TUI for [Bitwarden](https://bitwarden.com) built with Go
 j/k navigate  /  search  c pwd  t totp  u user  r  ?  q
 ```
 
+## Why lazybw?
+
+The Bitwarden desktop app isn't available on every platform, and the CLI -- while powerful -- wasn't built for daily driving. Grabbing a password means piping `bw list items` through `jq`, grepping for the right entry, and copying the result. Do that ten times a day and you'll end up writing wrapper scripts just to stay sane.
+
+lazybw puts your entire vault in a keyboard-driven TUI so you never have to leave the terminal. Search, browse, copy passwords and TOTP codes -- all in a few keystrokes.
+
 ## Features
 
 - **Keyboard-first** -- navigate, search, and copy without touching the mouse
@@ -43,16 +53,6 @@ j/k navigate  /  search  c pwd  t totp  u user  r  ?  q
 - **Go 1.22+** (to build from source)
 - **[Bitwarden CLI (`bw`)](https://bitwarden.com/help/cli/#download-and-install)** -- must be installed and available in your `$PATH`
 - A terminal emulator with Unicode support
-
-### Clipboard support
-
-lazybw detects your display server and uses the appropriate clipboard tool:
-
-| Environment | Tool |
-|---|---|
-| Wayland (`$WAYLAND_DISPLAY` set) | `wl-copy` (install via `wl-clipboard`) |
-| X11 (`$DISPLAY` set) | `xclip` or `xsel` |
-| macOS | `pbcopy` (built-in) |
 
 ## Installation
 
@@ -101,46 +101,24 @@ Press `T` in the vault to open the theme picker and switch themes on the fly.
 
 ### Keybindings
 
-#### Vault
-
 | Key | Action |
 |---|---|
-| `j` / `k` | Move cursor down / up |
-| `g` / `G` | Jump to top / bottom |
+| `j` / `k` | Navigate |
 | `/` | Search / filter |
 | `c` | Copy password |
 | `t` | Copy TOTP code |
 | `u` | Copy username |
 | `o` | Open URL in browser |
-| `J` / `K` | Scroll note content in drawer |
 | `p` | Open password generator |
 | `r` | Sync vault |
-| `l` | Lock vault |
-| `Ctrl+G` | Toggle item grouping |
-| `Enter` | Expand / collapse group |
-| `T` | Open theme picker |
-| `?` | Toggle full help |
+| `?` | Help overlay |
 | `q` | Lock and quit |
 
-#### Password generator
+Press `?` in-app for the complete list including password generator and filter keybindings. See [docs/KEYBINDINGS.md](docs/KEYBINDINGS.md) for the full reference.
 
-| Key | Action |
-|---|---|
-| `Enter` / `r` | Regenerate |
-| `+` / `-` | Increase / decrease length (or word count) |
-| `m` / `Tab` | Toggle password / passphrase mode |
-| `1`-`4` | Toggle uppercase / lowercase / numbers / special |
-| `c` | Copy to clipboard |
-| `Esc` | Close generator |
+## Contributing
 
-#### Filter mode
-
-| Key | Action |
-|---|---|
-| Text | Narrow list in real time |
-| `Up` / `Down` | Move cursor in filtered list |
-| `Enter` | Confirm selection |
-| `Esc` | Clear filter |
+lazybw is in early development and not yet accepting contributions. This may change in the future -- check back later.
 
 ## License
 
