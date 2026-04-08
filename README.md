@@ -56,6 +56,10 @@ lazybw detects your display server and uses the appropriate clipboard tool:
 
 ## Installation
 
+### Download a binary
+
+Download a pre-built binary from the [releases page](https://github.com/juthrbog/lazybw/releases/latest), extract it, and place it somewhere on your `$PATH` (e.g. `/usr/local/bin`). Binaries are available for Linux and macOS on both amd64 and arm64. Each release includes a `checksums.txt` for verification.
+
 ### From source
 
 ```sh
