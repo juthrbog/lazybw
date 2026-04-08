@@ -1,12 +1,16 @@
-# lazybw
+<h1 align="center">lazybw</h1>
 
-[![CI](https://github.com/juthrbog/lazybw/actions/workflows/ci.yml/badge.svg)](https://github.com/juthrbog/lazybw/actions/workflows/ci.yml)
-[![Release](https://img.shields.io/github/v/release/juthrbog/lazybw)](https://github.com/juthrbog/lazybw/releases/latest)
-[![Go](https://img.shields.io/github/go-mod/go-version/juthrbog/lazybw)](https://github.com/juthrbog/lazybw/blob/main/go.mod)
-[![Go Report Card](https://goreportcard.com/badge/github.com/juthrbog/lazybw)](https://goreportcard.com/report/github.com/juthrbog/lazybw)
-[![License](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](LICENSE)
+<p align="center">
+  A fast, keyboard-driven TUI for <a href="https://bitwarden.com">Bitwarden</a> built with Go and the <a href="https://charm.sh">Charm</a> ecosystem.
+</p>
 
-A fast, keyboard-driven TUI for [Bitwarden](https://bitwarden.com) built with Go and the [Charm](https://charm.sh) ecosystem.
+<p align="center">
+  <a href="https://github.com/juthrbog/lazybw/actions/workflows/ci.yml"><img src="https://github.com/juthrbog/lazybw/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
+  <a href="https://github.com/juthrbog/lazybw/releases/latest"><img src="https://img.shields.io/github/v/release/juthrbog/lazybw" alt="Release"></a>
+  <a href="https://github.com/juthrbog/lazybw/blob/main/go.mod"><img src="https://img.shields.io/github/go-mod/go-version/juthrbog/lazybw" alt="Go"></a>
+  <a href="https://goreportcard.com/report/github.com/juthrbog/lazybw"><img src="https://goreportcard.com/badge/github.com/juthrbog/lazybw" alt="Go Report Card"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/license-Apache%202.0-blue.svg" alt="License"></a>
+</p>
 
 ```
   ●  Gmail                           user@gmail.com
