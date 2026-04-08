@@ -73,7 +73,7 @@ func execBw(sessionToken string, args ...string) ([]byte, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), cmdTimeout)
 	defer cancel()
 
-	cmd := exec.CommandContext(ctx, "bw", args...)
+	cmd := exec.CommandContext(ctx, "bw", args...) //nolint:gosec // args are constructed internally, not from user input
 	cmd.Env = append(os.Environ(), "BW_SESSION="+sessionToken)
 
 	var stdout, stderr bytes.Buffer

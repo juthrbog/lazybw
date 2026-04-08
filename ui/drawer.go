@@ -106,7 +106,7 @@ func renderLoginFields(props DrawerProps) []string {
 
 	fields = append(fields, fieldRow("Username", username, "[u] copy"))
 
-	pwDisplay := "••••••••••"
+	pwDisplay := "••••••••••" //nolint:gosec // display mask, not a credential
 	if password == "" {
 		pwDisplay = StyleFaint.Render("(none)")
 	}

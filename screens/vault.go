@@ -349,7 +349,7 @@ func (m VaultModel) handleActionKeys(msg tea.KeyPressMsg) (tea.Model, tea.Cmd, b
 	case key.Matches(msg, m.keymap.OpenURL):
 		if item := m.selectedItem(); item != nil && item.Login != nil && len(item.Login.URIs) > 0 {
 			url := item.Login.URIs[0].URI
-			cmd := exec.Command("xdg-open", url)
+			cmd := exec.Command("xdg-open", url) //nolint:gosec // URL comes from user's own vault data
 			_ = cmd.Start()
 		}
 		return m, nil, true
