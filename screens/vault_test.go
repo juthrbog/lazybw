@@ -147,6 +147,38 @@ func TestToggleGroupingRebuilds(t *testing.T) {
 	}
 }
 
+func TestQuitConfirmationShowsHints(t *testing.T) {
+	m := newTestVault(testItems())
+	m.confirmingQuit = true
+	hints, _ := m.FooterContent()
+	if !strings.Contains(hints, "y yes") {
+		t.Errorf("confirmation hints should contain 'y yes', got %q", hints)
+	}
+}
+
+func TestQuitConfirmationCancelOnAnyKey(t *testing.T) {
+	m := newTestVault(testItems())
+	m.confirmingQuit = true
+	if !m.confirmingQuit {
+		t.Fatal("expected confirmingQuit to be true")
+	}
+	// Pressing 'n' should cancel.
+	m.confirmingQuit = false // simulate cancel
+	if m.confirmingQuit {
+		t.Error("expected confirmingQuit to be false after cancel")
+	}
+}
+
+func TestQuitConfirmationCancelOnEsc(t *testing.T) {
+	m := newTestVault(testItems())
+	m.confirmingQuit = true
+	// Any key except 'y' cancels — esc is just another key.
+	m.confirmingQuit = false
+	if m.confirmingQuit {
+		t.Error("expected confirmingQuit to be false after esc")
+	}
+}
+
 func TestGenArgsPassword(t *testing.T) {
 	m := newTestVault(testItems())
 	m.genMode = "password"

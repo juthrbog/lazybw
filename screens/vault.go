@@ -89,6 +89,8 @@ type VaultModel struct {
 	themeForm       *huh.Form
 	selectedTheme   *string
 
+	confirmingQuit bool
+
 	showGenerator bool
 	genMode       string // "password" or "passphrase"
 	genPassword   string // current generated output
@@ -172,6 +174,17 @@ func (m VaultModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if m.showHelp {
 			if key.Matches(msg, key.NewBinding(key.WithKeys("esc"))) {
 				m.showHelp = false
+				return m, nil
+			}
+			return m, nil
+		}
+		if m.confirmingQuit {
+			switch msg.String() {
+			case "y":
+				m.confirmingQuit = false
+				return m, func() tea.Msg { return QuitMsg{} }
+			case "n", "esc":
+				m.confirmingQuit = false
 				return m, nil
 			}
 			return m, nil
@@ -362,7 +375,8 @@ func (m VaultModel) handleActionKeys(msg tea.KeyPressMsg) (tea.Model, tea.Cmd, b
 		return model, cmd, true
 
 	case key.Matches(msg, m.keymap.Quit):
-		return m, func() tea.Msg { return QuitMsg{} }, true
+		m.confirmingQuit = true
+		return m, nil, true
 
 	case key.Matches(msg, m.keymap.ScrollDown):
 		m.drawerScroll++
@@ -647,8 +661,27 @@ func (m VaultModel) ViewContent(width, contentHeight int) string {
 	if m.showHelp {
 		return ui.RenderOverlay(bg, m.help.View(m.keymap), width, contentHeight)
 	}
+	if m.confirmingQuit {
+		return ui.RenderOverlay(bg, m.renderQuitConfirm(), width, contentHeight)
+	}
 
 	return bg
+}
+
+func (m VaultModel) renderQuitConfirm() string {
+	keyStyle := lipgloss.NewStyle().Foreground(ui.ColorHighlight).Bold(true)
+
+	var b strings.Builder
+	b.WriteString(ui.StyleTitle.Render("Quit lazybw?"))
+	b.WriteString("\n\n")
+	b.WriteString("This will lock your vault and exit.")
+	b.WriteString("\n\n")
+	b.WriteString(keyStyle.Render("y"))
+	b.WriteString(ui.StyleFaint.Render(" yes"))
+	b.WriteString(ui.StyleFaint.Render(" · "))
+	b.WriteString(keyStyle.Render("n"))
+	b.WriteString(ui.StyleFaint.Render(" no"))
+	return b.String()
 }
 
 // renderVaultContent renders the normal vault layout (list + drawer).
@@ -669,6 +702,10 @@ func (m VaultModel) renderVaultContent(width, contentHeight int) string {
 
 // FooterContent returns hints and status for the footer bar.
 func (m VaultModel) FooterContent() (hints, status string) {
+	if m.confirmingQuit {
+		hints = "y yes · n no"
+		return hints, ""
+	}
 	if m.showGenerator {
 		hints = "enter regen · +/- length · m mode · 1-4 toggles · c copy · esc close"
 		return hints, ""
