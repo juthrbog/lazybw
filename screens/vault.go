@@ -228,10 +228,6 @@ func (m VaultModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case session.CopiedMsg:
-		if msg.Err != nil {
-			m.setToast("Copy failed: " + msg.Err.Error())
-			return m, nil
-		}
 		label := "Password"
 		switch msg.Field {
 		case session.CopyFieldTOTP:
@@ -243,11 +239,10 @@ func (m VaultModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, session.ScheduleClipboardClear()
 
 	case session.ClipboardClearedMsg:
-		session.ClearClipboard()
 		if time.Since(m.toastTime) >= 59*time.Second {
 			m.toast = ""
 		}
-		return m, nil
+		return m, session.ClearClipboard()
 
 	case TOTPTickMsg:
 		m.totpSecsLeft--
