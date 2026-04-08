@@ -75,11 +75,11 @@ func setupDebugLog() error {
 	}
 
 	logDir := filepath.Join(cacheDir, "lazybw")
-	if err := os.MkdirAll(logDir, 0o700); err != nil {
+	if err := os.MkdirAll(logDir, 0o700); err != nil { //nolint:gosec // path is built from os.UserCacheDir + hardcoded name
 		return err
 	}
 
-	f, err := os.OpenFile(
+	f, err := os.OpenFile( //nolint:gosec // path is built from os.UserCacheDir + hardcoded name
 		filepath.Join(logDir, "debug.log"),
 		os.O_CREATE|os.O_WRONLY|os.O_APPEND,
 		0o600,

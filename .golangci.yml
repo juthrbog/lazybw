@@ -1,0 +1,20 @@
+version: "2"
+
+linters:
+  enable:
+    - gosec
+    - govet
+    - staticcheck
+    - errcheck
+    - ineffassign
+    - unused
+
+  settings:
+    errcheck:
+      exclude-functions:
+        - (*os.File).Close
+        - (io.ReadCloser).Close
+        - os.Remove
+
+run:
+  timeout: 5m
