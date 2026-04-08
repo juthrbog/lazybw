@@ -80,7 +80,9 @@ type VaultModel struct {
 	totpSecsLeft int
 	totpItemID   string
 
-	drawerScroll int
+	drawerScroll  int
+	drawerHeight  int  // current drawer height (resizable)
+	drawerOverlay bool // true = overlay mode, false = inline mode
 
 	currentTheme    string
 	showThemePicker bool
@@ -112,7 +114,8 @@ func NewVaultModel(items []bwcmd.Item, sess *session.State, width, height int) V
 	ss.Spinner = ui.SpinnerLoad
 	ss.Style = ss.Style.Foreground(ui.ColorHighlight)
 
-	l := list.New(toListItems(items), VaultDelegate{}, width, height-ui.DrawerHeight)
+	drawerH := ui.DefaultDrawerHeight
+	l := list.New(toListItems(items), VaultDelegate{}, width, height-drawerH)
 	l.Title = ""
 	l.SetShowTitle(false)
 	l.SetShowFilter(true)
@@ -137,6 +140,7 @@ func NewVaultModel(items []bwcmd.Item, sess *session.State, width, height int) V
 		groups:       newGroupState(),
 		syncSpinner:  ss,
 		currentTheme: ui.CurrentTheme,
+		drawerHeight: drawerH,
 		width:        width,
 		height:       height,
 	}
@@ -159,7 +163,12 @@ func (m VaultModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.WindowSizeMsg:
 		m.width = msg.Width
 		m.height = msg.Height
-		m.list.SetSize(msg.Width, msg.Height-ui.DrawerHeight)
+		m.drawerHeight = m.clampDrawerHeight(m.drawerHeight)
+		listH := msg.Height - m.drawerHeight
+		if m.drawerOverlay {
+			listH = msg.Height
+		}
+		m.list.SetSize(msg.Width, listH)
 		return m, nil
 
 	case tea.KeyPressMsg:
@@ -380,6 +389,37 @@ func (m VaultModel) handleActionKeys(msg tea.KeyPressMsg) (tea.Model, tea.Cmd, b
 		}
 		return m, nil, true
 
+	case key.Matches(msg, m.keymap.DrawerGrow):
+		if !m.drawerOverlay {
+			m.drawerHeight = m.clampDrawerHeight(m.drawerHeight + 1)
+			m.resizeList()
+		}
+		return m, nil, true
+
+	case key.Matches(msg, m.keymap.DrawerShrink):
+		if !m.drawerOverlay {
+			m.drawerHeight = m.clampDrawerHeight(m.drawerHeight - 1)
+			m.resizeList()
+		}
+		return m, nil, true
+
+	case key.Matches(msg, m.keymap.DrawerReset):
+		if !m.drawerOverlay {
+			m.drawerHeight = ui.DefaultDrawerHeight
+			m.resizeList()
+		}
+		return m, nil, true
+
+	case key.Matches(msg, m.keymap.DrawerToggle):
+		m.drawerOverlay = !m.drawerOverlay
+		m.resizeList()
+		if m.drawerOverlay {
+			m.setToast("Drawer: overlay")
+		} else {
+			m.setToast("Drawer: inline")
+		}
+		return m, nil, true
+
 	case key.Matches(msg, m.keymap.ToggleGrouping):
 		m.groups.toggleGrouping()
 		cmd := m.rebuildListItems()
@@ -439,6 +479,29 @@ func (m VaultModel) HeaderInfo() (int, string) {
 
 func (m *VaultModel) rebuildListItems() tea.Cmd {
 	return m.list.SetItems(buildGroupedItems(m.rawItems, m.groups))
+}
+
+func (m *VaultModel) clampDrawerHeight(h int) int {
+	const minDrawerHeight = 3
+	maxDrawerHeight := m.height / 2
+	if maxDrawerHeight < minDrawerHeight {
+		maxDrawerHeight = minDrawerHeight
+	}
+	if h < minDrawerHeight {
+		return minDrawerHeight
+	}
+	if h > maxDrawerHeight {
+		return maxDrawerHeight
+	}
+	return h
+}
+
+func (m *VaultModel) resizeList() {
+	listH := m.height - m.drawerHeight
+	if m.drawerOverlay {
+		listH = m.height
+	}
+	m.list.SetSize(m.width, listH)
 }
 
 func (m *VaultModel) setToast(msg string) {
@@ -687,15 +750,38 @@ func (m VaultModel) renderQuitConfirm() string {
 
 // renderVaultContent renders the normal vault layout (list + drawer).
 func (m VaultModel) renderVaultContent(width, contentHeight int) string {
+	if m.drawerOverlay {
+		// Constrain overlay drawer width so it doesn't span the full terminal.
+		overlayW := width * 3 / 4
+		if overlayW > 80 {
+			overlayW = 80
+		}
+		if overlayW < 40 {
+			overlayW = width - 4
+		}
+		drawer := ui.RenderDrawer(ui.DrawerProps{
+			Item:         m.selectedItem(),
+			TOTPCode:     m.totpCode,
+			TOTPSecsLeft: m.totpSecsLeft,
+			Width:        overlayW,
+			AutoHeight:   true,
+			ScrollOffset: m.drawerScroll,
+		})
+		m.list.SetSize(width, contentHeight)
+		listView := m.list.View()
+		return ui.RenderOverlay(listView, drawer, width, contentHeight)
+	}
+
 	drawer := ui.RenderDrawer(ui.DrawerProps{
 		Item:         m.selectedItem(),
 		TOTPCode:     m.totpCode,
 		TOTPSecsLeft: m.totpSecsLeft,
 		Width:        width,
+		Height:       m.drawerHeight,
 		ScrollOffset: m.drawerScroll,
 	})
 
-	m.list.SetSize(width, contentHeight-ui.DrawerHeight)
+	m.list.SetSize(width, contentHeight-m.drawerHeight)
 	listView := m.list.View()
 
 	return lipgloss.JoinVertical(lipgloss.Left, listView, drawer)
@@ -745,6 +831,7 @@ func (m VaultModel) FooterContent() ([]ui.HintBinding, string) {
 			{Key: "c", Desc: "pwd"},
 			{Key: "t", Desc: "totp"},
 			{Key: "ctrl+g", Desc: "group"},
+			{Key: "d", Desc: "drawer"},
 			{Key: "p", Desc: "gen"},
 			{Key: "T", Desc: "theme"},
 			{Key: "?", Desc: "help"},
