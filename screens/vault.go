@@ -15,6 +15,7 @@ import (
 	"charm.land/lipgloss/v2"
 	"github.com/juthrbog/lazybw/bwcmd"
 	"github.com/juthrbog/lazybw/session"
+	"github.com/juthrbog/lazybw/totp"
 	"github.com/juthrbog/lazybw/ui"
 )
 
@@ -79,7 +80,7 @@ type VaultModel struct {
 
 	totpCode     string
 	totpSecsLeft int
-	totpItemID   string
+	totpParams   *totp.Params // parsed TOTP params for the selected item
 
 	drawerScroll  int
 	drawerHeight  int  // current drawer height (resizable)
@@ -145,16 +146,21 @@ func NewVaultModel(items []bwcmd.Item, sess *session.State, width, height int) V
 		width:        width,
 		height:       height,
 	}
+
+	// Parse TOTP params for the initially selected item so the first
+	// tick can compute the code immediately (no "loading…" flash).
+	if item := m.selectedItem(); item != nil && item.Login != nil && item.Login.Totp != "" {
+		p, err := totp.Parse(item.Login.Totp)
+		if err == nil {
+			m.totpParams = &p
+		}
+	}
+
 	return m
 }
 
 func (m VaultModel) Init() tea.Cmd {
-	var cmds []tea.Cmd
-	cmds = append(cmds, tickTOTP())
-	if item := m.selectedItem(); item != nil && item.Login != nil && item.Login.Totp != "" {
-		cmds = append(cmds, bwcmd.GetTOTP(m.sess.Token, item.ID))
-	}
-	return tea.Batch(cmds...)
+	return tickTOTP()
 }
 
 func (m VaultModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
@@ -221,22 +227,6 @@ func (m VaultModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		return m, tea.Batch(cmds...)
 
-	case bwcmd.PasswordResult:
-		if msg.Err != nil {
-			m.setErrorToast(msg.Err.Error())
-			return m, nil
-		}
-		return m, session.CopyToClipboard(msg.Password, session.CopyFieldPassword)
-
-	case bwcmd.TOTPResult:
-		if msg.Err != nil {
-			m.totpCode = ""
-			return m, nil
-		}
-		m.totpCode = msg.Code
-		m.totpSecsLeft = 30 - int(time.Now().Unix()%30)
-		return m, nil
-
 	case session.CopiedMsg:
 		label := "Password"
 		switch msg.Field {
@@ -255,14 +245,7 @@ func (m VaultModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, session.ClearClipboard()
 
 	case TOTPTickMsg:
-		prev := m.totpSecsLeft
-		m.totpSecsLeft = 30 - int(time.Now().Unix()%30)
-		if m.totpSecsLeft > prev {
-			// secsLeft jumped up → crossed a 30s epoch boundary, fetch new code.
-			if item := m.selectedItem(); item != nil && item.Login != nil && item.Login.Totp != "" {
-				return m, tea.Batch(tickTOTP(), bwcmd.GetTOTP(m.sess.Token, item.ID))
-			}
-		}
+		m.computeTOTP()
 		return m, tickTOTP()
 
 	case bwcmd.SyncResult:
@@ -327,7 +310,12 @@ func (m VaultModel) handleActionKeys(msg tea.KeyPressMsg) (tea.Model, tea.Cmd, b
 			if item.Type == bwcmd.ItemTypeSSHKey && item.SSHKey != nil && item.SSHKey.PrivateKey != "" {
 				return m, session.CopyToClipboard(item.SSHKey.PrivateKey, session.CopyFieldPassword), true
 			}
-			return m, bwcmd.GetPassword(m.sess.Token, item.ID), true
+			if item.Login != nil && item.Login.Password != "" {
+				return m, session.CopyToClipboard(item.Login.Password, session.CopyFieldPassword), true
+			}
+			if item.Card != nil && item.Card.Number != "" {
+				return m, session.CopyToClipboard(item.Card.Number, session.CopyFieldPassword), true
+			}
 		}
 
 	case key.Matches(msg, m.keymap.CopyTOTP):
@@ -443,15 +431,17 @@ func (m VaultModel) handleActionKeys(msg tea.KeyPressMsg) (tea.Model, tea.Cmd, b
 
 func (m *VaultModel) onCursorChange() tea.Cmd {
 	m.drawerScroll = 0
+	m.totpParams = nil
 	m.totpCode = ""
-	m.totpSecsLeft = 30 - int(time.Now().Unix()%30)
-	m.totpItemID = ""
 
 	item := m.selectedItem()
 	if item != nil && item.Login != nil && item.Login.Totp != "" {
-		m.totpItemID = item.ID
-		return bwcmd.GetTOTP(m.sess.Token, item.ID)
+		p, err := totp.Parse(item.Login.Totp)
+		if err == nil {
+			m.totpParams = &p
+		}
 	}
+	m.computeTOTP()
 	return nil
 }
 
@@ -468,6 +458,18 @@ func (m *VaultModel) selectedItem() *bwcmd.Item {
 	default:
 		return nil
 	}
+}
+
+// computeTOTP recomputes the TOTP code and countdown from the cached
+// params. It is a no-op when no TOTP params are available.
+func (m *VaultModel) computeTOTP() {
+	if m.totpParams == nil {
+		m.totpCode = ""
+		m.totpSecsLeft = 0
+		return
+	}
+	m.totpCode = totp.Code(*m.totpParams)
+	m.totpSecsLeft = totp.SecsLeft(m.totpParams.Period)
 }
 
 // HeaderInfo returns the item count and selected item type name for the header.
