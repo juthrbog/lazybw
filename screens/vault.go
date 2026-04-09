@@ -71,8 +71,9 @@ type VaultModel struct {
 	rawItems []bwcmd.Item
 	groups   groupState
 
-	toast       string
-	toastTime   time.Time
+	toast        string
+	toastTime    time.Time
+	toastIsError bool
 	syncing     bool
 	syncSpinner spinner.Model
 
@@ -222,7 +223,7 @@ func (m VaultModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case bwcmd.PasswordResult:
 		if msg.Err != nil {
-			m.setToast("Error: " + msg.Err.Error())
+			m.setErrorToast(msg.Err.Error())
 			return m, nil
 		}
 		return m, session.CopyToClipboard(msg.Password, session.CopyFieldPassword)
@@ -244,7 +245,7 @@ func (m VaultModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case session.CopyFieldUsername:
 			label = "Username"
 		}
-		m.setToast(label + " copied — clears in 60s")
+		m.setToast(ui.GlyphCopy + " " + label + " copied — clears in 60s")
 		return m, session.ScheduleClipboardClear()
 
 	case session.ClipboardClearedMsg:
@@ -254,10 +255,11 @@ func (m VaultModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, session.ClearClipboard()
 
 	case TOTPTickMsg:
-		m.totpSecsLeft--
-		if m.totpSecsLeft <= 0 {
+		prev := m.totpSecsLeft
+		m.totpSecsLeft = 30 - int(time.Now().Unix()%30)
+		if m.totpSecsLeft > prev {
+			// secsLeft jumped up → crossed a 30s epoch boundary, fetch new code.
 			if item := m.selectedItem(); item != nil && item.Login != nil && item.Login.Totp != "" {
-				m.totpSecsLeft = 30
 				return m, tea.Batch(tickTOTP(), bwcmd.GetTOTP(m.sess.Token, item.ID))
 			}
 		}
@@ -266,16 +268,16 @@ func (m VaultModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case bwcmd.SyncResult:
 		m.syncing = false
 		if msg.Err != nil {
-			m.setToast("Sync failed: " + msg.Err.Error())
+			m.setErrorToast("Sync failed: " + msg.Err.Error())
 			return m, nil
 		}
 		m.sess.LastSync = time.Now()
-		m.setToast("Vault synced")
+		m.setToast(ui.GlyphSuccess + " Vault synced")
 		return m, bwcmd.FetchItems(m.sess.Token)
 
 	case bwcmd.ItemsResult:
 		if msg.Err != nil {
-			m.setToast("Load failed: " + msg.Err.Error())
+			m.setErrorToast("Load failed: " + msg.Err.Error())
 			return m, nil
 		}
 		m.rawItems = msg.Items
@@ -442,7 +444,7 @@ func (m VaultModel) handleActionKeys(msg tea.KeyPressMsg) (tea.Model, tea.Cmd, b
 func (m *VaultModel) onCursorChange() tea.Cmd {
 	m.drawerScroll = 0
 	m.totpCode = ""
-	m.totpSecsLeft = 0
+	m.totpSecsLeft = 30 - int(time.Now().Unix()%30)
 	m.totpItemID = ""
 
 	item := m.selectedItem()
@@ -507,6 +509,13 @@ func (m *VaultModel) resizeList() {
 func (m *VaultModel) setToast(msg string) {
 	m.toast = msg
 	m.toastTime = time.Now()
+	m.toastIsError = false
+}
+
+func (m *VaultModel) setErrorToast(msg string) {
+	m.toast = ui.GlyphError + " " + msg
+	m.toastTime = time.Now()
+	m.toastIsError = true
 }
 
 func (m VaultModel) openThemePicker() (tea.Model, tea.Cmd) {
@@ -845,7 +854,11 @@ func (m VaultModel) FooterContent() ([]ui.HintBinding, string) {
 		toast = m.syncSpinner.View() + " " + toast
 	}
 	if toast != "" {
-		status = ui.StyleToast.Render(toast)
+		if m.toastIsError {
+			status = ui.StyleError.Render(toast)
+		} else {
+			status = ui.StyleToast.Render(toast)
+		}
 	} else {
 		status = ui.StyleFaint.Render(formatLastSync(m.sess.LastSync))
 	}

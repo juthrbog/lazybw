@@ -188,7 +188,7 @@ func renderLoginFields(props DrawerProps) []string {
 
 func renderCardFields(item *bwcmd.Item, width int) []string {
 	if item.Card == nil {
-		return []string{StyleFaint.Render("  (no card data)")}
+		return []string{"  " + GlyphCard + " " + StyleFaint.Render("(no card data)")}
 	}
 	c := item.Card
 	var fields []string
@@ -214,7 +214,7 @@ func renderCardFields(item *bwcmd.Item, width int) []string {
 func renderNoteFields(props DrawerProps, maxLines int) []string {
 	notes := props.Item.Notes
 	if notes == "" {
-		return []string{StyleFaint.Render("  (empty note)")}
+		return []string{"  " + GlyphNote + " " + StyleFaint.Render("(empty note)")}
 	}
 
 	lines := strings.Split(notes, "\n")
@@ -237,7 +237,7 @@ func renderNoteFields(props DrawerProps, maxLines int) []string {
 
 func renderIdentityFields(item *bwcmd.Item, width int) []string {
 	if item.Identity == nil {
-		return []string{StyleFaint.Render("  (no identity data)")}
+		return []string{"  " + GlyphIdentity + " " + StyleFaint.Render("(no identity data)")}
 	}
 	id := item.Identity
 	var fields []string
@@ -281,7 +281,7 @@ func renderIdentityFields(item *bwcmd.Item, width int) []string {
 	}
 
 	if len(fields) == 0 {
-		fields = []string{StyleFaint.Render("  (empty identity)")}
+		fields = []string{"  " + GlyphIdentity + " " + StyleFaint.Render("(empty identity)")}
 	}
 	return fields
 }
@@ -317,7 +317,7 @@ func formatAddress(id *bwcmd.Identity) string {
 
 func renderSSHKeyFields(item *bwcmd.Item, width int) []string {
 	if item.SSHKey == nil {
-		return []string{StyleFaint.Render("  (no SSH key data)")}
+		return []string{"  " + GlyphSSHKey + " " + StyleFaint.Render("(no SSH key data)")}
 	}
 	k := item.SSHKey
 	var fields []string
@@ -334,7 +334,7 @@ func renderSSHKeyFields(item *bwcmd.Item, width int) []string {
 	fields = append(fields, fieldRow("Private Key", "••••••••••", "[c] copy", width))
 
 	if len(fields) == 0 {
-		fields = []string{StyleFaint.Render("  (empty SSH key)")}
+		fields = []string{"  " + GlyphSSHKey + " " + StyleFaint.Render("(empty SSH key)")}
 	}
 	return fields
 }
@@ -383,33 +383,39 @@ func renderTOTP(code string, secsLeft int) string {
 		display = code[:3] + " " + code[3:]
 	}
 
-	// Countdown circle: depletes as time runs out, like Bitwarden's extension.
-	// ● (full) → ◕ (3/4) → ◑ (1/2) → ◔ (1/4) → ○ (empty)
-	var circle string
-	switch {
-	case secsLeft > 24:
-		circle = "●"
-	case secsLeft > 18:
-		circle = "◕"
-	case secsLeft > 12:
-		circle = "◑"
-	case secsLeft > 6:
-		circle = "◔"
-	default:
-		circle = "○"
+	// Micro-bar countdown: 4-character bar using block elements (U+2588-258F)
+	// with light shade (░) for the empty track. 4 chars * 8 levels = 32 states
+	// for a 30-second window, giving a visible change every second.
+	const barWidth = 4
+	blocks := [8]rune{'█', '▉', '▊', '▋', '▌', '▍', '▎', '▏'}
+
+	fill := secsLeft * barWidth * 8 / 30
+	full := fill / 8
+	frac := fill % 8
+
+	var filled, track strings.Builder
+	for i := range barWidth {
+		if i < full {
+			filled.WriteRune('█')
+		} else if i == full && frac > 0 {
+			filled.WriteRune(blocks[8-frac])
+		} else {
+			track.WriteRune('░')
+		}
 	}
 
-	// Color based on urgency.
-	var color color.Color
+	// Color based on urgency: green → yellow → red.
+	var clr color.Color
 	switch {
 	case secsLeft > 15:
-		color = ColorGreen
+		clr = ColorGreen
 	case secsLeft > 10:
-		color = ColorYellow
+		clr = ColorYellow
 	default:
-		color = ColorRed
+		clr = ColorRed
 	}
 
-	styled := lipgloss.NewStyle().Foreground(color).Render(circle)
-	return fmt.Sprintf("%s  %s %ds", display, styled, secsLeft)
+	style := lipgloss.NewStyle().Foreground(clr)
+	bar := style.Render(filled.String()) + StyleFaint.Render(track.String())
+	return fmt.Sprintf("%s  %s %s", display, bar, style.Render(fmt.Sprintf("%ds", secsLeft)))
 }

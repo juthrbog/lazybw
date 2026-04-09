@@ -36,15 +36,17 @@ Reference for every glyph used in lazybw and conventions for adding new ones.
 | 󰌆    | U+F0306   | `nf-md-key`             | Transition frame  |
 | 󰌿    | U+F033F   | `nf-md-lock_open`       | Unlocked state    |
 
-### TOTP Countdown Circles (`ui/drawer.go`)
+### TOTP Countdown Micro-Bar (`ui/drawer.go`)
 
-| Glyph | Codepoint | Condition       | Meaning            |
-| ----- | --------- | --------------- | ------------------ |
-| ●     | U+25CF    | secsLeft > 24   | Full (>80%)        |
-| ◕     | U+25D5    | secsLeft > 18   | Three-quarters     |
-| ◑     | U+25D1    | secsLeft > 12   | Half               |
-| ◔     | U+25D4    | secsLeft > 6    | Quarter            |
-| ○     | U+25CB    | secsLeft <= 6   | Empty (expiring)   |
+4-character bar using block elements, depletes per-second (32 states for 30s).
+
+| Glyph | Codepoint | Usage                                    |
+| ----- | --------- | ---------------------------------------- |
+| █     | U+2588    | Full block (filled portion)              |
+| ▉▊▋▌▍▎▏ | U+2589-258F | Fractional blocks (partial fill)   |
+| ░     | U+2591    | Light shade (empty track)                |
+
+Color shifts green → yellow → red based on urgency (>15s / >10s / <=10s).
 
 ### Navigation & Selection (`ui/itemrow.go`)
 
@@ -53,13 +55,16 @@ Reference for every glyph used in lazybw and conventions for adding new ones.
 | ▶     | U+25B6    | Cursor / selected item       |
 | ▼     | U+25BC    | Expanded group indicator     |
 
-### Status Indicators (`screens/vault.go`)
+### Status Indicators (`ui/theme.go`, `screens/vault.go`)
 
-| Glyph | Codepoint | Usage                        |
-| ----- | --------- | ---------------------------- |
-| ✓     | U+2713    | Success / enabled toggle     |
-| ·     | U+00B7    | Disabled / false toggle      |
-| ↑↓    | U+2191-93 | Navigation direction hints   |
+| Variable       | Glyph | Codepoint | Color     | Usage                        |
+| -------------- | ----- | --------- | --------- | ---------------------------- |
+| `GlyphSuccess` | ✓     | U+2713    | ColorGreen| Success toasts               |
+| `GlyphError`   | ✗     | U+2717    | ColorRed  | Error toasts, error screens  |
+| `GlyphCopy`    | 󰆏    | U+F018F   | ColorGreen| Copy/clipboard toasts        |
+| (inline)       | ✓     | U+2713    | —         | Enabled toggle               |
+| (inline)       | ·     | U+00B7    | —         | Disabled / false toggle      |
+| (inline)       | ↑↓    | U+2191-93 | —         | Navigation direction hints   |
 
 ### Data Masking (`ui/drawer.go`)
 
@@ -95,6 +100,7 @@ For new Bitwarden item types, pick from nf-md- and assign a theme color:
 | Success        | ✓     | U+2713    |
 | Error          | ✗     | U+2717    |
 | Warning        | ▲     | U+25B2    |
+| Copy           | 󰆏     | U+F018F nf-md-content_copy |
 | Loading        | (use spinner) | —   |
 | Enabled        | ✓     | U+2713    |
 | Disabled       | ·     | U+00B7    |
@@ -103,7 +109,7 @@ For new Bitwarden item types, pick from nf-md- and assign a theme color:
 
 | Semantic         | Glyphs              | Codepoints         |
 | ---------------- | -------------------- | ------------------- |
-| Countdown (TOTP) | ● ◕ ◑ ◔ ○           | U+25CF-U+25CB      |
+| Countdown (TOTP) | █▉▊▋▌▍▎▏ + ░ track  | U+2588-258F, U+2591|
 | Progress bar     | █ ▉ ▊ ▋ ▌ ▍ ▎ ▏     | U+2588-U+258F      |
 | Shade fill       | ░ ▒ ▓               | U+2591-U+2593      |
 
@@ -118,11 +124,11 @@ For new Bitwarden item types, pick from nf-md- and assign a theme color:
 
 ## Candidate Glyphs for Future Work
 
-### TOTP Countdown Enhancement (#38)
+### TOTP Countdown Enhancement (#38) — DONE
 
-Current circle-based countdown is good. Potential refinements:
-- nf-md- timer: 󰔛 `nf-md-timer` (U+F051B) — prefix before countdown circles
-- nf-md- clock alert: 󰥔 `nf-md-clock_alert` (U+F0954) — for expiring codes
+Replaced 5-state circle indicator with 4-char micro-bar using block elements.
+32 distinct visual states for per-second feedback. Optional future refinement:
+- nf-md- timer: 󰔛 `nf-md-timer` (U+F051B) — prefix before bar
 
 ### Vault Editing (#6)
 
