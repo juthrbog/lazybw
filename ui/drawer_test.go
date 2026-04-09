@@ -1,11 +1,14 @@
 package ui
 
 import (
+	"regexp"
 	"strings"
 	"testing"
 
 	"github.com/juthrbog/lazybw/bwcmd"
 )
+
+var ansiRe = regexp.MustCompile(`\x1b\[[0-9;]*m`)
 
 func TestRenderDrawerNilItem(t *testing.T) {
 	out := RenderDrawer(DrawerProps{Width: 60})
@@ -110,17 +113,18 @@ func TestRenderDrawerSecureNoteScroll(t *testing.T) {
 	}
 }
 
-func TestRenderDrawerTOTPCountdownCircles(t *testing.T) {
+func TestRenderDrawerTOTPCountdownBar(t *testing.T) {
 	tests := []struct {
 		name     string
 		secsLeft int
-		circle   string
+		bar      string
 	}{
-		{"full", 28, "●"},
-		{"three quarter", 20, "◕"},
-		{"half", 14, "◑"},
-		{"quarter", 8, "◔"},
-		{"empty", 3, "○"},
+		{"full", 30, "████"},
+		{"most", 28, "███▋"},
+		{"half", 15, "██░░"},
+		{"quarter", 8, "█░░░"},
+		{"almost empty", 1, "▏░░░"},
+		{"empty", 0, "░░░░"},
 	}
 
 	for _, tt := range tests {
@@ -136,8 +140,9 @@ func TestRenderDrawerTOTPCountdownCircles(t *testing.T) {
 				TOTPSecsLeft: tt.secsLeft,
 				Width:        80,
 			})
-			if !strings.Contains(out, tt.circle) {
-				t.Errorf("secsLeft=%d: expected circle %q in output", tt.secsLeft, tt.circle)
+			plain := ansiRe.ReplaceAllString(out, "")
+			if !strings.Contains(plain, tt.bar) {
+				t.Errorf("secsLeft=%d: expected bar %q in output, got:\n%s", tt.secsLeft, tt.bar, plain)
 			}
 		})
 	}
