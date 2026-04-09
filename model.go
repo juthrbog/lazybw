@@ -139,6 +139,7 @@ func (m RootModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if m.sess.Token != "" {
 			m.state = stateQuitting
 			token := m.sess.Token
+			m.vault.Clear()
 			m.sess.Lock()
 			return m, tea.Batch(m.spinner.Tick, bwcmd.Lock(token))
 		}
@@ -152,6 +153,7 @@ func (m RootModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.spinner.Spinner = ui.SpinnerLock
 		if m.sess.Token != "" {
 			token := m.sess.Token
+			m.vault.Clear()
 			m.sess.Lock()
 			return m, tea.Batch(m.spinner.Tick, bwcmd.Lock(token))
 		}
@@ -172,6 +174,7 @@ func (m RootModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case idleCheckMsg:
 		if m.state == stateVault && m.sess.IsIdle() {
 			token := m.sess.Token
+			m.vault.Clear()
 			m.sess.Lock()
 			m.lockFor = intentLock
 			m.state = stateLocked
@@ -188,6 +191,7 @@ func (m RootModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.spinner.Spinner = ui.SpinnerLock
 			if m.sess.Token != "" {
 				token := m.sess.Token
+				m.vault.Clear()
 				m.sess.Lock()
 				return m, tea.Batch(m.spinner.Tick, bwcmd.Lock(token))
 			}

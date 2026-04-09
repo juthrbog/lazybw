@@ -122,6 +122,7 @@ func (m LockedModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.state = lockedUnlocking
 		m.err = nil
 		pw := *m.password
+		*m.password = "" // drop the form's reference to the password
 		email := *m.email
 		if m.isLogin {
 			return m, tea.Batch(m.spinner.Tick, bwcmd.LoginUser(email, pw))

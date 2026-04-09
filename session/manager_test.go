@@ -24,13 +24,24 @@ func TestSetToken(t *testing.T) {
 }
 
 func TestLock(t *testing.T) {
-	s := State{Token: "test-token"}
+	s := State{
+		Token:    "test-token",
+		Email:    "user@example.com",
+		LastSync: time.Now(),
+	}
 	s.Lock()
 	if !s.IsLocked() {
 		t.Error("should be locked after Lock()")
 	}
 	if s.Token != "" {
 		t.Errorf("Token = %q, want empty", s.Token)
+	}
+	if !s.LastSync.IsZero() {
+		t.Error("LastSync should be zero after Lock()")
+	}
+	// Email is intentionally preserved for the unlock screen.
+	if s.Email != "user@example.com" {
+		t.Errorf("Email = %q, want preserved", s.Email)
 	}
 }
 

@@ -14,6 +14,7 @@ import (
 	"charm.land/huh/v2"
 	"charm.land/lipgloss/v2"
 	"github.com/juthrbog/lazybw/bwcmd"
+	"github.com/juthrbog/lazybw/secutil"
 	"github.com/juthrbog/lazybw/session"
 	"github.com/juthrbog/lazybw/totp"
 	"github.com/juthrbog/lazybw/ui"
@@ -157,6 +158,20 @@ func NewVaultModel(items []bwcmd.Item, sess *session.State, width, height int) V
 	}
 
 	return m
+}
+
+// Clear scrubs sensitive data from the vault model. It zeros []byte
+// secrets in-place and drops references to sensitive string fields so
+// the GC can collect the underlying memory sooner.
+func (m *VaultModel) Clear() {
+	secutil.ZeroItems(m.rawItems)
+	m.rawItems = nil
+	if m.totpParams != nil {
+		m.totpParams.Clear()
+		m.totpParams = nil
+	}
+	m.totpCode = ""
+	m.genPassword = ""
 }
 
 func (m VaultModel) Init() tea.Cmd {
@@ -431,7 +446,10 @@ func (m VaultModel) handleActionKeys(msg tea.KeyPressMsg) (tea.Model, tea.Cmd, b
 
 func (m *VaultModel) onCursorChange() tea.Cmd {
 	m.drawerScroll = 0
-	m.totpParams = nil
+	if m.totpParams != nil {
+		m.totpParams.Clear()
+		m.totpParams = nil
+	}
 	m.totpCode = ""
 
 	item := m.selectedItem()

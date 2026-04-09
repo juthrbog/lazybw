@@ -18,8 +18,10 @@ func (s *State) IsLocked() bool {
 }
 
 // Lock clears the token and any other sensitive in-memory state.
+// Email is intentionally retained for the unlock screen display.
 func (s *State) Lock() {
 	s.Token = ""
+	s.LastSync = time.Time{}
 }
 
 // SetToken stores the session token obtained from `bw unlock`.
