@@ -34,18 +34,6 @@ type ItemsResult struct {
 	Err   error
 }
 
-// PasswordResult is returned by GetPassword.
-type PasswordResult struct {
-	Password string
-	Err      error
-}
-
-// TOTPResult is returned by GetTOTP.
-type TOTPResult struct {
-	Code string
-	Err  error
-}
-
 // UnlockResult is returned by Unlock/Login.
 type UnlockResult struct {
 	Token string
@@ -155,28 +143,6 @@ func Sync(token string) tea.Cmd {
 	return func() tea.Msg {
 		_, err := execBw(token, "sync")
 		return SyncResult{Err: err}
-	}
-}
-
-// GetPassword runs `bw get password [id]`.
-func GetPassword(token, id string) tea.Cmd {
-	return func() tea.Msg {
-		out, err := execBw(token, "get", "password", id)
-		if err != nil {
-			return PasswordResult{Err: err}
-		}
-		return PasswordResult{Password: string(out)}
-	}
-}
-
-// GetTOTP runs `bw get totp [id]`.
-func GetTOTP(token, id string) tea.Cmd {
-	return func() tea.Msg {
-		out, err := execBw(token, "get", "totp", id)
-		if err != nil {
-			return TOTPResult{Err: err}
-		}
-		return TOTPResult{Code: strings.TrimSpace(string(out))}
 	}
 }
 

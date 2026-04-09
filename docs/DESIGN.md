@@ -10,7 +10,7 @@ the workflows developers use most.
 - Keyboard-first; no mouse required
 - Single static binary, no runtime dependencies beyond `bw`
 - TOTP as a first-class citizen — live countdown visible in the drawer
-- Wayland-first clipboard with X11 / macOS fallback
+- Terminal-native clipboard via OSC 52
 - Security-conscious: session in memory only, auto-clear clipboard, idle lock
 
 ## Stack
@@ -21,7 +21,8 @@ the workflows developers use most.
 | Components | `github.com/charmbracelet/bubbles` (list, textinput, viewport, spinner, key, help) |
 | Styling | `github.com/charmbracelet/lipgloss` |
 | Forms | `github.com/charmbracelet/huh` |
-| Clipboard | `github.com/atotto/clipboard` + `wl-copy` fallback |
+| Clipboard | BubbleTea OSC 52 (`tea.SetClipboard`) |
+| TOTP | `totp` (local, RFC 6238 — `crypto/hmac`) |
 
 ---
 
@@ -183,17 +184,24 @@ There is no separate Detail screen. The drawer replaces it.
 
 ## TOTP Countdown
 
-The TOTP row is live. Once `bw get totp <id>` resolves:
+TOTP codes are computed locally using the `totp` package (RFC 6238). The seed
+from `Login.Totp` — either a raw base32 secret or an `otpauth://` URI — is
+parsed once when an item is selected and cached as `totp.Params`. The code is
+recomputed synchronously every tick (~1s), eliminating the 1-3s latency of
+shelling out to `bw get totp`.
 
 ```
-  TOTP    843 291  ▓▓▓▓▓▓▓░░░░░  18s          [t] copy
+  TOTP    843 291  ████ 18s          [t] copy
 ```
 
 - `843 291` — current 6-digit code with a mid-space for readability
-- `▓▓▓▓▓▓▓░░░░░` — 12-char progress bar; full = new code, empty = expiring.
+- `████` — 4-char micro-bar using Unicode block elements (U+2588–258F); 32
+  states across a 30-second window for a visible change every second.
   Green >15s, yellow 10–15s, red <10s.
 - `18s` — seconds remaining, updated every second via `time.Tick`
 - When no TOTP key is set on the item, the row is omitted entirely
+- Supports SHA1, SHA256, SHA512 algorithms and custom period/digit counts
+  via `otpauth://` URI parameters
 
 ---
 
@@ -306,20 +314,20 @@ bw login [email] [pw] --raw      # returns session token
 bw unlock [pw] --raw             # returns session token
 bw lock                          # on quit / l / idle timeout
 bw sync                          # r
-bw list items                    # full vault JSON
-bw get password [id]             # plaintext password for copy
-bw get totp [id]                 # current TOTP code (live)
-bw get username [id]             # plaintext username for copy
+bw list items                    # full vault JSON (all fields cached in memory)
+bw generate [flags]              # password generator
 ```
+
+Passwords, usernames, TOTP seeds, and card numbers are all available in the
+`bw list items` response — no per-field CLI calls needed. TOTP codes are
+computed locally from the cached seed (see `totp` package).
 
 ---
 
 ## Clipboard
 
-Detection order:
-1. `WAYLAND_DISPLAY` set → `wl-copy` subprocess
-2. `DISPLAY` set → `atotto/clipboard` (xclip / xsel)
-3. macOS → `pbcopy` (via `atotto/clipboard`)
+Clipboard access uses BubbleTea's built-in OSC 52 support (`tea.SetClipboard`),
+which works across terminal emulators without external tools.
 
 After copy: toast `"Password copied — clears in 60s"`.
 After 60s: overwrite clipboard with `""`.
@@ -376,6 +384,8 @@ lazybw/
 ├── session/
 │   ├── manager.go
 │   └── clipboard.go
+├── totp/
+│   └── totp.go             # RFC 6238 local TOTP computation
 └── go.mod
 ```
 
