@@ -54,6 +54,15 @@ func Parse(raw string) (Params, error) {
 	return p, nil
 }
 
+// Clear zeros the secret bytes in-place and nils the slice, preventing
+// the decoded key material from lingering in memory after use.
+func (p *Params) Clear() {
+	for i := range p.Secret {
+		p.Secret[i] = 0
+	}
+	p.Secret = nil
+}
+
 // Code returns the TOTP code for the current time.
 func Code(p Params) string {
 	return CodeAt(p, time.Now())

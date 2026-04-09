@@ -78,6 +78,33 @@ func execBw(sessionToken string, args ...string) ([]byte, error) {
 	return stdout.Bytes(), nil
 }
 
+// execBwWithPassword is like execBw but also sets BW_PASSWORD in the
+// child process environment. This keeps the master password out of the
+// argument list, hiding it from ps/top and /proc/PID/cmdline.
+func execBwWithPassword(sessionToken, password string, args ...string) ([]byte, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), cmdTimeout)
+	defer cancel()
+
+	cmd := exec.CommandContext(ctx, "bw", args...) //nolint:gosec // args are constructed internally, not from user input
+	cmd.Env = append(os.Environ(),
+		"BW_SESSION="+sessionToken,
+		"BW_PASSWORD="+password,
+	)
+
+	var stdout, stderr bytes.Buffer
+	cmd.Stdout = &stdout
+	cmd.Stderr = &stderr
+
+	if err := cmd.Run(); err != nil {
+		errMsg := strings.TrimSpace(stderr.String())
+		if errMsg == "" {
+			errMsg = err.Error()
+		}
+		return nil, fmt.Errorf("%s", errMsg)
+	}
+	return stdout.Bytes(), nil
+}
+
 // CheckStatus runs `bw status` and returns a StatusResult.
 func CheckStatus() tea.Cmd {
 	return func() tea.Msg {
@@ -108,10 +135,13 @@ func FetchItems(token string) tea.Cmd {
 	}
 }
 
-// Unlock runs `bw unlock [password] --raw` and returns an UnlockResult.
+// Unlock runs `bw unlock --passwordenv BW_PASSWORD --raw` and returns
+// an UnlockResult. The password is passed via a process-local environment
+// variable instead of a CLI argument to avoid exposing it in
+// /proc/PID/cmdline.
 func Unlock(password string) tea.Cmd {
 	return func() tea.Msg {
-		out, err := execBw("", "unlock", password, "--raw")
+		out, err := execBwWithPassword("", password, "unlock", "--passwordenv", "BW_PASSWORD", "--raw")
 		if err != nil {
 			return UnlockResult{Err: err}
 		}
@@ -119,10 +149,12 @@ func Unlock(password string) tea.Cmd {
 	}
 }
 
-// Login runs `bw login [email] [password] --raw` and returns an UnlockResult.
+// LoginUser runs `bw login [email] --passwordenv BW_PASSWORD --raw` and
+// returns an UnlockResult. The password is passed via a process-local
+// environment variable instead of a CLI argument.
 func LoginUser(email, password string) tea.Cmd {
 	return func() tea.Msg {
-		out, err := execBw("", "login", email, password, "--raw")
+		out, err := execBwWithPassword("", password, "login", email, "--passwordenv", "BW_PASSWORD", "--raw")
 		if err != nil {
 			return UnlockResult{Err: err}
 		}

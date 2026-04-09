@@ -152,6 +152,31 @@ func TestCodeAt_Deterministic(t *testing.T) {
 	}
 }
 
+func TestParams_Clear(t *testing.T) {
+	p, err := Parse("JBSWY3DPEHPK3PXP")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(p.Secret) == 0 {
+		t.Fatal("Secret should be non-empty before Clear")
+	}
+
+	// Keep a reference to the original backing array so we can verify
+	// the bytes were actually zeroed in-place.
+	orig := p.Secret
+
+	p.Clear()
+
+	if p.Secret != nil {
+		t.Error("Secret should be nil after Clear")
+	}
+	for i, b := range orig {
+		if b != 0 {
+			t.Errorf("orig[%d] = %d, want 0 — backing array not zeroed", i, b)
+		}
+	}
+}
+
 func TestSecsLeft(t *testing.T) {
 	s := SecsLeft(30)
 	if s < 1 || s > 30 {
