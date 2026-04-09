@@ -81,6 +81,9 @@ var (
 	GlyphNote     string
 	GlyphIdentity string
 	GlyphSSHKey   string
+	GlyphSuccess  string
+	GlyphError    string
+	GlyphCopy     string
 )
 
 func init() {
@@ -225,4 +228,7 @@ func initStyles() {
 	GlyphNote = lipgloss.NewStyle().Foreground(ColorYellow).Render("󱙒")
 	GlyphIdentity = lipgloss.NewStyle().Foreground(ColorHighlight).Render("󰀄")
 	GlyphSSHKey = lipgloss.NewStyle().Foreground(ColorGreen).Render("󰣀")
+	GlyphSuccess = lipgloss.NewStyle().Foreground(ColorGreen).Render("✓")
+	GlyphError = lipgloss.NewStyle().Foreground(ColorRed).Render("✗")
+	GlyphCopy = lipgloss.NewStyle().Foreground(ColorGreen).Render("󰆏")
 }

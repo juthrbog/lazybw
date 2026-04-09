@@ -149,7 +149,7 @@ func (m LockedModel) ViewContent(width, contentHeight int) string {
 	content := title + "\n\n" + m.form.View()
 
 	if m.err != nil {
-		content += "\n\n" + ui.StyleError.Render(m.err.Error())
+		content += "\n\n" + ui.GlyphError + " " + ui.StyleError.Render(m.err.Error())
 	}
 
 	return ui.CenterInArea(content, width, contentHeight)

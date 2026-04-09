@@ -42,7 +42,7 @@ func (m ErrorModel) ViewContent() string {
 	if m.err != nil {
 		errText = m.err.Error()
 	}
-	return ui.StyleError.Render("Error: " + errText)
+	return ui.GlyphError + " " + ui.StyleError.Render(errText)
 }
 
 // FooterHints returns the hint bindings for the footer.
