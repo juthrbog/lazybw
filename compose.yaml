@@ -1,0 +1,30 @@
+services:
+  vaultwarden:
+    image: vaultwarden/server:latest
+    container_name: lazybw-vaultwarden
+    environment:
+      DOMAIN: "https://localhost:8443"
+      SIGNUPS_ALLOWED: "true"
+      ADMIN_TOKEN: "lazybw-dev-admin-token"
+      EXPERIMENTAL_CLIENT_FEATURE_FLAGS: "ssh-key-vault-item,ssh-agent"
+    volumes:
+      - vw-data:/data
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:80/alive"]
+      interval: 2s
+      timeout: 3s
+      retries: 10
+      start_period: 5s
+
+  caddy:
+    image: caddy:latest
+    container_name: lazybw-caddy
+    command: caddy reverse-proxy --from localhost --to vaultwarden:80 --internal-certs
+    ports:
+      - "8443:443"
+    depends_on:
+      vaultwarden:
+        condition: service_healthy
+
+volumes:
+  vw-data:

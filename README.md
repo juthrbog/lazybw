@@ -116,6 +116,15 @@ Press `T` in the vault to open the theme picker and switch themes on the fly.
 
 Press `?` in-app for the complete list including password generator and filter keybindings. See [docs/KEYBINDINGS.md](docs/KEYBINDINGS.md) for the full reference.
 
+## Development
+
+See [docs/DEV-ENVIRONMENT.md](docs/DEV-ENVIRONMENT.md) for setting up a local Vaultwarden instance with test data.
+
+```sh
+task dev:seed   # start Vaultwarden + create test account + seed vault
+task dev:run    # run lazybw against the local instance
+```
+
 ## Contributing
 
 lazybw is in early development and not yet accepting contributions. This may change in the future -- check back later.

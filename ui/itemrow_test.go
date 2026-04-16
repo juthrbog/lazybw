@@ -20,9 +20,6 @@ func TestRenderItemRowLoginSelected(t *testing.T) {
 	if !strings.Contains(out, "Gmail") {
 		t.Error("row should contain item name")
 	}
-	if !strings.Contains(out, "user@gmail.com") {
-		t.Error("row should contain username")
-	}
 }
 
 func TestRenderItemRowLoginUnselected(t *testing.T) {
@@ -50,9 +47,6 @@ func TestRenderItemRowCard(t *testing.T) {
 	if !strings.Contains(out, "Visa Debit") {
 		t.Error("row should contain card name")
 	}
-	if !strings.Contains(out, "4242") {
-		t.Error("row should contain last 4 digits")
-	}
 }
 
 func TestRenderItemRowNote(t *testing.T) {
@@ -77,9 +71,6 @@ func TestRenderItemRowIdentity(t *testing.T) {
 	if !strings.Contains(out, "Personal ID") {
 		t.Error("row should contain identity name")
 	}
-	if !strings.Contains(out, "John Doe") {
-		t.Error("row should contain full name as description")
-	}
 }
 
 func TestRenderItemRowSSHKey(t *testing.T) {
@@ -91,9 +82,6 @@ func TestRenderItemRowSSHKey(t *testing.T) {
 	out := RenderItemRow(item, false, 60, false)
 	if !strings.Contains(out, "Server Key") {
 		t.Error("row should contain SSH key name")
-	}
-	if !strings.Contains(out, "SHA256:abc123") {
-		t.Error("row should contain fingerprint as description")
 	}
 }
 

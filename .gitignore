@@ -33,3 +33,12 @@ go.work.sum
 
 # Build output
 dist/
+
+# Vaultwarden local data (bind mount)
+vw-data/
+
+# Local bw CLI config for dev environment
+.bw-dev/
+
+# Compiled seed tool binary
+/vwseed
