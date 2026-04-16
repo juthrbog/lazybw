@@ -43,3 +43,41 @@ tasks:
     desc: Test GoReleaser config locally
     cmds:
       - goreleaser release --snapshot --clean
+
+  dev:up:
+    desc: Start local Vaultwarden instance
+    cmds:
+      - docker compose up -d --wait
+    preconditions:
+      - sh: command -v docker
+        msg: "docker is required but not found in PATH"
+
+  dev:seed:
+    desc: Create test account and seed vault with sample items
+    deps: [dev:up]
+    cmds:
+      - go run ./cmd/vwseed/
+
+  dev:down:
+    desc: Stop local Vaultwarden instance
+    cmds:
+      - docker compose down
+
+  dev:reset:
+    desc: Destroy Vaultwarden data and re-seed from scratch
+    cmds:
+      - docker compose down -v
+      - rm -rf .bw-dev
+      - task: dev:seed
+
+  dev:run:
+    desc: Run lazybw against local Vaultwarden
+    deps: [dev:seed]
+    env:
+      BITWARDENCLI_APPDATA_DIR: "{{.ROOT_DIR}}/.bw-dev"
+      NODE_TLS_REJECT_UNAUTHORIZED: "0"
+    preconditions:
+      - sh: command -v gum
+        msg: "gum is required but not found in PATH (https://github.com/charmbracelet/gum)"
+    cmds:
+      - gum confirm "Launch lazybw?" --default=true && go run .
