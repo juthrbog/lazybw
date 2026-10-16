@@ -65,8 +65,6 @@ var (
 	StyleTitle       lipgloss.Style
 	StyleSelected    lipgloss.Style
 	StyleFaint       lipgloss.Style
-	StyleBorder      lipgloss.Style
-	StyleStatusBar   lipgloss.Style
 	StyleToast       lipgloss.Style
 	StyleError       lipgloss.Style
 	StyleHintKey     lipgloss.Style
@@ -228,14 +226,6 @@ func initStyles() {
 
 	StyleFaint = lipgloss.NewStyle().
 		Foreground(ColorFaint)
-
-	StyleBorder = lipgloss.NewStyle().
-		Border(lipgloss.RoundedBorder()).
-		BorderForeground(ColorSubtle)
-
-	StyleStatusBar = lipgloss.NewStyle().
-		Background(ColorSubtle).
-		Padding(0, 1)
 
 	StyleToast = lipgloss.NewStyle().
 		Foreground(ColorGreen).

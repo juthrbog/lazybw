@@ -251,8 +251,43 @@ func TestErrorScreenQuitLocksVault(t *testing.T) {
 		t.Fatal("QuitMsg on the error screen must lock the session")
 	}
 	collectMsgs(cmd)
-	if !strings.Contains(log(), "lock") {
-		t.Error("quit from the error screen must run bw lock")
+	if !ranBwLock(log(), "tok") {
+		t.Errorf("quit from the error screen must run bw lock, bw log:\n%s", log())
+	}
+}
+
+// TestLockPathsRunBwLock runs the commands of each path that ends an
+// unlocked session. Each one must run `bw lock` for the session token and
+// return its LockResult.
+func TestLockPathsRunBwLock(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		lock func(t *testing.T, m RootModel) (RootModel, tea.Cmd)
+	}{
+		{"lock key", func(t *testing.T, m RootModel) (RootModel, tea.Cmd) {
+			return update(t, m, screens.LockMsg{})
+		}},
+		{"idle lock", func(t *testing.T, m RootModel) (RootModel, tea.Cmd) {
+			m.sess.LastActive = time.Now().Add(-time.Hour)
+			return update(t, m, idleCheckMsg{})
+		}},
+		{"quit", func(t *testing.T, m RootModel) (RootModel, tea.Cmd) {
+			return update(t, m, screens.QuitMsg{})
+		}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			log := fakeBwLog(t)
+			m, cmd := tc.lock(t, unlockedVault(t, testItems()))
+			if !m.sess.IsLocked() {
+				t.Error("the session must be locked")
+			}
+			if _, ok := waitForMsg[bwcmd.LockResult](cmd, 5*time.Second); !ok {
+				t.Error("the commands must return the LockResult of bw lock")
+			}
+			if !ranBwLock(log(), "tok") {
+				t.Errorf("bw lock must run with the session token, bw log:\n%s", log())
+			}
+		})
 	}
 }
 
@@ -304,8 +339,8 @@ func TestCleanupAfterExit(t *testing.T) {
 	if buf.String() != ansi.SetSystemClipboard(session.ClearPlaceholder) {
 		t.Errorf("cleanup wrote %q, want an OSC 52 clear", buf.String())
 	}
-	if !strings.Contains(log(), "lock") {
-		t.Error("cleanup must run bw lock for an unlocked session")
+	if !ranBwLock(log(), "tok") {
+		t.Errorf("cleanup must run bw lock for an unlocked session, bw log:\n%s", log())
 	}
 }
 
@@ -377,8 +412,8 @@ func TestSecondFetchFailureAfterRetryLocks(t *testing.T) {
 		t.Fatal("a second failure must end the session")
 	}
 	collectMsgs(cmd)
-	if !strings.Contains(log(), "lock") {
-		t.Error("a second failure must run bw lock")
+	if !ranBwLock(log(), "tok") {
+		t.Errorf("a second failure must run bw lock, bw log:\n%s", log())
 	}
 	_, cmd = update(t, m, screens.RetryMsg{})
 	if !hasMsgType[bwcmd.StatusResult](collectMsgs(cmd)) {
@@ -423,8 +458,8 @@ func TestCleanupRunsPendingLock(t *testing.T) {
 		t.Fatal("quit must remember the pending lock")
 	}
 	m.cleanupAfterExit(&bytes.Buffer{})
-	if !strings.Contains(log(), "lock") {
-		t.Error("cleanup must run bw lock again for a pending lock")
+	if !ranBwLock(log(), "tok") {
+		t.Errorf("cleanup must run bw lock again for a pending lock, bw log:\n%s", log())
 	}
 	m, _ = update(t, m, bwcmd.LockResult{})
 	if m.pendingLock != "" {

@@ -34,11 +34,16 @@ func TestHelpOverlayShowHide(t *testing.T) {
 	}
 }
 
+// keyPress returns the key press of the printable key s.
+func keyPress(s string) tea.KeyPressMsg {
+	return tea.KeyPressMsg{Code: []rune(s)[0], Text: s}
+}
+
 func TestHelpOverlayCloseOnEsc(t *testing.T) {
 	h := NewHelpOverlay()
 	h.Show(testBindings(), 80, 24)
 
-	h, _ = h.Update(tea.KeyPressMsg{Text: "esc"})
+	h, _ = h.Update(tea.KeyPressMsg{Code: tea.KeyEscape})
 	if h.Visible() {
 		t.Error("overlay should close on esc")
 	}
@@ -48,7 +53,7 @@ func TestHelpOverlayCloseOnQuestion(t *testing.T) {
 	h := NewHelpOverlay()
 	h.Show(testBindings(), 80, 24)
 
-	h, _ = h.Update(tea.KeyPressMsg{Text: "?"})
+	h, _ = h.Update(keyPress("?"))
 	if h.Visible() {
 		t.Error("overlay should close on ?")
 	}
@@ -85,10 +90,10 @@ func TestHelpOverlayFilter(t *testing.T) {
 	h.Show(testBindings(), 80, 24)
 
 	// Press / and type "cop" to filter.
-	h, _ = h.Update(tea.KeyPressMsg{Text: "/"})
-	h, _ = h.Update(tea.KeyPressMsg{Text: "c"})
-	h, _ = h.Update(tea.KeyPressMsg{Text: "o"})
-	h, _ = h.Update(tea.KeyPressMsg{Text: "p"})
+	h, _ = h.Update(keyPress("/"))
+	h, _ = h.Update(keyPress("c"))
+	h, _ = h.Update(keyPress("o"))
+	h, _ = h.Update(keyPress("p"))
 
 	view := h.View()
 	if !strings.Contains(view, "copy") {
@@ -105,10 +110,10 @@ func TestHelpOverlayFilterNoMatches(t *testing.T) {
 	h := NewHelpOverlay()
 	h.Show(testBindings(), 80, 24)
 
-	h, _ = h.Update(tea.KeyPressMsg{Text: "/"})
-	h, _ = h.Update(tea.KeyPressMsg{Text: "z"})
-	h, _ = h.Update(tea.KeyPressMsg{Text: "z"})
-	h, _ = h.Update(tea.KeyPressMsg{Text: "z"})
+	h, _ = h.Update(keyPress("/"))
+	h, _ = h.Update(keyPress("z"))
+	h, _ = h.Update(keyPress("z"))
+	h, _ = h.Update(keyPress("z"))
 
 	content := h.renderContent()
 	if !strings.Contains(content, "no matches") {
@@ -120,18 +125,18 @@ func TestHelpOverlayFilterBackspace(t *testing.T) {
 	h := NewHelpOverlay()
 	h.Show(testBindings(), 80, 24)
 
-	h, _ = h.Update(tea.KeyPressMsg{Text: "/"})
-	h, _ = h.Update(tea.KeyPressMsg{Text: "z"})
-	h, _ = h.Update(tea.KeyPressMsg{Text: "z"})
+	h, _ = h.Update(keyPress("/"))
+	h, _ = h.Update(keyPress("z"))
+	h, _ = h.Update(keyPress("z"))
 
 	// Backspace should remove last filter char.
-	h, _ = h.Update(tea.KeyPressMsg{Text: "backspace"})
+	h, _ = h.Update(tea.KeyPressMsg{Code: tea.KeyBackspace})
 	if h.filter != "z" {
 		t.Errorf("filter should be 'z' after backspace, got %q", h.filter)
 	}
 
 	// Backspace again to clear.
-	h, _ = h.Update(tea.KeyPressMsg{Text: "backspace"})
+	h, _ = h.Update(tea.KeyPressMsg{Code: tea.KeyBackspace})
 	if h.filter != "" {
 		t.Errorf("filter should be empty after backspace, got %q", h.filter)
 	}

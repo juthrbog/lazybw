@@ -2,17 +2,19 @@ package screens
 
 import (
 	"errors"
+	"fmt"
 	"os"
 	"strings"
 	"testing"
 
-	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
 	"github.com/charmbracelet/x/ansi"
+	"github.com/juthrbog/lazybw/ui"
 )
 
 func TestMain(m *testing.M) {
-	_ = os.Setenv("NO_COLOR", "1")
+	// The theme at the start, to find a test that does not restore it.
+	theme, dark, highlight := ui.CurrentTheme, ui.IsDark, ui.ColorHighlight
 	// Point PATH at an empty directory, so that a test that runs a bwcmd
 	// command can never reach the real bw.
 	dir, err := os.MkdirTemp("", "lazybw-nobw-")
@@ -22,6 +24,10 @@ func TestMain(m *testing.M) {
 	_ = os.Setenv("PATH", dir)
 	code := m.Run()
 	_ = os.RemoveAll(dir)
+	if code == 0 && (ui.CurrentTheme != theme || ui.IsDark != dark || !sameColor(ui.ColorHighlight, highlight)) {
+		fmt.Fprintf(os.Stderr, "a test left the theme at %s (dark %v): use withTheme or keepTheme\n", ui.CurrentTheme, ui.IsDark)
+		code = 1
+	}
 	os.Exit(code)
 }
 
@@ -90,7 +96,7 @@ func TestErrorFooterHintsFatal(t *testing.T) {
 
 func TestErrorUpdateRetryNonFatal(t *testing.T) {
 	m := NewErrorModel(errors.New("err"), false)
-	updated, cmd := m.Update(tea.KeyPressMsg{Text: "r"})
+	updated, cmd := m.Update(keyMsg("r"))
 	_ = updated
 	if cmd == nil {
 		t.Fatal("expected command from retry key")
@@ -103,7 +109,7 @@ func TestErrorUpdateRetryNonFatal(t *testing.T) {
 
 func TestErrorUpdateRetryFatal(t *testing.T) {
 	m := NewErrorModel(errors.New("err"), true)
-	_, cmd := m.Update(tea.KeyPressMsg{Text: "r"})
+	_, cmd := m.Update(keyMsg("r"))
 	if cmd != nil {
 		t.Error("fatal error should not respond to retry key")
 	}
@@ -111,7 +117,7 @@ func TestErrorUpdateRetryFatal(t *testing.T) {
 
 func TestErrorUpdateQuit(t *testing.T) {
 	m := NewErrorModel(errors.New("err"), false)
-	_, cmd := m.Update(tea.KeyPressMsg{Text: "q"})
+	_, cmd := m.Update(keyMsg("q"))
 	if cmd == nil {
 		t.Fatal("expected quit command")
 	}

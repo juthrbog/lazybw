@@ -6,20 +6,6 @@ import (
 	"github.com/juthrbog/lazybw/bwcmd"
 )
 
-func TestZeroBytes(t *testing.T) {
-	b := []byte{0x41, 0x42, 0x43}
-	ZeroBytes(b)
-	for i, v := range b {
-		if v != 0 {
-			t.Errorf("b[%d] = %d, want 0", i, v)
-		}
-	}
-}
-
-func TestZeroBytesNil(t *testing.T) {
-	ZeroBytes(nil) // should not panic
-}
-
 func TestZeroItem(t *testing.T) {
 	item := bwcmd.Item{
 		Notes: "secret note",
@@ -114,6 +100,6 @@ func TestZeroItems(t *testing.T) {
 }
 
 func TestZeroItemsEmpty(t *testing.T) {
-	ZeroItems(nil)          // should not panic
+	ZeroItems(nil)            // should not panic
 	ZeroItems([]bwcmd.Item{}) // should not panic
 }

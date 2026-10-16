@@ -33,12 +33,6 @@ var (
 // prints no session key.
 var errNoToken = errors.New("bw did not return a session key")
 
-// CmdResult carries the stdout bytes or an error from a bw subprocess.
-type CmdResult struct {
-	Output []byte
-	Err    error
-}
-
 // Typed result messages for pattern matching in the root model.
 
 // StatusResult is returned by CheckStatus.

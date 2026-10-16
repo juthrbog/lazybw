@@ -27,14 +27,14 @@ func TestUnlockDropsUnlockScreen(t *testing.T) {
 func TestEveryLockPathDropsVault(t *testing.T) {
 	for _, tc := range []struct {
 		name string
-		run  func(RootModel) (RootModel, tea.Cmd)
+		run  func(*testing.T, RootModel) (RootModel, tea.Cmd)
 	}{
-		{"LockMsg", func(m RootModel) (RootModel, tea.Cmd) { return update(t, m, screens.LockMsg{}) }},
-		{"QuitMsg", func(m RootModel) (RootModel, tea.Cmd) { return update(t, m, screens.QuitMsg{}) }},
-		{"ctrl+c", func(m RootModel) (RootModel, tea.Cmd) {
+		{"LockMsg", func(t *testing.T, m RootModel) (RootModel, tea.Cmd) { return update(t, m, screens.LockMsg{}) }},
+		{"QuitMsg", func(t *testing.T, m RootModel) (RootModel, tea.Cmd) { return update(t, m, screens.QuitMsg{}) }},
+		{"ctrl+c", func(t *testing.T, m RootModel) (RootModel, tea.Cmd) {
 			return update(t, m, tea.KeyPressMsg{Code: 'c', Mod: tea.ModCtrl})
 		}},
-		{"idle", func(m RootModel) (RootModel, tea.Cmd) {
+		{"idle", func(t *testing.T, m RootModel) (RootModel, tea.Cmd) {
 			m.sess.LastActive = time.Now().Add(-time.Hour)
 			return update(t, m, idleCheckMsg{})
 		}},
@@ -42,7 +42,7 @@ func TestEveryLockPathDropsVault(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			items := testItems()
 			m := unlockedVault(t, items)
-			m, _ = tc.run(m)
+			m, _ = tc.run(t, m)
 			if !reflect.ValueOf(m.vault).IsZero() {
 				t.Error("the root must drop the vault model")
 			}
