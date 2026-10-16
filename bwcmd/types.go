@@ -4,7 +4,7 @@ import "strings"
 
 // VaultStatus mirrors the JSON shape returned by `bw status`.
 type VaultStatus struct {
-	Status    string `json:"status"`    // "unauthenticated" | "locked" | "unlocked"
+	Status    string `json:"status"` // "unauthenticated" | "locked" | "unlocked"
 	UserEmail string `json:"userEmail"`
 	LastSync  string `json:"lastSync"` // RFC3339; empty when unauthenticated
 }
@@ -77,6 +77,12 @@ type SSHKey struct {
 	KeyFingerprint string `json:"keyFingerprint"`
 }
 
+// Values of Item.Reprompt.
+const (
+	RepromptNone     = 0 // the item has no re-prompt
+	RepromptPassword = 1 // the item asks for the master password again
+)
+
 // Item is the top-level vault item returned by `bw list items`.
 type Item struct {
 	ID             string      `json:"id"`
@@ -90,6 +96,11 @@ type Item struct {
 	SecureNote     *SecureNote `json:"secureNote,omitempty"`
 	Identity       *Identity   `json:"identity,omitempty"`
 	SSHKey         *SSHKey     `json:"sshKey,omitempty"`
+
+	// Reprompt is the "Master password re-prompt" setting of the item. bw
+	// passes it through and does not enforce it, so lazybw asks for the
+	// master password before it copies or shows a protected field.
+	Reprompt int `json:"reprompt"`
 }
 
 // FilterValue implements bubbles/list.Item. Used for fuzzy filtering.

@@ -12,6 +12,7 @@ import (
 	tea "charm.land/bubbletea/v2"
 	"charm.land/huh/v2"
 	"charm.land/lipgloss/v2"
+	"github.com/charmbracelet/x/ansi"
 	"github.com/juthrbog/lazybw/bwcmd"
 	"github.com/juthrbog/lazybw/secutil"
 	"github.com/juthrbog/lazybw/session"
@@ -73,8 +74,9 @@ type VaultModel struct {
 	groups   groupState
 
 	toast        string
-	toastTime    time.Time
 	toastIsError bool
+	toastIsCopy  bool   // a copy toast stays until the clipboard clear
+	toastGen     uint64 // the number of the latest toast, see toastExpiredMsg
 	syncing      bool
 	syncSpinner  spinner.Model
 
@@ -96,9 +98,18 @@ type VaultModel struct {
 
 	confirmingQuit bool
 
+	// Master password re-prompt. verifiedID is the ID of the selected item
+	// after the user entered the master password for it. checking is true
+	// while a password check runs, and checkSeq numbers the checks.
+	reprompt   repromptState
+	verifiedID string
+	checking   bool
+	checkSeq   uint64
+
 	showGenerator bool
 	genMode       string // "password" or "passphrase"
 	genPassword   string // current generated output
+	genErr        string // the error of the latest generate request
 	genSeq        uint64 // sequence number of the latest generate request
 	genLength     int
 	genUppercase  bool
@@ -182,6 +193,8 @@ func (m *VaultModel) Clear() {
 	}
 	m.totpCode = ""
 	m.genPassword = ""
+	m.closeReprompt()
+	m.verifiedID = ""
 }
 
 func (m VaultModel) Init() tea.Cmd {
@@ -216,6 +229,9 @@ func (m VaultModel) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		m.list.SetSize(msg.Width, listH)
 		m.help.Resize(msg.Width, msg.Height-ui.ChromeHeight)
+		if m.reprompt.open {
+			m.reprompt.form = m.reprompt.form.WithWidth(repromptFormWidth(msg.Width))
+		}
 		// Rebuild the theme picker when the new height changes the height
 		// of its select. Form.Init asks for the window size, so a rebuild
 		// on each resize message would never stop.
@@ -225,6 +241,9 @@ func (m VaultModel) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case tea.KeyPressMsg:
+		if m.reprompt.open {
+			return m.updateReprompt(msg)
+		}
 		if m.showGenerator {
 			return m.updateGenerator(msg)
 		}
@@ -270,26 +289,29 @@ func (m VaultModel) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, tea.Batch(cmds...)
 
 	case session.CopiedMsg:
-		label := "Password"
-		switch msg.Field {
-		case session.CopyFieldTOTP:
-			label = "TOTP"
-		case session.CopyFieldUsername:
-			label = "Username"
-		case session.CopyFieldNote:
-			label = "Note"
-		}
-		// The root model schedules and runs the clipboard clear.
-		m.setToast(ui.GlyphCopy + " " + label + " copied — clears in 60s")
+		// The root model schedules and runs the clipboard clear. The
+		// terminal does not answer an OSC 52 write, so the toast says only
+		// that lazybw sent the value.
+		m.setCopyToast(fmt.Sprintf("%s %s sent to clipboard · clears in %ds",
+			ui.GlyphCopy, copyLabel(msg.Field), int(session.ClipboardClearDelay.Seconds())))
 		return m, nil
 
 	case session.ClipboardClearedMsg:
 		// The root model cleared the clipboard. Remove the copy toast,
 		// unless a newer toast replaced it.
-		if time.Since(m.toastTime) >= session.ClipboardClearDelay-time.Second {
-			m.toast = ""
+		if m.toastIsCopy {
+			m.clearToast()
 		}
 		return m, nil
+
+	case toastExpiredMsg:
+		if msg.gen == m.toastGen {
+			m.clearToast()
+		}
+		return m, nil
+
+	case repromptResultMsg:
+		return m.handleRepromptResult(msg)
 
 	case TOTPTickMsg:
 		m.computeTOTP()
@@ -298,23 +320,21 @@ func (m VaultModel) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case bwcmd.SyncResult:
 		m.syncing = false
 		if msg.Err != nil {
-			m.setErrorToast("Sync failed: " + userError(msg.Err, actionOther))
-			return m, nil
+			return m, m.setErrorToast("Sync failed: " + userError(msg.Err, actionOther))
 		}
 		m.sess.LastSync = time.Now()
-		m.setToast(ui.GlyphSuccess + " Vault synced")
-		return m, bwcmd.FetchItems(m.sess.Token, m.sess.Epoch)
+		toastCmd := m.setToast(ui.GlyphSuccess + " Vault synced")
+		return m, tea.Batch(toastCmd, bwcmd.FetchItems(m.sess.Token, m.sess.Epoch))
 
 	case bwcmd.ItemsResult:
 		if msg.Err != nil {
-			m.setErrorToast("Load failed: " + userError(msg.Err, actionOther))
-			return m, nil
+			return m, m.setErrorToast("Load failed: " + userError(msg.Err, actionOther))
 		}
 		return m, m.replaceItems(msg.Items)
 
 	case OpenURLResult:
 		if msg.Err != nil {
-			m.setErrorToast("Open URL failed: " + msg.Err.Error())
+			return m, m.setErrorToast("Open URL failed: " + msg.Err.Error())
 		}
 		return m, nil
 
@@ -322,11 +342,9 @@ func (m VaultModel) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if msg.Seq != m.genSeq {
 			return m, nil // a newer request is in flight
 		}
-		if msg.Err != nil {
-			m.genPassword = "Error: " + userError(msg.Err, actionOther)
-		} else {
-			m.genPassword = msg.Password
-		}
+		// The error goes in its own field, so that c cannot copy it.
+		m.genPassword = msg.Password
+		m.genErr = userError(msg.Err, actionOther)
 		return m, nil
 
 	case spinner.TickMsg:
@@ -337,6 +355,17 @@ func (m VaultModel) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 	}
 
+	// The forms complete over internal messages, so they get the other
+	// messages too. A sync can refresh the list while the password prompt
+	// shows, and the list then needs its filter results, so the list gets
+	// the messages as well.
+	if m.reprompt.open {
+		updated, cmd := m.updateReprompt(msg)
+		if vm, ok := updated.(VaultModel); ok {
+			m = vm
+		}
+		cmds = append(cmds, cmd)
+	}
 	if m.showThemePicker && m.themeForm != nil {
 		return m.updateThemePicker(msg)
 	}
@@ -352,51 +381,33 @@ func (m VaultModel) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 // Returns (model, cmd, true) if handled, or (zero, nil, false) to let the list handle the key.
 func (m VaultModel) handleActionKeys(msg tea.KeyPressMsg) (tea.Model, tea.Cmd, bool) {
 	switch {
+	// The secret fields go through copySecret, which asks for the master
+	// password first for an item with master password re-prompt.
 	case key.Matches(msg, m.keymap.Copy):
-		if item := m.selectedItem(); item != nil {
-			if item.Type == bwcmd.ItemTypeIdentity && item.Identity != nil && item.Identity.SSN != "" {
-				return m, session.CopyToClipboard(item.Identity.SSN, session.CopyFieldPassword), true
-			}
-			if item.Type == bwcmd.ItemTypeSSHKey && item.SSHKey != nil && item.SSHKey.PrivateKey != "" {
-				return m, session.CopyToClipboard(item.SSHKey.PrivateKey, session.CopyFieldPassword), true
-			}
-			if item.Login != nil && item.Login.Password != "" {
-				return m, session.CopyToClipboard(item.Login.Password, session.CopyFieldPassword), true
-			}
-			if item.Card != nil && item.Card.Number != "" {
-				return m, session.CopyToClipboard(item.Card.Number, session.CopyFieldPassword), true
-			}
-		}
+		return m.copySecret(secretMain)
 
 	case key.Matches(msg, m.keymap.CopyTOTP):
-		if m.totpInvalid {
-			m.setErrorToast("Invalid TOTP secret")
-			return m, nil, true
-		}
-		// Compute the code now. The cached code can be up to a second old
-		// at a step change.
-		if m.totpParams != nil {
-			m.computeTOTP()
-			return m, session.CopyToClipboard(m.totpCode, session.CopyFieldTOTP), true
-		}
+		return m.copySecret(secretTOTP)
+
+	case key.Matches(msg, m.keymap.CopyCVV):
+		return m.copySecret(secretCVV)
+
+	case key.Matches(msg, m.keymap.CopyNote):
+		return m.copySecret(secretNote)
 
 	case key.Matches(msg, m.keymap.CopyUsername):
 		if item := m.selectedItem(); item != nil {
-			if item.Login != nil {
+			switch {
+			case item.Login != nil && item.Login.Username == "":
+				// An empty write can clear the clipboard in some terminals.
+				return m, m.setToast("No username to copy"), true
+			case item.Login != nil:
 				return m, session.CopyToClipboard(item.Login.Username, session.CopyFieldUsername), true
+			case item.Identity != nil && item.Identity.Email != "":
+				return m, session.CopyToClipboard(item.Identity.Email, session.CopyFieldEmail), true
+			case item.SSHKey != nil && item.SSHKey.PublicKey != "":
+				return m, session.CopyToClipboard(item.SSHKey.PublicKey, session.CopyFieldPublicKey), true
 			}
-			if item.Identity != nil && item.Identity.Email != "" {
-				return m, session.CopyToClipboard(item.Identity.Email, session.CopyFieldUsername), true
-			}
-			if item.SSHKey != nil && item.SSHKey.PublicKey != "" {
-				return m, session.CopyToClipboard(item.SSHKey.PublicKey, session.CopyFieldUsername), true
-			}
-		}
-
-	case key.Matches(msg, m.keymap.CopyNote):
-		// Copy the stored note, not the sanitized text that the drawer shows.
-		if item := m.selectedItem(); item != nil && item.Notes != "" {
-			return m, session.CopyToClipboard(item.Notes, session.CopyFieldNote), true
 		}
 
 	case key.Matches(msg, m.keymap.OpenURL):
@@ -410,7 +421,8 @@ func (m VaultModel) handleActionKeys(msg tea.KeyPressMsg) (tea.Model, tea.Cmd, b
 			return m, nil, true
 		}
 		m.syncing = true
-		m.setToast("Syncing…")
+		// The footer shows "Syncing…" until the sync ends.
+		m.clearToast()
 		return m, tea.Batch(m.syncSpinner.Tick, bwcmd.Sync(m.sess.Token, m.sess.Epoch)), true
 
 	case key.Matches(msg, m.keymap.Lock):
@@ -468,17 +480,14 @@ func (m VaultModel) handleActionKeys(msg tea.KeyPressMsg) (tea.Model, tea.Cmd, b
 		m.drawerOverlay = !m.drawerOverlay
 		m.resizeList()
 		if m.drawerOverlay {
-			m.setToast("Drawer: overlay")
-		} else {
-			m.setToast("Drawer: inline")
+			return m, m.setToast("Drawer: overlay"), true
 		}
-		return m, nil, true
+		return m, m.setToast("Drawer: inline"), true
 
 	case key.Matches(msg, m.keymap.ToggleGrouping):
 		m.groups.toggleGrouping()
 		cmd := m.rebuildListItems()
-		m.setToast(groupToastMessage(m.groups.enabled))
-		return m, cmd, true
+		return m, tea.Batch(cmd, m.setToast(groupToastMessage(m.groups.enabled))), true
 
 	case key.Matches(msg, m.keymap.ToggleExpand):
 		if sel := m.list.SelectedItem(); sel != nil {
@@ -505,9 +514,16 @@ func (m *VaultModel) syncSelection() {
 	}
 }
 
-// onCursorChange resets the per-item drawer state for a new selection.
+// onCursorChange resets the per-item drawer state for a new selection. A
+// new selection also ends the master password re-prompt: the next protected
+// copy asks for the password again, and an open prompt for the item that
+// was selected closes.
 func (m *VaultModel) onCursorChange() {
 	m.drawerScroll = 0
+	m.verifiedID = ""
+	if m.reprompt.open {
+		m.closeReprompt()
+	}
 	m.loadTOTP()
 }
 
@@ -635,7 +651,7 @@ func (m *VaultModel) replaceItems(items []bwcmd.Item) tea.Cmd {
 	// The sync is complete. Drop its toast, so that the footer shows the
 	// time of the last sync again.
 	if strings.HasSuffix(m.toast, " Vault synced") {
-		m.toast = ""
+		m.clearToast()
 	}
 	return cmd
 }
@@ -690,18 +706,79 @@ func (m *VaultModel) resizeList() {
 	m.list.SetSize(m.width, listH)
 }
 
-func (m *VaultModel) setToast(msg string) {
-	m.toast = msg
-	m.toastTime = time.Now()
-	m.toastIsError = false
+// How long a toast shows. A copy toast stays until the clipboard clear.
+// Tests shorten them.
+var (
+	toastDuration      = 4 * time.Second
+	errorToastDuration = 8 * time.Second
+)
+
+// toastExpiredMsg ends toast number gen. Each toast gets a higher number,
+// so the timer of an older toast does not end a newer one.
+type toastExpiredMsg struct{ gen uint64 }
+
+// setToast shows msg in the footer. It returns the command that ends the
+// toast after toastDuration.
+func (m *VaultModel) setToast(msg string) tea.Cmd {
+	m.showToast(msg, false, false)
+	return m.expireToast(toastDuration)
 }
 
 // setErrorToast shows an error in the footer. The message often holds bw
-// output, so it is sanitized to one line.
-func (m *VaultModel) setErrorToast(msg string) {
-	m.toast = ui.GlyphError + " " + ui.SanitizeLine(msg)
-	m.toastTime = time.Now()
-	m.toastIsError = true
+// output, so it is sanitized to one line. It returns the command that ends
+// the toast after errorToastDuration.
+func (m *VaultModel) setErrorToast(msg string) tea.Cmd {
+	m.showToast(ui.GlyphError+" "+ui.SanitizeLine(msg), true, false)
+	return m.expireToast(errorToastDuration)
+}
+
+// setCopyToast shows a copy toast. The root model clears the clipboard
+// after session.ClipboardClearDelay, and the toast ends then.
+func (m *VaultModel) setCopyToast(msg string) {
+	m.showToast(msg, false, true)
+}
+
+// clearToast removes the toast, so that the footer shows the sync age.
+func (m *VaultModel) clearToast() {
+	m.showToast("", false, false)
+}
+
+func (m *VaultModel) showToast(msg string, isError, isCopy bool) {
+	m.toastGen++
+	m.toast = msg
+	m.toastIsError = isError
+	m.toastIsCopy = isCopy
+}
+
+// expireToast returns the command that ends the current toast after d.
+func (m *VaultModel) expireToast(d time.Duration) tea.Cmd {
+	gen := m.toastGen
+	return tea.Tick(d, func(time.Time) tea.Msg { return toastExpiredMsg{gen: gen} })
+}
+
+// copyLabel returns the name of the field f for the copy toast.
+func copyLabel(f session.CopyField) string {
+	switch f {
+	case session.CopyFieldTOTP:
+		return "TOTP"
+	case session.CopyFieldUsername:
+		return "Username"
+	case session.CopyFieldNote:
+		return "Note"
+	case session.CopyFieldCardNumber:
+		return "Card number"
+	case session.CopyFieldCVV:
+		return "Security code"
+	case session.CopyFieldSSN:
+		return "SSN"
+	case session.CopyFieldPrivateKey:
+		return "SSH private key"
+	case session.CopyFieldPublicKey:
+		return "Public key"
+	case session.CopyFieldEmail:
+		return "Email"
+	}
+	return "Password"
 }
 
 func (m VaultModel) openThemePicker() (tea.Model, tea.Cmd) {
@@ -762,8 +839,7 @@ func (m VaultModel) updateThemePicker(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.showThemePicker = false
 		ui.ApplyTheme(*m.selectedTheme)
 		m.currentTheme = *m.selectedTheme
-		m.setToast("Theme: " + *m.selectedTheme)
-		return m, nil
+		return m, m.setToast("Theme: " + *m.selectedTheme)
 	case huh.StateAborted:
 		m.showThemePicker = false
 		return m, nil
@@ -795,7 +871,7 @@ func (m VaultModel) updateGenerator(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	case "enter", "r":
 		return m, m.generate()
 	case "c":
-		if m.genPassword != "" && m.genPassword != "Generating…" {
+		if m.genErr == "" && m.genPassword != "" && m.genPassword != genPlaceholder {
 			return m, session.CopyToClipboard(m.genPassword, session.CopyFieldPassword)
 		}
 	case "m", "tab":
@@ -822,38 +898,81 @@ func (m VaultModel) updateGenerator(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 				m.genLength--
 			}
 		} else {
-			if m.genWords > 2 {
+			if m.genWords > genMinWords {
 				m.genWords--
 			}
 		}
 		return m, m.generate()
-	case "1":
-		m.genUppercase = !m.genUppercase
-		return m, m.generate()
-	case "2":
-		m.genLowercase = !m.genLowercase
-		return m, m.generate()
-	case "3":
-		m.genNumbers = !m.genNumbers
-		return m, m.generate()
-	case "4":
-		m.genSpecial = !m.genSpecial
+	case "1", "2", "3", "4":
+		if m.genMode == "passphrase" {
+			return m.togglePassphraseOption(msg.String())
+		}
+		switch msg.String() {
+		case "1":
+			m.genUppercase = !m.genUppercase
+		case "2":
+			m.genLowercase = !m.genLowercase
+		case "3":
+			m.genNumbers = !m.genNumbers
+		case "4":
+			m.genSpecial = !m.genSpecial
+		}
 		return m, m.generate()
 	}
 	return m, nil
 }
 
+// genSeparators are the word separators that key 3 cycles through in
+// passphrase mode.
+var genSeparators = []string{"-", "_", ".", " "}
+
+// togglePassphraseOption changes the passphrase option of key k: 1 toggles
+// the capitals, 2 toggles the number, and 3 moves to the next separator.
+// Key 4 has no passphrase option.
+func (m VaultModel) togglePassphraseOption(k string) (tea.Model, tea.Cmd) {
+	switch k {
+	case "1":
+		m.genCapitalize = !m.genCapitalize
+	case "2":
+		m.genIncludeNum = !m.genIncludeNum
+	case "3":
+		next := 0
+		for i, sep := range genSeparators {
+			if sep == m.genSeparator {
+				next = (i + 1) % len(genSeparators)
+			}
+		}
+		m.genSeparator = genSeparators[next]
+	default:
+		return m, nil
+	}
+	return m, m.generate()
+}
+
+// separatorName returns the separator as the generator card shows it.
+func separatorName(sep string) string {
+	if sep == " " {
+		return "space"
+	}
+	return sep
+}
+
+// genPlaceholder is the generator output while bw generate runs.
+const genPlaceholder = "Generating…"
+
 // generate starts a new `bw generate` request. Each request gets a new
 // sequence number, so that a slow, older result cannot replace a newer one.
 func (m *VaultModel) generate() tea.Cmd {
 	m.genSeq++
-	m.genPassword = "Generating…"
+	m.genPassword = genPlaceholder
+	m.genErr = ""
 	return bwcmd.Generate(m.genSeq, m.genArgs()...)
 }
 
 func (m *VaultModel) genArgs() []string {
 	if m.genMode == "passphrase" {
-		args := []string{"--passphrase", "--words", fmt.Sprintf("%d", m.genWords), "--separator", m.genSeparator}
+		// bw reads the word "space" as a space separator.
+		args := []string{"--passphrase", "--words", fmt.Sprintf("%d", m.genWords), "--separator", separatorName(m.genSeparator)}
 		if m.genCapitalize {
 			args = append(args, "--capitalize")
 		}
@@ -878,7 +997,16 @@ func (m *VaultModel) genArgs() []string {
 	return args
 }
 
-func (m VaultModel) renderGeneratorCard() string {
+// genMaxWidth is the widest that a line of the generated value gets.
+const genMaxWidth = 72
+
+// genMinWords is the smallest word count for a passphrase. bw generate
+// raises a smaller count to 3, so the card would show the wrong count.
+const genMinWords = 3
+
+// renderGeneratorCard renders the generator card for a content area of the
+// given width. The generated value wraps to fit inside the card.
+func (m VaultModel) renderGeneratorCard(width int) string {
 	var b strings.Builder
 
 	b.WriteString(ui.StyleTitle.Render("Password Generator"))
@@ -906,15 +1034,25 @@ func (m VaultModel) renderGeneratorCard() string {
 			checkMark(m.genUppercase), checkMark(m.genLowercase),
 			checkMark(m.genNumbers), checkMark(m.genSpecial))
 	} else {
-		fmt.Fprintf(&b, "Words       %d         Separator  %s\n", m.genWords, m.genSeparator)
-		fmt.Fprintf(&b, "Capitalize  %s         Include #  %s\n",
+		// The options show in the order of their keys 1 to 3, on rows
+		// that stay narrow.
+		fmt.Fprintf(&b, "Words       %d\n", m.genWords)
+		fmt.Fprintf(&b, "Capitalize  %s   Include #  %s\n",
 			checkMark(m.genCapitalize), checkMark(m.genIncludeNum))
+		fmt.Fprintf(&b, "Separator   %s\n", separatorName(m.genSeparator))
 	}
 
 	b.WriteString("\n")
 
-	// Generated output.
-	b.WriteString(ui.StyleTitle.Render(m.genPassword))
+	// Generated output. A long password or passphrase wraps, so that all
+	// of it shows inside the card border.
+	contentW := max(1, min(width-ui.OverlayEdgeWidth, genMaxWidth))
+	if m.genErr != "" {
+		// errorBlock keeps a 2-cell margin on each side.
+		b.WriteString(errorBlock(m.genErr, contentW+4, contentW))
+	} else {
+		b.WriteString(ui.StyleTitle.Render(ansi.Hardwrap(ui.SanitizeLine(m.genPassword), contentW, true)))
+	}
 
 	return b.String()
 }
@@ -930,8 +1068,11 @@ func checkMark(v bool) string {
 func (m VaultModel) ViewContent(width, contentHeight int) string {
 	bg := m.renderVaultContent(width, contentHeight)
 
+	if m.reprompt.open {
+		return ui.RenderOverlay(bg, m.renderReprompt(width, contentHeight), width, contentHeight)
+	}
 	if m.showGenerator {
-		return ui.RenderOverlay(bg, m.renderGeneratorCard(), width, contentHeight)
+		return ui.RenderOverlay(bg, m.renderGeneratorCard(width), width, contentHeight)
 	}
 	if m.showThemePicker && m.themeForm != nil {
 		return ui.RenderOverlay(bg, m.themeForm.View(), width, contentHeight)
@@ -974,6 +1115,7 @@ func (m VaultModel) drawerProps(width, contentHeight int) ui.DrawerProps {
 		TOTPInvalid:  m.totpInvalid,
 		ScrollOffset: m.drawerScroll,
 	}
+	props.RepromptVerified = m.repromptVerified(props.Item)
 	if m.drawerOverlay {
 		props.Width = overlayDrawerWidth(width)
 		props.AutoHeight = true
@@ -1030,6 +1172,9 @@ const maxFilterHintW = 20
 
 // FooterContent returns hints and status for the footer bar.
 func (m VaultModel) FooterContent() ([]ui.HintBinding, string) {
+	if m.reprompt.open {
+		return m.repromptHints(), ""
+	}
 	if m.confirmingQuit {
 		return []ui.HintBinding{
 			{Key: "y", Desc: "yes"},
@@ -1037,6 +1182,16 @@ func (m VaultModel) FooterContent() ([]ui.HintBinding, string) {
 		}, ""
 	}
 	if m.showGenerator {
+		if m.genMode == "passphrase" {
+			return []ui.HintBinding{
+				{Key: "enter", Desc: "regen"},
+				{Key: "+/-", Desc: "words"},
+				{Key: "m", Desc: "mode"},
+				{Key: "1-3", Desc: "options"},
+				{Key: "c", Desc: "copy"},
+				{Key: "esc", Desc: "close"},
+			}, ""
+		}
 		return []ui.HintBinding{
 			{Key: "enter", Desc: "regen"},
 			{Key: "+/-", Desc: "length"},
@@ -1107,6 +1262,9 @@ func (m VaultModel) FooterContent() ([]ui.HintBinding, string) {
 	var status string
 	toast := m.toast
 	if m.syncing {
+		if toast == "" {
+			toast = "Syncing…"
+		}
 		toast = m.syncSpinner.View() + " " + toast
 	}
 	if toast != "" {

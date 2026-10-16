@@ -13,6 +13,8 @@ func TestDefaultVaultKeyMap(t *testing.T) {
 		{"Copy", km.Copy.Keys()},
 		{"CopyTOTP", km.CopyTOTP.Keys()},
 		{"CopyUsername", km.CopyUsername.Keys()},
+		{"CopyNote", km.CopyNote.Keys()},
+		{"CopyCVV", km.CopyCVV.Keys()},
 		{"OpenURL", km.OpenURL.Keys()},
 		{"ScrollDown", km.ScrollDown.Keys()},
 		{"ScrollUp", km.ScrollUp.Keys()},
@@ -30,6 +32,22 @@ func TestDefaultVaultKeyMap(t *testing.T) {
 		if len(b.keys) == 0 {
 			t.Errorf("%s has no key bindings", b.name)
 		}
+	}
+}
+
+func TestCopyCVVKey(t *testing.T) {
+	km := DefaultVaultKeyMap()
+	if keys := km.CopyCVV.Keys(); len(keys) != 1 || keys[0] != "v" {
+		t.Errorf("CopyCVV keys = %v, want [v]", keys)
+	}
+	found := false
+	for _, b := range km.HelpBindings() {
+		if b.Key == "v" && b.Category == "Copy" {
+			found = true
+		}
+	}
+	if !found {
+		t.Error("the help must list v under Copy")
 	}
 }
 

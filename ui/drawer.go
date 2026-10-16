@@ -23,6 +23,23 @@ type DrawerProps struct {
 	Height       int  // 0 means DefaultDrawerHeight
 	AutoHeight   bool // true = size to content (no padding/truncation)
 	ScrollOffset int
+	// RepromptVerified is true when the user entered the master password
+	// for the item. Until then, an item with master password re-prompt
+	// shows no TOTP code and no note text.
+	RepromptVerified bool
+}
+
+// Drawer texts for an item with master password re-prompt.
+const (
+	repromptMarker = "re-prompt"
+	hiddenValue    = "(hidden)"
+	hiddenNote     = "(hidden: master password re-prompt)"
+)
+
+// secretsHidden reports whether the drawer hides the TOTP code and the
+// note text of the item in props.
+func secretsHidden(props DrawerProps) bool {
+	return props.Item != nil && props.Item.Reprompt == bwcmd.RepromptPassword && !props.RepromptVerified
 }
 
 // RenderDrawer renders the detail drawer for the selected vault item.
@@ -41,7 +58,11 @@ func RenderDrawer(props DrawerProps) string {
 	if props.Item.Type == bwcmd.ItemTypeSecureNote && props.Item.Notes != "" {
 		headerHint = noteCopyHint
 	}
-	header := renderHeaderCard(props.Item.Name, props.Item.Type, headerHint, props.Width)
+	marker := ""
+	if props.Item.Reprompt == bwcmd.RepromptPassword {
+		marker = lipgloss.NewStyle().Foreground(ColorYellow).Render(repromptMarker)
+	}
+	header := renderHeaderCard(props.Item.Name, props.Item.Type, headerHint, marker, props.Width)
 	// In inline mode, add a gradient separator above the header card
 	// to visually distinguish the drawer from the list.
 	var sep string
@@ -118,7 +139,7 @@ func bodyRows(props DrawerProps) int {
 func MaxScrollOffset(props DrawerProps) int {
 	item := props.Item
 	rows := bodyRows(props)
-	if item == nil || item.Type != bwcmd.ItemTypeSecureNote || item.Notes == "" || rows <= 0 {
+	if item == nil || item.Type != bwcmd.ItemTypeSecureNote || item.Notes == "" || rows <= 0 || secretsHidden(props) {
 		return 0
 	}
 	return max(0, len(NoteLines(item.Notes, props.Width))-rows)
@@ -136,21 +157,27 @@ func renderNoSelection(width, height int) string {
 }
 
 // renderHeaderCard renders the item name on the left and the type badge on
-// the right. A hint, when given, goes before the badge. The hint is dropped
-// when it would leave the name less than rowMinNameW cells.
-func renderHeaderCard(name string, itemType bwcmd.ItemType, hint string, width int) string {
+// the right. A hint and a styled marker, when given, go before the badge.
+// When they would leave the name less than rowMinNameW cells, the hint is
+// dropped first, and then the marker.
+func renderHeaderCard(name string, itemType bwcmd.ItemType, hint, marker string, width int) string {
 	prefix := "  " + ItemGlyph(itemType) + "  "
 	badge := StyleHeaderBadge.Render(ItemTypeName(itemType))
 	name = SanitizeLine(name)
 
-	right := badge
+	var extras []string
 	if hint != "" {
-		right = StyleFaint.Render(hint) + "  " + badge
+		extras = append(extras, StyleFaint.Render(hint))
 	}
+	if marker != "" {
+		extras = append(extras, marker)
+	}
+	right := strings.Join(append(extras, badge), "  ")
 	// Keep at least one space between the name and the right side.
 	maxName := width - lipgloss.Width(prefix) - lipgloss.Width(right) - 1
-	if hint != "" && maxName < min(lipgloss.Width(name), rowMinNameW) {
-		right = badge
+	for len(extras) > 0 && maxName < min(lipgloss.Width(name), rowMinNameW) {
+		extras = extras[1:]
+		right = strings.Join(append(extras, badge), "  ")
 		maxName = width - lipgloss.Width(prefix) - lipgloss.Width(right) - 1
 	}
 
@@ -211,25 +238,38 @@ func renderLoginFields(props DrawerProps) []string {
 		password = item.Login.Password
 	}
 
-	fields = append(fields, fieldRow("Username", username, "[u] copy", w))
+	// An empty field shows (none) and no copy hint, because its copy key
+	// copies nothing.
+	if username == "" {
+		fields = append(fields, renderedFieldRow("Username", StyleFaint.Render("(none)"), "", w))
+	} else {
+		fields = append(fields, fieldRow("Username", username, "[u] copy", w))
+	}
 
 	if password == "" {
-		fields = append(fields, renderedFieldRow("Password", StyleFaint.Render("(none)"), "[c] copy", w))
+		fields = append(fields, renderedFieldRow("Password", StyleFaint.Render("(none)"), "", w))
 	} else {
 		fields = append(fields, fieldRow("Password", "••••••••••", "[c] copy", w))
 	}
 
 	if item.Login != nil && item.Login.Totp != "" {
-		fields = append(fields, totpRow(props, w))
+		if secretsHidden(props) && !props.TOTPInvalid {
+			fields = append(fields, renderedFieldRow("TOTP", StyleFaint.Render(hiddenValue), "[t] copy", w))
+		} else {
+			fields = append(fields, totpRow(props, w))
+		}
 	}
 
 	if item.Login != nil && len(item.Login.URIs) > 0 {
 		fields = append(fields, fieldRow("URL", item.Login.URIs[0].URI, "[o] open", w))
 	}
 
-	if item.Notes == "" {
+	switch {
+	case item.Notes == "":
 		fields = append(fields, renderedFieldRow("Notes", StyleFaint.Render("(none)"), "", w))
-	} else {
+	case secretsHidden(props):
+		fields = append(fields, renderedFieldRow("Notes", StyleFaint.Render(hiddenValue), noteCopyHint, w))
+	default:
 		// Cut the note at its first "\r" or "\n", so that the row shows
 		// only the first line. An escape sequence ends at a line break, so
 		// the cut gives the same text as sanitizing all of the note.
@@ -260,7 +300,11 @@ func renderCardFields(item *bwcmd.Item, width int) []string {
 		expiry = fmt.Sprintf("%s/%s", c.ExpMonth, c.ExpYear)
 	}
 	fields = append(fields, fieldRow("Expiry", expiry, "", width))
-	fields = append(fields, fieldRow("CVV", "•••", "[v] copy", width))
+	if c.Code == "" {
+		fields = append(fields, renderedFieldRow("CVV", StyleFaint.Render("(none)"), "", width))
+	} else {
+		fields = append(fields, fieldRow("CVV", "•••", "[v] copy", width))
+	}
 
 	return fields
 }
@@ -269,6 +313,9 @@ func renderNoteFields(props DrawerProps, maxLines int) []string {
 	notes := props.Item.Notes
 	if notes == "" {
 		return []string{"  " + GlyphNote + " " + StyleFaint.Render("(empty note)")}
+	}
+	if secretsHidden(props) {
+		return []string{Truncate("  "+GlyphNote+" "+StyleFaint.Render(hiddenNote), props.Width)}
 	}
 
 	lines := NoteLines(notes, props.Width)

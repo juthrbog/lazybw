@@ -61,6 +61,10 @@ type RootModel struct {
 	// failure locks the session, so that the next retry asks for the
 	// password again.
 	retried bool
+	// lastSync is the time of the last vault sync that lazybw knows of:
+	// from bw status, or from the session before a lock. A lock clears
+	// the time in the session, and an unlock puts it back.
+	lastSync time.Time
 }
 
 func NewRootModel(idleTimeout time.Duration) RootModel {
@@ -112,6 +116,7 @@ func (m RootModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 		m.sess.Email = msg.Status.UserEmail
+		m.lastSync = parseLastSync(msg.Status.LastSync)
 		switch msg.Status.Status {
 		case "unauthenticated":
 			m.state = stateLogin
@@ -129,6 +134,7 @@ func (m RootModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case screens.UnlockedMsg:
 		m.sess.SetToken(msg.Token)
+		m.sess.LastSync = m.lastSync
 		if msg.Email != "" {
 			m.sess.Email = msg.Email
 		}
@@ -308,6 +314,9 @@ func (m *RootModel) dropVault() {
 // command. The caller sets the next state.
 func (m *RootModel) endSession() tea.Cmd {
 	token := m.sess.Token
+	if !m.sess.LastSync.IsZero() {
+		m.lastSync = m.sess.LastSync
+	}
 	m.dropVault()
 	m.sess.Lock()
 	m.pendingLock = token
@@ -390,7 +399,7 @@ func (m *RootModel) clearClipboard() tea.Cmd {
 // still running, because a closed terminal can kill that child process.
 func (m RootModel) cleanupAfterExit(w io.Writer) {
 	if m.clipDirty {
-		_, _ = io.WriteString(w, ansi.SetSystemClipboard(""))
+		_, _ = io.WriteString(w, ansi.SetSystemClipboard(session.ClearPlaceholder))
 	}
 	token := m.pendingLock
 	if m.sess != nil && !m.sess.IsLocked() {
@@ -452,6 +461,16 @@ func (m RootModel) View() tea.View {
 	v.AltScreen = true
 	v.MouseMode = tea.MouseModeCellMotion
 	return v
+}
+
+// parseLastSync parses the lastSync value of bw status, an RFC 3339 time.
+// It returns the zero time for an empty or a malformed value.
+func parseLastSync(s string) time.Time {
+	t, err := time.Parse(time.RFC3339, s)
+	if err != nil {
+		return time.Time{}
+	}
+	return t
 }
 
 // idleCheckInterval is the time between two idle checks. Tests shorten it.

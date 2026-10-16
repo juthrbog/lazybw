@@ -275,7 +275,7 @@ func TestCopiedMsgLeavesClearToRoot(t *testing.T) {
 	if cmd != nil {
 		t.Error("the vault must not schedule the clipboard clear")
 	}
-	if !strings.Contains(m.toast, "copied") {
+	if !strings.Contains(m.toast, "Password sent to clipboard") {
 		t.Errorf("toast = %q, want a copy toast", m.toast)
 	}
 }
@@ -441,7 +441,7 @@ func TestCopyNoteCopiesFullNote(t *testing.T) {
 	}
 	updated, _ := m.Update(session.CopiedMsg{Field: session.CopyFieldNote})
 	m = updated.(VaultModel)
-	if !strings.Contains(m.toast, "Note copied") {
+	if !strings.Contains(m.toast, "Note sent to clipboard") {
 		t.Errorf("toast = %q, want it to name the note", m.toast)
 	}
 }
@@ -779,5 +779,178 @@ func TestSyncErrorToastIsOneFooterLine(t *testing.T) {
 		if !strings.Contains(ansi.Strip(out), "Sync failed: bw sync") {
 			t.Errorf("width %d: footer = %q, want the start of the error", width, ansi.Strip(out))
 		}
+	}
+}
+
+// copyTableItems has one item of each type with every copyable field set.
+// No item has master password re-prompt.
+func copyTableItems() []bwcmd.Item {
+	return []bwcmd.Item{
+		{ID: "l", Type: bwcmd.ItemTypeLogin, Name: "Login", Login: &bwcmd.Login{Username: "user", Password: "login-pw"}},
+		{ID: "c", Type: bwcmd.ItemTypeCard, Name: "Card", Card: &bwcmd.Card{Number: "4242424242424242", Code: "123"}},
+		{ID: "i", Type: bwcmd.ItemTypeIdentity, Name: "Identity", Identity: &bwcmd.Identity{SSN: "123-45-6789", Email: "id@example.com"}},
+		{ID: "k", Type: bwcmd.ItemTypeSSHKey, Name: "SSH", SSHKey: &bwcmd.SSHKey{PrivateKey: "PRIVATE KEY", PublicKey: "ssh-ed25519 PUBLIC"}},
+		{ID: "n", Type: bwcmd.ItemTypeSecureNote, Name: "Note", Notes: "note body"},
+	}
+}
+
+func TestCopyKeysNameTheField(t *testing.T) {
+	candidates := []string{"user", "login-pw", "4242424242424242", "123", "123-45-6789", "id@example.com", "PRIVATE KEY", "ssh-ed25519 PUBLIC", "note body"}
+	tests := []struct {
+		item  int
+		key   string
+		value string // "" when the key copies nothing
+		field session.CopyField
+		label string
+	}{
+		{0, "c", "login-pw", session.CopyFieldPassword, "Password"},
+		{0, "u", "user", session.CopyFieldUsername, "Username"},
+		{0, "v", "", 0, ""},
+		{1, "c", "4242424242424242", session.CopyFieldCardNumber, "Card number"},
+		{1, "u", "", 0, ""},
+		{1, "v", "123", session.CopyFieldCVV, "Security code"},
+		{2, "c", "123-45-6789", session.CopyFieldSSN, "SSN"},
+		{2, "u", "id@example.com", session.CopyFieldEmail, "Email"},
+		{2, "v", "", 0, ""},
+		{3, "c", "PRIVATE KEY", session.CopyFieldPrivateKey, "SSH private key"},
+		{3, "u", "ssh-ed25519 PUBLIC", session.CopyFieldPublicKey, "Public key"},
+		{3, "v", "", 0, ""},
+		{4, "c", "", 0, ""},
+		{4, "u", "", 0, ""},
+		{4, "v", "", 0, ""},
+	}
+	for _, tt := range tests {
+		m := newTestVault(copyTableItems())
+		m.list.Select(tt.item)
+		m.syncSelection()
+		name := fmt.Sprintf("%s on %s", tt.key, m.selectedItem().Name)
+
+		// No item has re-prompt, so one key press copies.
+		updated, cmd := m.Update(keyMsg(tt.key))
+		m = updated.(VaultModel)
+		values, fields := clipboardWrites(t, cmd, candidates...)
+		if tt.value == "" {
+			if len(values) != 0 || len(fields) != 0 {
+				t.Errorf("%s: copied %q (fields %v), want no copy", name, values, fields)
+			}
+			continue
+		}
+		if len(values) != 1 || values[0] != tt.value {
+			t.Errorf("%s: copied %q, want %q", name, values, tt.value)
+		}
+		if len(fields) != 1 || fields[0] != tt.field {
+			t.Errorf("%s: CopiedMsg fields = %v, want %v", name, fields, tt.field)
+			continue
+		}
+		updated, _ = m.Update(session.CopiedMsg{Field: fields[0]})
+		m = updated.(VaultModel)
+		_, status := m.FooterContent()
+		if want := tt.label + " sent to clipboard"; !strings.Contains(ansi.Strip(status), want) {
+			t.Errorf("%s: footer status = %q, want %q", name, ansi.Strip(status), want)
+		}
+	}
+}
+
+func TestCopyEmptyUsernameWritesNothing(t *testing.T) {
+	items := []bwcmd.Item{{ID: "1", Type: bwcmd.ItemTypeLogin, Name: "Site", Login: &bwcmd.Login{Password: "pw"}}}
+	m := newTestVault(items)
+	updated, cmd := m.Update(keyMsg("u"))
+	m = updated.(VaultModel)
+	for _, msg := range runMsgs(cmd) {
+		if _, ok := msg.(session.CopiedMsg); ok || msg == tea.SetClipboard("")() {
+			t.Fatalf("u on a login with no username sent %#v, want no clipboard write", msg)
+		}
+	}
+	if !strings.Contains(m.toast, "No username") || m.toastIsError {
+		t.Errorf("toast = %q, want an info toast about the missing username", m.toast)
+	}
+}
+
+func TestToastExpiresAndFooterShowsSyncAge(t *testing.T) {
+	orig := toastDuration
+	t.Cleanup(func() { toastDuration = orig })
+	toastDuration = time.Millisecond
+
+	m := newTestVault(testItems())
+	m.sess.LastSync = time.Now().Add(-3*time.Minute - 30*time.Second)
+	updated, first := m.Update(keyMsg("d"))
+	m = updated.(VaultModel)
+	updated, second := m.Update(keyMsg("d"))
+	m = updated.(VaultModel)
+	if _, status := m.FooterContent(); !strings.Contains(status, "Drawer: inline") || strings.Contains(status, "synced") {
+		t.Fatalf("status = %q, want the toast and no sync age", status)
+	}
+	if first == nil || second == nil {
+		t.Fatal("a toast must return the command that ends it")
+	}
+	// The timer of the first toast must not end the second toast.
+	updated, _ = m.Update(first())
+	m = updated.(VaultModel)
+	if _, status := m.FooterContent(); !strings.Contains(status, "Drawer: inline") {
+		t.Errorf("status = %q: an older timer ended a newer toast", status)
+	}
+	expired, ok := second().(toastExpiredMsg)
+	if !ok || expired.gen != m.toastGen {
+		t.Fatalf("the toast command sent %#v, want the toastExpiredMsg of the latest toast", expired)
+	}
+	updated, _ = m.Update(expired)
+	m = updated.(VaultModel)
+	if _, status := m.FooterContent(); !strings.Contains(status, "synced 3m ago") {
+		t.Errorf("status = %q, want the sync age after the toast ends", status)
+	}
+}
+
+func TestGeneratorErrorIsNotCopied(t *testing.T) {
+	m := newTestVault(testItems())
+	updated, _ := m.openGenerator()
+	m = updated.(VaultModel)
+	updated, _ = m.Update(bwcmd.GenerateResult{Err: errors.New("boom"), Seq: m.genSeq})
+	m = updated.(VaultModel)
+
+	_, cmd := m.Update(keyMsg("c"))
+	for _, msg := range runMsgs(cmd) {
+		if _, ok := msg.(session.CopiedMsg); ok {
+			t.Fatal("c after a failed generate must not report a copy")
+		}
+		for _, text := range []string{"boom", "Error: boom"} {
+			if msg == tea.SetClipboard(text)() {
+				t.Fatalf("c after a failed generate copied %q", text)
+			}
+		}
+	}
+	if cmd != nil {
+		t.Error("c after a failed generate must return no command")
+	}
+	// The card shows the error in the error style. The overlay writes the
+	// styles again, so the check uses the card itself.
+	card := m.renderGeneratorCard(80)
+	if !strings.Contains(card, ui.StyleError.Render("boom")) {
+		t.Errorf("the generator card must show the error in the error style:\n%s", ansi.Strip(card))
+	}
+	if !strings.Contains(ansi.Strip(m.ViewContent(80, 24-ui.ChromeHeight)), "boom") {
+		t.Error("the generator overlay must show the error")
+	}
+}
+
+func TestRepromptCopyOpensPasswordPrompt(t *testing.T) {
+	items := []bwcmd.Item{{ID: "1", Type: bwcmd.ItemTypeLogin, Name: "Bank", Reprompt: bwcmd.RepromptPassword,
+		Login: &bwcmd.Login{Username: "me", Password: "bank-pw"}}}
+	m := newTestVault(items)
+	updated, cmd := m.Update(keyMsg("c"))
+	m = updated.(VaultModel)
+	for _, msg := range runMsgs(cmd) {
+		if _, ok := msg.(session.CopiedMsg); ok || msg == tea.SetClipboard("bank-pw")() {
+			t.Fatalf("c on a re-prompt item sent %#v before the password check", msg)
+		}
+	}
+	if !m.reprompt.open {
+		t.Fatal("c on a re-prompt item must open the password prompt")
+	}
+	plain := ansi.Strip(m.ViewContent(80, 24-ui.ChromeHeight))
+	if !strings.Contains(plain, "Master password re-prompt") || !strings.Contains(plain, "Master password") {
+		t.Errorf("the password prompt must show:\n%s", plain)
+	}
+	if hints, _ := m.FooterContent(); !hasHintKey(hints, "esc") || !hasHintDesc(hints, "cancel") {
+		t.Errorf("footer hints = %v, want esc cancel", hints)
 	}
 }

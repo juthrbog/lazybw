@@ -301,7 +301,7 @@ func TestCleanupAfterExit(t *testing.T) {
 	// SIGTERM ends the program without a call to Update.
 	var buf bytes.Buffer
 	m.cleanupAfterExit(&buf)
-	if buf.String() != ansi.SetSystemClipboard("") {
+	if buf.String() != ansi.SetSystemClipboard(session.ClearPlaceholder) {
 		t.Errorf("cleanup wrote %q, want an OSC 52 clear", buf.String())
 	}
 	if !strings.Contains(log(), "lock") {

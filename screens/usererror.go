@@ -9,33 +9,36 @@ import (
 
 // Texts for known errors.
 const (
-	unlockFailedText = "Could not unlock the vault. Check your master password and try again."
-	loginFailedText  = "Could not log in. Check your email and master password and try again."
-	timeoutText      = "bw did not answer in time. Try again."
-	notLoggedInText  = "You are not logged in. Log in again."
-	newDeviceText    = `Bitwarden asked for a new-device code, which lazybw cannot pass to bw. Run "bw login" once in a terminal, then start lazybw again.`
+	unlockFailedText  = "Could not unlock the vault. Check your master password and try again."
+	wrongPasswordText = "The master password is not correct. Try again."
+	loginFailedText   = "Could not log in. Check your email and master password and try again."
+	timeoutText       = "bw did not answer in time. Try again."
+	notLoggedInText   = "You are not logged in. Log in again."
+	newDeviceText     = `Bitwarden asked for a new-device code, which lazybw cannot pass to bw. Run "bw login" once in a terminal, then start lazybw again.`
 )
 
 // errAction is what the user tried to do when an error occurred.
 type errAction int
 
 const (
-	actionOther  errAction = iota // load, sync, generate and all other actions
-	actionUnlock                  // the unlock form
-	actionLogin                   // the login form
+	actionOther    errAction = iota // load, sync, generate and all other actions
+	actionUnlock                    // the unlock form
+	actionLogin                     // the login form
+	actionReprompt                  // the master password re-prompt
 )
 
 // userErrors maps known errors to text for each action. An empty text
 // means that the action shows the error text itself.
 var userErrors = []struct {
-	target error
-	unlock string
-	login  string
-	other  string
+	target   error
+	unlock   string
+	login    string
+	reprompt string
+	other    string
 }{
-	{bwcmd.ErrInvalidPassword, unlockFailedText, loginFailedText, ""},
-	{context.DeadlineExceeded, timeoutText, timeoutText, timeoutText},
-	{bwcmd.ErrNotLoggedIn, notLoggedInText, notLoggedInText, notLoggedInText},
+	{bwcmd.ErrInvalidPassword, unlockFailedText, loginFailedText, wrongPasswordText, ""},
+	{context.DeadlineExceeded, timeoutText, timeoutText, timeoutText, timeoutText},
+	{bwcmd.ErrNotLoggedIn, notLoggedInText, notLoggedInText, notLoggedInText, notLoggedInText},
 }
 
 // userError returns the text that the screens show for err. Known errors
@@ -56,6 +59,8 @@ func userError(err error, action errAction) string {
 			text = e.unlock
 		case actionLogin:
 			text = e.login
+		case actionReprompt:
+			text = e.reprompt
 		}
 		if text != "" {
 			return text

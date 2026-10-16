@@ -105,6 +105,34 @@ func TestEpochChangesOnUnlockAndLock(t *testing.T) {
 	}
 }
 
+func TestReplaceTokenKeepsEpoch(t *testing.T) {
+	s := State{}
+	s.SetToken("old")
+	epoch := s.Epoch
+	s.ReplaceToken("new")
+	if s.Token != "new" {
+		t.Errorf("Token = %q, want %q", s.Token, "new")
+	}
+	if s.Epoch != epoch {
+		t.Errorf("Epoch = %d, want %d: the session goes on", s.Epoch, epoch)
+	}
+}
+
+func TestReplaceTokenDoesNotUnlock(t *testing.T) {
+	s := State{}
+	s.SetToken("old")
+	s.Lock()
+	s.ReplaceToken("late")
+	if !s.IsLocked() {
+		t.Error("ReplaceToken must not open a locked session")
+	}
+	s.SetToken("tok")
+	s.ReplaceToken("")
+	if s.Token != "tok" {
+		t.Errorf("Token = %q, want %q: an empty token must not replace it", s.Token, "tok")
+	}
+}
+
 func TestIsIdleAfterSuspend(t *testing.T) {
 	// During a suspend the monotonic clock stops, but the wall clock moves
 	// on. Simulate 20 minutes of sleep right after the last key press.

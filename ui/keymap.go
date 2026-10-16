@@ -9,6 +9,7 @@ type VaultKeyMap struct {
 	CopyTOTP       key.Binding
 	CopyUsername   key.Binding
 	CopyNote       key.Binding
+	CopyCVV        key.Binding
 	OpenURL        key.Binding
 	ScrollDown     key.Binding
 	ScrollUp       key.Binding
@@ -34,7 +35,7 @@ func (k VaultKeyMap) ShortHelp() []key.Binding {
 // FullHelp implements help.KeyMap.
 func (k VaultKeyMap) FullHelp() [][]key.Binding {
 	return [][]key.Binding{
-		{k.Copy, k.CopyTOTP, k.CopyUsername, k.CopyNote, k.OpenURL},
+		{k.Copy, k.CopyTOTP, k.CopyUsername, k.CopyNote, k.CopyCVV, k.OpenURL},
 		{k.Generate, k.Sync, k.Lock},
 		{k.ScrollDown, k.ScrollUp, k.DrawerGrow, k.DrawerShrink, k.DrawerReset, k.DrawerToggle},
 		{k.ToggleGrouping, k.ToggleExpand},
@@ -50,6 +51,7 @@ func (k VaultKeyMap) HelpBindings() []HelpBinding {
 		{Key: "t", Desc: "copy TOTP", Category: "Copy"},
 		{Key: "u", Desc: "copy username", Category: "Copy"},
 		{Key: "n", Desc: "copy note", Category: "Copy"},
+		{Key: "v", Desc: "copy card security code", Category: "Copy"},
 		{Key: "o", Desc: "open URL", Category: "Copy"},
 		// Navigation
 		{Key: "j/k", Desc: "move up/down", Category: "Navigation"},
@@ -90,6 +92,10 @@ func DefaultVaultKeyMap() VaultKeyMap {
 		CopyNote: key.NewBinding(
 			key.WithKeys("n"),
 			key.WithHelp("n", "copy note"),
+		),
+		CopyCVV: key.NewBinding(
+			key.WithKeys("v"),
+			key.WithHelp("v", "copy cvv"),
 		),
 		OpenURL: key.NewBinding(
 			key.WithKeys("o"),
