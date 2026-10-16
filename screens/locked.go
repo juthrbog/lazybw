@@ -8,6 +8,10 @@ import (
 	"github.com/juthrbog/lazybw/ui"
 )
 
+// quitCmd asks the root model to quit, so that it can clear the clipboard
+// first.
+func quitCmd() tea.Msg { return QuitMsg{} }
+
 // UnlockedMsg is sent to the root model when the unlock succeeds.
 type UnlockedMsg struct {
 	Token string
@@ -88,14 +92,17 @@ func (m LockedModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case bwcmd.UnlockResult:
-		m.state = lockedInput
 		if msg.Err != nil {
+			m.state = lockedInput
 			m.err = msg.Err
 			pw := ""
 			m.password = &pw
 			m.form = buildLockedForm(m.isLogin, m.email, m.password)
 			return m, m.form.Init()
 		}
+		// Stay in lockedUnlocking until the root model switches screens.
+		// The form is still StateCompleted, so lockedInput would send the
+		// unlock again on the next message.
 		email := *m.email
 		return m, func() tea.Msg {
 			return UnlockedMsg{Token: msg.Token, Email: email}
@@ -103,7 +110,7 @@ func (m LockedModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	}
 
 	if key, ok := msg.(tea.KeyPressMsg); ok && key.String() == "ctrl+q" {
-		return m, tea.Quit
+		return m, quitCmd
 	}
 
 	if m.state == lockedUnlocking {
@@ -129,7 +136,7 @@ func (m LockedModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		return m, tea.Batch(m.spinner.Tick, bwcmd.Unlock(pw))
 	case huh.StateAborted:
-		return m, tea.Quit
+		return m, quitCmd
 	}
 
 	return m, cmd

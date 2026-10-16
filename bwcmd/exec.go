@@ -28,10 +28,12 @@ type StatusResult struct {
 	Err    error
 }
 
-// ItemsResult is returned by FetchItems.
+// ItemsResult is returned by FetchItems. Epoch is the session epoch that
+// was passed to FetchItems.
 type ItemsResult struct {
 	Items []Item
 	Err   error
+	Epoch uint64
 }
 
 // UnlockResult is returned by Unlock/Login.
@@ -40,9 +42,11 @@ type UnlockResult struct {
 	Err   error
 }
 
-// SyncResult is returned by Sync.
+// SyncResult is returned by Sync. Epoch is the session epoch that was
+// passed to Sync.
 type SyncResult struct {
-	Err error
+	Err   error
+	Epoch uint64
 }
 
 // LockResult is returned by Lock.
@@ -50,10 +54,12 @@ type LockResult struct {
 	Err error
 }
 
-// GenerateResult is returned by Generate.
+// GenerateResult is returned by Generate. Seq is the sequence number that
+// was passed to Generate.
 type GenerateResult struct {
 	Password string
 	Err      error
+	Seq      uint64
 }
 
 // execBw runs the bw CLI with the given args and session token.
@@ -120,18 +126,19 @@ func CheckStatus() tea.Cmd {
 	}
 }
 
-// FetchItems runs `bw list items` and returns an ItemsResult.
-func FetchItems(token string) tea.Cmd {
+// FetchItems runs `bw list items` and returns an ItemsResult tagged with
+// epoch, so the caller can drop a result that belongs to an ended session.
+func FetchItems(token string, epoch uint64) tea.Cmd {
 	return func() tea.Msg {
 		out, err := execBw(token, "list", "items")
 		if err != nil {
-			return ItemsResult{Err: err}
+			return ItemsResult{Err: err, Epoch: epoch}
 		}
 		items, err := ParseItems(out)
 		if err != nil {
-			return ItemsResult{Err: err}
+			return ItemsResult{Err: err, Epoch: epoch}
 		}
-		return ItemsResult{Items: items}
+		return ItemsResult{Items: items, Epoch: epoch}
 	}
 }
 
@@ -170,22 +177,23 @@ func Lock(token string) tea.Cmd {
 	}
 }
 
-// Sync runs `bw sync`.
-func Sync(token string) tea.Cmd {
+// Sync runs `bw sync` and returns a SyncResult tagged with epoch.
+func Sync(token string, epoch uint64) tea.Cmd {
 	return func() tea.Msg {
 		_, err := execBw(token, "sync")
-		return SyncResult{Err: err}
+		return SyncResult{Err: err, Epoch: epoch}
 	}
 }
 
-// Generate runs `bw generate` with the given args.
-func Generate(args ...string) tea.Cmd {
+// Generate runs `bw generate` with the given args and returns a
+// GenerateResult tagged with seq.
+func Generate(seq uint64, args ...string) tea.Cmd {
 	return func() tea.Msg {
 		fullArgs := append([]string{"generate"}, args...)
 		out, err := execBw("", fullArgs...)
 		if err != nil {
-			return GenerateResult{Err: err}
+			return GenerateResult{Err: err, Seq: seq}
 		}
-		return GenerateResult{Password: strings.TrimSpace(string(out))}
+		return GenerateResult{Password: strings.TrimSpace(string(out)), Seq: seq}
 	}
 }

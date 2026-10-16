@@ -97,6 +97,7 @@ type VaultModel struct {
 	showGenerator bool
 	genMode       string // "password" or "passphrase"
 	genPassword   string // current generated output
+	genSeq        uint64 // sequence number of the latest generate request
 	genLength     int
 	genUppercase  bool
 	genLowercase  bool
@@ -166,6 +167,12 @@ func NewVaultModel(items []bwcmd.Item, sess *session.State, width, height int) V
 func (m *VaultModel) Clear() {
 	secutil.ZeroItems(m.rawItems)
 	m.rawItems = nil
+	// The list rows hold their own copies of fields such as Notes. The
+	// check skips the zero VaultModel, which has no list to reset.
+	if len(m.list.Items()) > 0 {
+		m.list.ResetFilter()
+		m.list.SetItems(nil)
+	}
 	if m.totpParams != nil {
 		m.totpParams.Clear()
 		m.totpParams = nil
@@ -250,14 +257,17 @@ func (m VaultModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case session.CopyFieldUsername:
 			label = "Username"
 		}
+		// The root model schedules and runs the clipboard clear.
 		m.setToast(ui.GlyphCopy + " " + label + " copied — clears in 60s")
-		return m, session.ScheduleClipboardClear()
+		return m, nil
 
 	case session.ClipboardClearedMsg:
-		if time.Since(m.toastTime) >= 59*time.Second {
+		// The root model cleared the clipboard. Remove the copy toast,
+		// unless a newer toast replaced it.
+		if time.Since(m.toastTime) >= session.ClipboardClearDelay-time.Second {
 			m.toast = ""
 		}
-		return m, session.ClearClipboard()
+		return m, nil
 
 	case TOTPTickMsg:
 		m.computeTOTP()
@@ -271,18 +281,19 @@ func (m VaultModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		m.sess.LastSync = time.Now()
 		m.setToast(ui.GlyphSuccess + " Vault synced")
-		return m, bwcmd.FetchItems(m.sess.Token)
+		return m, bwcmd.FetchItems(m.sess.Token, m.sess.Epoch)
 
 	case bwcmd.ItemsResult:
 		if msg.Err != nil {
 			m.setErrorToast("Load failed: " + msg.Err.Error())
 			return m, nil
 		}
-		m.rawItems = msg.Items
-		cmd := m.rebuildListItems()
-		return m, cmd
+		return m, m.replaceItems(msg.Items)
 
 	case bwcmd.GenerateResult:
+		if msg.Seq != m.genSeq {
+			return m, nil // a newer request is in flight
+		}
 		if msg.Err != nil {
 			m.genPassword = "Error: " + msg.Err.Error()
 		} else {
@@ -360,9 +371,12 @@ func (m VaultModel) handleActionKeys(msg tea.KeyPressMsg) (tea.Model, tea.Cmd, b
 		return m, nil, true
 
 	case key.Matches(msg, m.keymap.Sync):
+		if m.syncing {
+			return m, nil, true
+		}
 		m.syncing = true
 		m.setToast("Syncing…")
-		return m, tea.Batch(m.syncSpinner.Tick, bwcmd.Sync(m.sess.Token)), true
+		return m, tea.Batch(m.syncSpinner.Tick, bwcmd.Sync(m.sess.Token, m.sess.Epoch)), true
 
 	case key.Matches(msg, m.keymap.Lock):
 		return m, func() tea.Msg { return LockMsg{} }, true
@@ -503,6 +517,68 @@ func (m *VaultModel) rebuildListItems() tea.Cmd {
 	return m.list.SetItems(buildGroupedItems(m.rawItems, m.groups))
 }
 
+// replaceItems swaps in a fresh item list after a sync. It keeps the
+// cursor on the same item when that item still exists, refreshes the
+// cached TOTP params, and scrubs the old items.
+func (m *VaultModel) replaceItems(items []bwcmd.Item) tea.Cmd {
+	selectedID := ""
+	if item := m.selectedItem(); item != nil {
+		selectedID = item.ID
+	}
+	old := m.rawItems
+	m.rawItems = items
+	// While a filter is active, the list holds flat rows (see Update).
+	var cmd tea.Cmd
+	if m.groups.enabled && m.list.FilterState() != list.Unfiltered {
+		cmd = m.list.SetItems(toListItems(m.rawItems))
+	} else {
+		cmd = m.rebuildListItems()
+	}
+	// With a filter active, SetItems clears the visible rows and returns a
+	// command that filters again. Apply its result now, so that the
+	// selection can be restored on the new rows.
+	if cmd != nil && m.list.FilterState() != list.Unfiltered {
+		msg := cmd()
+		if fm, ok := msg.(list.FilterMatchesMsg); ok {
+			m.list, _ = m.list.Update(fm)
+			cmd = nil
+		} else {
+			cmd = func() tea.Msg { return msg }
+		}
+	}
+	if selectedID == "" || !m.selectItemByID(selectedID) {
+		m.clampCursor()
+	}
+	cursorCmd := m.onCursorChange()
+	secutil.ZeroItems(old)
+	// The sync is complete. Drop its toast, so that the footer shows the
+	// time of the last sync again.
+	if strings.HasSuffix(m.toast, " Vault synced") {
+		m.toast = ""
+	}
+	return tea.Batch(cmd, cursorCmd)
+}
+
+// selectItemByID moves the cursor to the visible row of the item with the
+// given ID. It reports false when no visible row has that ID.
+func (m *VaultModel) selectItemByID(id string) bool {
+	for i, li := range m.list.VisibleItems() {
+		if v, ok := li.(VaultItem); ok && v.ID == id {
+			m.list.Select(i)
+			return true
+		}
+	}
+	return false
+}
+
+// clampCursor moves the cursor to the last visible row when the list got
+// shorter than the cursor index.
+func (m *VaultModel) clampCursor() {
+	if n := len(m.list.VisibleItems()); n > 0 && m.list.Index() >= n {
+		m.list.Select(n - 1)
+	}
+}
+
 func (m *VaultModel) clampDrawerHeight(h int) int {
 	const minDrawerHeight = 3
 	maxDrawerHeight := m.height / 2
@@ -598,8 +674,7 @@ func (m VaultModel) openGenerator() (tea.Model, tea.Cmd) {
 	m.genSeparator = "-"
 	m.genCapitalize = true
 	m.genIncludeNum = true
-	m.genPassword = "Generating…"
-	return m, bwcmd.Generate(m.genArgs()...)
+	return m, m.generate()
 }
 
 func (m VaultModel) updateGenerator(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
@@ -608,8 +683,7 @@ func (m VaultModel) updateGenerator(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		m.showGenerator = false
 		return m, nil
 	case "enter", "r":
-		m.genPassword = "Generating…"
-		return m, bwcmd.Generate(m.genArgs()...)
+		return m, m.generate()
 	case "c":
 		if m.genPassword != "" && m.genPassword != "Generating…" {
 			return m, session.CopyToClipboard(m.genPassword, session.CopyFieldPassword)
@@ -620,8 +694,7 @@ func (m VaultModel) updateGenerator(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		} else {
 			m.genMode = "password"
 		}
-		m.genPassword = "Generating…"
-		return m, bwcmd.Generate(m.genArgs()...)
+		return m, m.generate()
 	case "+", "=":
 		if m.genMode == "password" {
 			if m.genLength < 128 {
@@ -632,8 +705,7 @@ func (m VaultModel) updateGenerator(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 				m.genWords++
 			}
 		}
-		m.genPassword = "Generating…"
-		return m, bwcmd.Generate(m.genArgs()...)
+		return m, m.generate()
 	case "-":
 		if m.genMode == "password" {
 			if m.genLength > 5 {
@@ -644,26 +716,29 @@ func (m VaultModel) updateGenerator(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 				m.genWords--
 			}
 		}
-		m.genPassword = "Generating…"
-		return m, bwcmd.Generate(m.genArgs()...)
+		return m, m.generate()
 	case "1":
 		m.genUppercase = !m.genUppercase
-		m.genPassword = "Generating…"
-		return m, bwcmd.Generate(m.genArgs()...)
+		return m, m.generate()
 	case "2":
 		m.genLowercase = !m.genLowercase
-		m.genPassword = "Generating…"
-		return m, bwcmd.Generate(m.genArgs()...)
+		return m, m.generate()
 	case "3":
 		m.genNumbers = !m.genNumbers
-		m.genPassword = "Generating…"
-		return m, bwcmd.Generate(m.genArgs()...)
+		return m, m.generate()
 	case "4":
 		m.genSpecial = !m.genSpecial
-		m.genPassword = "Generating…"
-		return m, bwcmd.Generate(m.genArgs()...)
+		return m, m.generate()
 	}
 	return m, nil
+}
+
+// generate starts a new `bw generate` request. Each request gets a new
+// sequence number, so that a slow, older result cannot replace a newer one.
+func (m *VaultModel) generate() tea.Cmd {
+	m.genSeq++
+	m.genPassword = "Generating…"
+	return bwcmd.Generate(m.genSeq, m.genArgs()...)
 }
 
 func (m *VaultModel) genArgs() []string {

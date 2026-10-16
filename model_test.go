@@ -2,6 +2,7 @@ package main
 
 import (
 	"errors"
+	"fmt"
 	"os"
 	"testing"
 	"time"
@@ -12,7 +13,14 @@ import (
 
 func TestMain(m *testing.M) {
 	_ = os.Setenv("NO_COLOR", "1")
-	os.Exit(m.Run())
+	dir, err := installFakeBw()
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "install fake bw:", err)
+		os.Exit(1)
+	}
+	code := m.Run()
+	_ = os.RemoveAll(dir)
+	os.Exit(code)
 }
 
 func TestNewRootModel(t *testing.T) {

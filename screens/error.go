@@ -30,7 +30,8 @@ func (m ErrorModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				return m, func() tea.Msg { return RetryMsg{} }
 			}
 		case "q", "ctrl+c":
-			return m, tea.Quit
+			// The root model locks the vault and clears the clipboard.
+			return m, func() tea.Msg { return QuitMsg{} }
 		}
 	}
 	return m, nil
