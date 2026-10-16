@@ -31,7 +31,7 @@ func TestUnlockShowsSyncAgeFromStatus(t *testing.T) {
 	// A lock clears the time in the session. The next unlock shows it
 	// again.
 	m, _ = update(t, m, screens.LockMsg{})
-	m, _ = update(t, m, bwcmd.LockResult{})
+	m, _ = update(t, m, lockResult(m, nil))
 	if !m.sess.LastSync.IsZero() {
 		t.Error("a lock must clear the sync time in the session")
 	}

@@ -8,7 +8,6 @@ import (
 	"time"
 
 	tea "charm.land/bubbletea/v2"
-	"github.com/juthrbog/lazybw/bwcmd"
 	"github.com/juthrbog/lazybw/screens"
 	"github.com/juthrbog/lazybw/session"
 )
@@ -27,7 +26,7 @@ func TestUpdateRecordsExitCleanup(t *testing.T) {
 	if got := m.lastCleanup.lockToken; got != "tok" {
 		t.Errorf("while bw lock runs, lockToken = %q, want tok", got)
 	}
-	m, _ = update(t, m, bwcmd.LockResult{})
+	m, _ = update(t, m, lockResult(m, nil))
 	if got := m.lastCleanup.lockToken; got != "" {
 		t.Errorf("after bw lock returned, lockToken = %q, want none", got)
 	}

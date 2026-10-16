@@ -15,6 +15,13 @@ import (
 	"github.com/juthrbog/lazybw/session"
 )
 
+// The fake bw fails bw lock for the session token failLockToken, with
+// failLockMessage on stderr.
+const (
+	failLockToken   = "fail-lock-token"
+	failLockMessage = "Locking failed."
+)
+
 // fakeBwScript stands in for the Bitwarden CLI in tests. It appends its
 // arguments, and the session token when BW_SESSION is set, to $FAKE_BW_LOG
 // when that variable is set. It prints canned output for the commands the
@@ -24,7 +31,9 @@ if [ -n "$FAKE_BW_LOG" ]; then echo "$*${BW_SESSION:+ session=$BW_SESSION}" >> "
 case "$1" in
 status) echo '{"status":"locked","userEmail":"u@t.com"}' ;;
 list) echo '[{"id":"1","type":1,"name":"Gmail","login":{"username":"u","password":"p"}}]' ;;
-lock) echo 'Your vault is locked.' ;;
+lock)
+	if [ "$BW_SESSION" = "` + failLockToken + `" ]; then echo '` + failLockMessage + `' >&2; exit 1; fi
+	echo 'Your vault is locked.' ;;
 sync) echo 'Syncing complete.' ;;
 esac
 `
@@ -208,6 +217,11 @@ func fakeBwLog(t *testing.T) func() string {
 		b, _ := os.ReadFile(path) //nolint:gosec // test-owned temp file
 		return string(b)
 	}
+}
+
+// lockResult returns the result of the latest bw lock of m with err.
+func lockResult(m RootModel, err error) bwcmd.LockResult {
+	return bwcmd.LockResult{Err: err, Seq: m.lockSeq}
 }
 
 func keyPress(s string) tea.KeyPressMsg {

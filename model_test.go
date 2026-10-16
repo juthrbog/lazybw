@@ -1,12 +1,17 @@
 package main
 
 import (
+	"bytes"
+	"context"
 	"errors"
 	"fmt"
+	"io"
+	"log"
 	"os"
 	"regexp"
 	"strconv"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -20,6 +25,8 @@ import (
 )
 
 func TestMain(m *testing.M) {
+	// As in main without --debug. captureLog reads the log in a test.
+	log.SetOutput(io.Discard)
 	// The theme at the start, to find a test that does not restore it.
 	theme, dark, highlight := ui.CurrentTheme, ui.IsDark, ui.ColorHighlight
 	dir, err := installFakeBw()
@@ -443,5 +450,434 @@ func TestRootPgDnMovesOnePage(t *testing.T) {
 		if last := rows[len(rows)-1]; last != len(items)-1 {
 			t.Errorf("resize first %v: PgDn stops at a page that ends with item %d, want item %d", resizeFirst, last, len(items)-1)
 		}
+	}
+}
+
+// flatView renders m without ANSI sequences and with each run of white
+// space as one space, so that a check finds text that the view wraps.
+func flatView(m RootModel) string {
+	return strings.Join(strings.Fields(ansi.Strip(m.View().Content)), " ")
+}
+
+// errLockTimedOut is the bw lock error of the lock error tests.
+var errLockTimedOut = errors.New("bw lock timed out")
+
+func TestLockErrorShowsOnUnlockScreen(t *testing.T) {
+	m := unlockedVault(t, testItems())
+	m, _ = update(t, m, screens.LockMsg{})
+	if m.state != stateQuitting || m.lockFor != intentLock {
+		t.Fatalf("after the lock key, state = %d and lockFor = %d, want stateQuitting and intentLock", m.state, m.lockFor)
+	}
+	m, _ = update(t, m, lockResult(m, errLockTimedOut))
+	if m.state != stateLocked {
+		t.Fatalf("state = %d, want stateLocked", m.state)
+	}
+	if !m.sess.IsLocked() {
+		t.Error("lazybw must drop the session token when bw lock fails")
+	}
+	view := flatView(m)
+	for _, want := range []string{"bw lock timed out", `Run "bw lock" in a terminal.`} {
+		if !strings.Contains(view, want) {
+			t.Errorf("unlock screen = %q, want it to contain %q", view, want)
+		}
+	}
+}
+
+func TestLockWithoutErrorShowsNoLockError(t *testing.T) {
+	m := unlockedVault(t, testItems())
+	m, _ = update(t, m, screens.LockMsg{})
+	m, _ = update(t, m, lockResult(m, nil))
+	if view := flatView(m); strings.Contains(view, "bw lock failed") {
+		t.Errorf("unlock screen = %q, want no lock error", view)
+	}
+}
+
+func TestLockErrorAfterIdleLockKeepsTypedText(t *testing.T) {
+	m := unlockedVault(t, testItems())
+	m.sess.LastActive = time.Now().Add(-time.Hour)
+	m, _ = update(t, m, idleCheckMsg{})
+	if m.state != stateLocked {
+		t.Fatalf("state = %d, want stateLocked", m.state)
+	}
+	for _, r := range "abc" {
+		m, _ = update(t, m, keyPress(string(r)))
+	}
+	// The password field shows one mask character for each typed key.
+	const typed = "> *** "
+	if view := flatView(m); !strings.Contains(view, typed) {
+		t.Fatalf("unlock screen = %q, want the typed text as %q", view, typed)
+	}
+	m, cmd := update(t, m, lockResult(m, errLockTimedOut))
+	if m.state != stateLocked || cmd != nil {
+		t.Error("the lock error must not build a new unlock screen")
+	}
+	view := flatView(m)
+	if !strings.Contains(view, "bw lock timed out") {
+		t.Errorf("unlock screen = %q, want the bw lock error", view)
+	}
+	if !strings.Contains(view, typed) {
+		t.Errorf("unlock screen = %q, want the typed text as %q", view, typed)
+	}
+	if !m.sess.IsLocked() {
+		t.Error("the session token must stay dropped")
+	}
+}
+
+func TestLockErrorOnQuitIsKeptForMain(t *testing.T) {
+	m := unlockedVault(t, testItems())
+	m, _ = update(t, m, screens.QuitMsg{})
+	m, cmd := update(t, m, lockResult(m, errLockTimedOut))
+	if !hasMsgType[tea.QuitMsg](collectMsgs(cmd)) {
+		t.Error("a failed bw lock on quit must still quit")
+	}
+	if !strings.Contains(m.quitError, "bw lock timed out") {
+		t.Errorf("quitError = %q, want the bw lock error", m.quitError)
+	}
+	if !m.sess.IsLocked() {
+		t.Error("lazybw must drop the session token when bw lock fails")
+	}
+	var out bytes.Buffer
+	printLockErrors(&out, m, nil)
+	if !strings.Contains(out.String(), "bw lock timed out") {
+		t.Errorf("printed %q, want the bw lock error", out.String())
+	}
+}
+
+func TestQuitWithoutLockErrorPrintsNothing(t *testing.T) {
+	m := unlockedVault(t, testItems())
+	m, _ = update(t, m, screens.QuitMsg{})
+	m, _ = update(t, m, lockResult(m, nil))
+	var out bytes.Buffer
+	printLockErrors(&out, m, nil)
+	printLockErrors(&out, nil, nil)
+	if out.Len() != 0 {
+		t.Errorf("printed %q, want nothing", out.String())
+	}
+}
+
+// idleLockThenUnlock idle-locks the session "tok" of an open vault, and
+// then unlocks and opens the session "tokB" before the bw lock of "tok"
+// returns. It returns the model and the Seq of that first lock.
+func idleLockThenUnlock(t *testing.T) (RootModel, uint64) {
+	t.Helper()
+	m := unlockedVault(t, testItems())
+	m.sess.LastActive = time.Now().Add(-time.Hour)
+	m, _ = update(t, m, idleCheckMsg{})
+	first := m.lockSeq
+	m, _ = update(t, m, screens.UnlockedMsg{Token: "tokB"})
+	m, _ = update(t, m, bwcmd.ItemsResult{Items: testItems(), Epoch: m.sess.Epoch})
+	if m.state != stateVault {
+		t.Fatalf("state = %d, want stateVault", m.state)
+	}
+	return m, first
+}
+
+func TestEarlierLockResultIsDropped(t *testing.T) {
+	m, first := idleLockThenUnlock(t)
+	m, _ = update(t, m, screens.LockMsg{})
+	m, cmd := update(t, m, bwcmd.LockResult{Err: errLockTimedOut, Seq: first})
+	if m.state != stateQuitting || cmd != nil {
+		t.Errorf("state = %d, want stateQuitting and no command after the result of the idle lock", m.state)
+	}
+	if m.pendingLock != "tokB" || m.lastCleanup.lockToken != "tokB" {
+		t.Errorf("pendingLock = %q, cleanup token = %q, want tokB", m.pendingLock, m.lastCleanup.lockToken)
+	}
+	m, _ = update(t, m, lockResult(m, nil))
+	if m.state != stateLocked {
+		t.Fatalf("state = %d, want stateLocked", m.state)
+	}
+	if view := flatView(m); strings.Contains(view, "bw lock failed") {
+		t.Errorf("unlock screen = %q, want no error of the earlier lock", view)
+	}
+}
+
+func TestEarlierLockResultDoesNotEndQuit(t *testing.T) {
+	m, first := idleLockThenUnlock(t)
+	m, _ = update(t, m, screens.QuitMsg{})
+	m, cmd := update(t, m, bwcmd.LockResult{Err: errLockTimedOut, Seq: first})
+	if hasMsgType[tea.QuitMsg](collectMsgs(cmd)) {
+		t.Error("the result of the idle lock must not end the quit")
+	}
+	if m.quitError != "" {
+		t.Errorf("quitError = %q, want no error of the earlier lock", m.quitError)
+	}
+	if m.pendingLock != "tokB" || m.lastCleanup.lockToken != "tokB" {
+		t.Errorf("pendingLock = %q, cleanup token = %q, want tokB", m.pendingLock, m.lastCleanup.lockToken)
+	}
+}
+
+func TestLockErrorAfterNewUnlockGoesToLog(t *testing.T) {
+	m := unlockedVault(t, testItems())
+	m.sess.LastActive = time.Now().Add(-time.Hour)
+	m, _ = update(t, m, idleCheckMsg{})
+	m, _ = update(t, m, screens.UnlockedMsg{Token: "tokB"})
+	m, _ = update(t, m, bwcmd.ItemsResult{Items: testItems(), Epoch: m.sess.Epoch})
+	buf := captureLog(t)
+	m, _ = update(t, m, lockResult(m, errLockTimedOut))
+	if m.state != stateVault || m.sess.Token != "tokB" {
+		t.Errorf("state = %d, token = %q, want the open vault of tokB", m.state, m.sess.Token)
+	}
+	if !strings.Contains(buf.String(), "bw lock failed") {
+		t.Errorf("log = %q, want the bw lock failure", buf.String())
+	}
+}
+
+// secondFetchFailure returns a root model on the error screen after a
+// retry of the item load failed too. That failure starts bw lock.
+func secondFetchFailure(t *testing.T) RootModel {
+	t.Helper()
+	m := errorAfterUnlock(t)
+	m, _ = update(t, m, screens.RetryMsg{})
+	m, _ = update(t, m, bwcmd.ItemsResult{Err: errors.New("Vault is locked."), Epoch: m.sess.Epoch})
+	if m.state != stateError || m.pendingLock != "tok" {
+		t.Fatalf("state = %d, pendingLock = %q, want stateError and a running bw lock", m.state, m.pendingLock)
+	}
+	return m
+}
+
+func TestLockErrorFromErrorScreenShowsOnNextUnlockScreen(t *testing.T) {
+	m := secondFetchFailure(t)
+	m, _ = update(t, m, lockResult(m, errLockTimedOut))
+	if m.state != stateError {
+		t.Fatalf("state = %d, want stateError", m.state)
+	}
+	m, _ = update(t, m, screens.RetryMsg{})
+	m, _ = update(t, m, bwcmd.StatusResult{Status: bwcmd.VaultStatus{Status: "locked", UserEmail: "u@t.com"}})
+	if m.state != stateLocked {
+		t.Fatalf("state = %d, want stateLocked", m.state)
+	}
+	view := flatView(m)
+	for _, want := range []string{"bw lock timed out", `Run "bw lock" in a terminal.`} {
+		if !strings.Contains(view, want) {
+			t.Errorf("unlock screen = %q, want it to contain %q", view, want)
+		}
+	}
+	if m.lockErr != "" {
+		t.Error("the unlock screen must take the kept lock error")
+	}
+}
+
+func TestLockErrorFromErrorScreenIsPrintedOnQuit(t *testing.T) {
+	m := secondFetchFailure(t)
+	m, _ = update(t, m, lockResult(m, errLockTimedOut))
+	m, cmd := update(t, m, screens.QuitMsg{})
+	if !hasMsgType[tea.QuitMsg](collectMsgs(cmd)) {
+		t.Fatal("quit from the error screen must quit")
+	}
+	var out bytes.Buffer
+	printLockErrors(&out, m, nil)
+	if !strings.Contains(out.String(), "bw lock timed out") {
+		t.Errorf("printed %q, want the bw lock error", out.String())
+	}
+}
+
+func TestLockErrorWhenNotLoggedInShowsNothing(t *testing.T) {
+	m := unlockedVault(t, testItems())
+	m, _ = update(t, m, screens.LockMsg{})
+	notLoggedIn := &bwcmd.Error{Msg: "You are not logged in.", Err: errors.New("exit status 1")}
+	m, _ = update(t, m, lockResult(m, notLoggedIn))
+	if view := flatView(m); m.state != stateLocked || strings.Contains(view, "bw lock failed") {
+		t.Errorf("state = %d, view = %q, want the unlock screen with no lock error", m.state, view)
+	}
+}
+
+func TestLockErrorOnLoginScreenShowsNothing(t *testing.T) {
+	m := secondFetchFailure(t)
+	m, _ = update(t, m, screens.RetryMsg{})
+	m, _ = update(t, m, bwcmd.StatusResult{Status: bwcmd.VaultStatus{Status: "unauthenticated"}})
+	m, _ = update(t, m, lockResult(m, errLockTimedOut))
+	if view := flatView(m); m.state != stateLogin || strings.Contains(view, "bw lock failed") {
+		t.Errorf("state = %d, view = %q, want the login screen with no lock error", m.state, view)
+	}
+	if m.lockErr != "" {
+		t.Errorf("lockErr = %q, want no kept error when bw has no logged-in account", m.lockErr)
+	}
+}
+
+// TestLockErrorStepFitsSmallTerminal fails an unlock after a failed bw lock
+// on a small terminal. The step of the lock error must stay visible.
+func TestLockErrorStepFitsSmallTerminal(t *testing.T) {
+	timeout := fmt.Errorf("bw lock timed out after 15s: %w", context.DeadlineExceeded)
+	for _, size := range [][2]int{{80, 12}, {40, 12}} {
+		for _, lockErr := range []error{errLockTimedOut, timeout} {
+			m := unlockedVault(t, testItems())
+			m, _ = update(t, m, tea.WindowSizeMsg{Width: size[0], Height: size[1]})
+			m, _ = update(t, m, screens.LockMsg{})
+			m, _ = update(t, m, lockResult(m, lockErr))
+			m, _ = update(t, m, bwcmd.UnlockResult{Err: bwcmd.ErrInvalidPassword})
+			view := flatView(m)
+			for _, want := range []string{"Master password", `Run "bw lock" in a terminal.`} {
+				if !strings.Contains(view, want) {
+					t.Errorf("%dx%d, %v: view = %q, want it to contain %q", size[0], size[1], lockErr, view, want)
+				}
+			}
+		}
+	}
+}
+
+func TestLogReasonLeavesOutBwText(t *testing.T) {
+	bwErr := &bwcmd.Error{Msg: "a line with secret-4c1d", Err: errors.New("exit status 1")}
+	for _, tc := range []struct {
+		err  error
+		want string
+	}{
+		{fmt.Errorf("bw lock timed out after 15s: %w", context.DeadlineExceeded), "timed out"},
+		{&bwcmd.Error{Msg: "You are not logged in. secret-4c1d"}, "not logged in"},
+		{bwErr, "bw error (exit status 1)"},
+		{&bwcmd.Error{Msg: "secret-4c1d"}, "bw error"},
+		{errors.New("parse bw list items output: invalid character 's' in secret-4c1d"), "unexpected output from bw"},
+	} {
+		if got := logReason(tc.err); got != tc.want {
+			t.Errorf("logReason(%q) = %q, want %q", tc.err, got, tc.want)
+		}
+	}
+
+	// The root logs the reason, not the bw message.
+	buf := captureLog(t)
+	m := unlockedVault(t, testItems())
+	m, _ = update(t, m, bwcmd.SyncResult{Err: bwErr, Epoch: m.sess.Epoch})
+	m, _ = update(t, m, screens.LockMsg{})
+	_, _ = update(t, m, lockResult(m, bwErr))
+	if strings.Contains(buf.String(), "secret-4c1d") {
+		t.Errorf("log = %q, want no text of the bw message", buf.String())
+	}
+	for _, want := range []string{"bw sync failed: bw error (exit status 1)", "bw lock failed: bw error (exit status 1)"} {
+		if !strings.Contains(buf.String(), want) {
+			t.Errorf("log = %q, want it to contain %q", buf.String(), want)
+		}
+	}
+}
+
+// syncBuffer is a buffer that is safe for use from more than one
+// goroutine. A command of an earlier test can still run and log.
+type syncBuffer struct {
+	mu sync.Mutex
+	b  bytes.Buffer
+}
+
+func (s *syncBuffer) Write(p []byte) (int, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.b.Write(p)
+}
+
+func (s *syncBuffer) String() string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.b.String()
+}
+
+// captureLog sends the log output to a buffer for the test, with no time
+// stamps.
+func captureLog(t *testing.T) *syncBuffer {
+	t.Helper()
+	buf := &syncBuffer{}
+	out, flags := log.Writer(), log.Flags()
+	log.SetOutput(buf)
+	log.SetFlags(0)
+	t.Cleanup(func() {
+		log.SetOutput(out)
+		log.SetFlags(flags)
+	})
+	return buf
+}
+
+// TestDebugLogHasNoSecrets drives an unlock, the item load and a lock
+// through RootModel.Update. The log must show each step and no secret.
+func TestDebugLogHasNoSecrets(t *testing.T) {
+	const (
+		token    = "session-token-5f1c"
+		password = "master-password-9e2a"
+		email    = "person-7b3d@example.org"
+	)
+	items := []bwcmd.Item{
+		{ID: "1", Type: bwcmd.ItemTypeLogin, Name: "item-name-login", Login: &bwcmd.Login{
+			Username: "field-username", Password: "field-password", Totp: "JBSWY3DPEHPK3PXP",
+			URIs: []bwcmd.URI{{URI: "https://field-uri.example"}},
+		}},
+		{ID: "2", Type: bwcmd.ItemTypeCard, Name: "item-name-card", Card: &bwcmd.Card{
+			CardholderName: "field-holder", Number: "4111111111111111", Code: "9431",
+		}},
+		{ID: "3", Type: bwcmd.ItemTypeSecureNote, Name: "item-name-note", Notes: "field-note-body"},
+	}
+	secrets := []string{
+		token, password, email,
+		"item-name-login", "field-username", "field-password", "JBSWY3DPEHPK3PXP", "field-uri",
+		"item-name-card", "field-holder", "4111111111111111", "9431",
+		"item-name-note", "field-note-body",
+	}
+
+	buf := captureLog(t)
+	m := NewRootModel(15 * time.Minute)
+	m, _ = update(t, m, tea.WindowSizeMsg{Width: 80, Height: 24})
+	m, _ = update(t, m, bwcmd.StatusResult{Status: bwcmd.VaultStatus{Status: "locked", UserEmail: email}})
+
+	// The unlock: type the master password, and let bw unlock return the
+	// token. The unlock screen then sends UnlockedMsg.
+	start := len(buf.String())
+	for _, r := range password {
+		m, _ = update(t, m, keyPress(string(r)))
+	}
+	m, cmd := update(t, m, bwcmd.UnlockResult{Token: token})
+	unlocked, ok := waitForMsg[screens.UnlockedMsg](cmd, time.Second)
+	if !ok {
+		t.Fatal("the unlock screen must send UnlockedMsg after bw unlock returns a token")
+	}
+	m, _ = update(t, m, unlocked)
+	m, _ = update(t, m, bwcmd.ItemsResult{Items: items, Epoch: m.sess.Epoch})
+	if m.state != stateVault {
+		t.Fatalf("state = %d, want stateVault", m.state)
+	}
+	unlockLog := buf.String()[start:]
+	if strings.TrimSpace(unlockLog) == "" {
+		t.Error("the unlock and the item load must write to the log")
+	}
+	if !strings.Contains(unlockLog, "loaded 3 items") {
+		t.Errorf("log of the unlock = %q, want the item count", unlockLog)
+	}
+
+	// The lock: the lock key, and the result of the fake bw lock.
+	start = len(buf.String())
+	m, cmd = update(t, m, screens.LockMsg{})
+	res, ok := waitForMsg[bwcmd.LockResult](cmd, 5*time.Second)
+	if !ok {
+		t.Fatal("the lock key must run bw lock")
+	}
+	m, _ = update(t, m, res)
+	if m.state != stateLocked {
+		t.Fatalf("state = %d, want stateLocked", m.state)
+	}
+	if lockLog := buf.String()[start:]; strings.TrimSpace(lockLog) == "" {
+		t.Error("the lock must write to the log")
+	}
+
+	for line := range strings.SplitSeq(buf.String(), "\n") {
+		for _, s := range secrets {
+			if strings.Contains(line, s) {
+				t.Errorf("log line %q contains the secret %q", line, s)
+			}
+		}
+	}
+}
+
+// TestFailedBwLockShowsOnUnlockScreen runs the fake bw lock, which fails
+// for failLockToken, and checks that the unlock screen shows its message.
+func TestFailedBwLockShowsOnUnlockScreen(t *testing.T) {
+	m := NewRootModel(15 * time.Minute)
+	m.width, m.height = 80, 24
+	m, _ = update(t, m, screens.UnlockedMsg{Token: failLockToken, Email: "u@t.com"})
+	m, _ = update(t, m, bwcmd.ItemsResult{Items: testItems(), Epoch: m.sess.Epoch})
+	m, cmd := update(t, m, screens.LockMsg{})
+	res, ok := waitForMsg[bwcmd.LockResult](cmd, 5*time.Second)
+	if !ok {
+		t.Fatal("the lock key must run bw lock")
+	}
+	if res.Err == nil {
+		t.Fatal("the fake bw lock must fail for failLockToken")
+	}
+	m, _ = update(t, m, res)
+	want := "bw lock failed: " + strings.TrimSuffix(failLockMessage, ".")
+	if view := flatView(m); m.state != stateLocked || !strings.Contains(view, want) {
+		t.Errorf("state = %d, view = %q, want the unlock screen with %q", m.state, view, want)
 	}
 }

@@ -328,3 +328,29 @@ func TestLockedSpinnerFollowsTheme(t *testing.T) {
 		t.Errorf("spinner color = %v, want the dracula highlight %v", got, ui.ColorHighlight)
 	}
 }
+
+func TestWithLockErrorKeepsTypedText(t *testing.T) {
+	m := NewLockedModel(false)
+	m.form.Init()
+	m = typeText(m, "pw")
+	const lockErr = "bw lock failed: bw did not answer in time."
+	m = m.WithLockError(lockErr)
+	if *m.password != "pw" {
+		t.Errorf("password field = %q, want the typed text to stay", *m.password)
+	}
+	flat := func() string {
+		return strings.Join(strings.Fields(ansi.Strip(m.ViewContent(80, 24))), " ")
+	}
+	if view := flat(); !strings.Contains(view, lockErr) {
+		t.Errorf("view = %q, want the lock error", view)
+	}
+	// A failed unlock shows its own error, and the lock error stays.
+	updated, _ := m.Update(bwcmd.UnlockResult{Err: bwcmd.ErrInvalidPassword})
+	m = updated.(LockedModel)
+	view := flat()
+	for _, want := range []string{unlockFailedText, lockErr} {
+		if !strings.Contains(view, want) {
+			t.Errorf("view after a failed unlock = %q, want it to contain %q", view, want)
+		}
+	}
+}

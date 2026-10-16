@@ -62,9 +62,11 @@ type SyncResult struct {
 	Epoch uint64
 }
 
-// LockResult is returned by Lock.
+// LockResult is returned by Lock. Seq is the sequence number that was
+// passed to Lock.
 type LockResult struct {
 	Err error
+	Seq uint64
 }
 
 // GenerateResult is returned by Generate. Seq is the sequence number that
@@ -332,11 +334,12 @@ func loginArgs(email string, step TwoStep) []string {
 	return append(args, "--", email)
 }
 
-// Lock runs `bw lock`.
-func Lock(token string) tea.Cmd {
+// Lock runs `bw lock` and returns a LockResult tagged with seq, so the
+// caller can tell the result of an earlier lock from the current one.
+func Lock(token string, seq uint64) tea.Cmd {
 	return func() tea.Msg {
 		_, err := execBw(shortTimeout, token, "", "lock")
-		return LockResult{Err: err}
+		return LockResult{Err: err, Seq: seq}
 	}
 }
 

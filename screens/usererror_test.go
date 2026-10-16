@@ -58,3 +58,26 @@ func TestErrorScreenShowsTimeoutText(t *testing.T) {
 		t.Errorf("error screen = %q, want the timeout text", got)
 	}
 }
+
+func TestLockErrorText(t *testing.T) {
+	timeout := fmt.Errorf("bw lock timed out after 15s: %w", context.DeadlineExceeded)
+	tests := []struct {
+		name string
+		err  error
+		want string
+	}{
+		{"no error", nil, ""},
+		{"not logged in", &bwcmd.Error{Msg: "You are not logged in."}, ""},
+		{"timeout", timeout, fmt.Sprintf(lockFailedText, lockTimeoutReason)},
+		{"bw message", &bwcmd.Error{Msg: "Something went wrong. "}, fmt.Sprintf(lockFailedText, "Something went wrong")},
+		{"other error", errors.New("exit status 1"), fmt.Sprintf(lockFailedText, "exit status 1")},
+	}
+	for _, tt := range tests {
+		if got := LockErrorText(tt.err); got != tt.want {
+			t.Errorf("%s: LockErrorText = %q, want %q", tt.name, got, tt.want)
+		}
+	}
+	if got := LockErrorText(timeout); !strings.Contains(got, `Run "bw lock" in a terminal.`) {
+		t.Errorf("LockErrorText = %q, want the step that locks bw", got)
+	}
+}

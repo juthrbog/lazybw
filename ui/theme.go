@@ -81,7 +81,8 @@ var (
 // that was built before the background was known also matches it.
 var HuhTheme huh.Theme
 
-// Glyph variables — re-rendered by initStyles after theme change.
+// The glyphs in the colors of the theme. initStyles renders them again
+// after a theme change.
 var (
 	GlyphLogin    string
 	GlyphCard     string
@@ -258,15 +259,16 @@ func initStyles() {
 		Background(ColorHighlight).
 		Padding(0, 1)
 
-	// Re-render glyphs with new colors.
-	GlyphLogin = lipgloss.NewStyle().Foreground(ColorHighlight).Render("󰌾")
-	GlyphCard = lipgloss.NewStyle().Foreground(ColorGreen).Render("󰁯")
-	GlyphNote = lipgloss.NewStyle().Foreground(ColorYellow).Render("󱙒")
-	GlyphIdentity = lipgloss.NewStyle().Foreground(ColorHighlight).Render("󰀄")
-	GlyphSSHKey = lipgloss.NewStyle().Foreground(ColorGreen).Render("󰣀")
+	// Render the glyphs in the new colors. The comments give the Nerd Font
+	// names of the code points. docs/GLYPHS.md lists them.
+	GlyphLogin = lipgloss.NewStyle().Foreground(ColorHighlight).Render("\U000F033E")    // nf-md-lock
+	GlyphCard = lipgloss.NewStyle().Foreground(ColorGreen).Render("\U000F0FEF")         // nf-md-credit_card
+	GlyphNote = lipgloss.NewStyle().Foreground(ColorYellow).Render("\U000F039E")        // nf-md-note_text
+	GlyphIdentity = lipgloss.NewStyle().Foreground(ColorHighlight).Render("\U000F0004") // nf-md-account
+	GlyphSSHKey = lipgloss.NewStyle().Foreground(ColorGreen).Render("\U000F08C0")       // nf-md-ssh
 	GlyphSuccess = lipgloss.NewStyle().Foreground(ColorGreen).Render("✓")
 	GlyphError = lipgloss.NewStyle().Foreground(ColorRed).Render("✗")
-	GlyphCopy = lipgloss.NewStyle().Foreground(ColorGreen).Render("󰆏")
+	GlyphCopy = lipgloss.NewStyle().Foreground(ColorGreen).Render("\U000F018F") // nf-md-content_copy
 }
 
 // ListStyles returns the styles of the vault list and its filter input for
