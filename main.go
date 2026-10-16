@@ -59,9 +59,8 @@ func main() {
 		}
 	}
 
-	p := tea.NewProgram(
-		NewRootModel(*idleTimeout),
-	)
+	root := NewRootModel(*idleTimeout)
+	p := tea.NewProgram(root)
 
 	// Bubble Tea turns SIGTERM into a quit, but it does not handle SIGHUP,
 	// which the system sends when the terminal closes. Quit on SIGHUP too,
@@ -81,9 +80,7 @@ func main() {
 	// inherits the ignored signals, so a closed terminal cannot stop the
 	// `bw lock` that the cleanup runs.
 	signal.Ignore(syscall.SIGHUP, syscall.SIGTERM, os.Interrupt)
-	if m, ok := final.(RootModel); ok {
-		m.cleanupAfterExit(os.Stdout)
-	}
+	cleanupFor(final, root.lastCleanup).run(os.Stdout)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
