@@ -4,38 +4,30 @@ on:
   push:
     branches: [main]
   pull_request:
+  schedule:
+    # Every Monday at 06:00 UTC, so new advisories show up without a push.
+    - cron: "0 6 * * 1"
+  workflow_dispatch:
 
 permissions:
   contents: read
-  security-events: write
 
+# golangci-lint (with gosec) runs in ci.yml only.
 jobs:
-  golangci-lint:
-    name: Lint & SAST
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v6
-
-      - uses: actions/setup-go@v6
-        with:
-          go-version-file: go.mod
-
-      - uses: golangci/golangci-lint-action@1e7e51e771db61008b38414a730f564565cf7c20 # v9.2.0
-        with:
-          version: latest
-
   govulncheck:
     name: Go Vulnerability Check
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+        with:
+          persist-credentials: false
 
-      - uses: actions/setup-go@v6
+      - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6.5.0
         with:
           go-version-file: go.mod
 
       - name: Install govulncheck
-        run: go install golang.org/x/vuln/cmd/govulncheck@latest
+        run: go install golang.org/x/vuln/cmd/govulncheck@v1.9.0
 
       - name: Run govulncheck
         run: govulncheck ./...
@@ -43,18 +35,29 @@ jobs:
   trivy:
     name: SCA & Secrets
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      security-events: write
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+        with:
+          persist-credentials: false
 
-      # Pinned to verified post-incident SHA due to March 2026 supply chain attack
-      - uses: aquasecurity/trivy-action@57a97c7e7821a5776cebc9bb87c984fa69cba8f1 # v0.35.0
+      # Pinned by SHA because of the March 2026 tag hijack of this action.
+      # exit-code fails the job on a CRITICAL or HIGH finding.
+      # limit-severities-for-sarif keeps the severity filter for SARIF output.
+      # Without it the action drops the filter, and exit-code also fails on LOW findings.
+      - uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         with:
           scan-type: fs
           severity: CRITICAL,HIGH
+          exit-code: "1"
+          limit-severities-for-sarif: true
           format: sarif
           output: trivy-results.sarif
 
-      - uses: github/codeql-action/upload-sarif@v4
+      # always() uploads the SARIF report also when trivy fails the job.
+      - uses: github/codeql-action/upload-sarif@6f2ac81f5cd81fe351a197ba0b00d91d03cd2aee # v4.39.0
         if: always()
         with:
           sarif_file: trivy-results.sarif
@@ -63,9 +66,10 @@ jobs:
     name: Secret Detection
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
         with:
           fetch-depth: 0
+          persist-credentials: false
 
       - uses: gitleaks/gitleaks-action@ff98106e4c7b2bc287b24eaf42907196329070c7 # v2.3.9
         env:
