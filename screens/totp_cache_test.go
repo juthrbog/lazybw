@@ -176,9 +176,9 @@ func TestTOTPAfterRegroup(t *testing.T) {
 		{ID: "z", Type: bwcmd.ItemTypeLogin, Name: "Zeta", Login: &bwcmd.Login{Totp: zetaKey}},
 	}
 
-	// Row 1 is GitHub (Home). After ctrl+g, row 1 is Zeta.
+	// Row 2 is Zeta. After ctrl+g, Zeta is on row 1 and stays selected.
 	m := newTestVault(items)
-	m.list.Select(1)
+	m.list.Select(2)
 	m.syncSelection()
 	m = press(t, m, tea.KeyPressMsg{Code: 'g', Mod: tea.ModCtrl})
 	if item := m.selectedItem(); item == nil || item.ID != "z" {
@@ -189,13 +189,17 @@ func TestTOTPAfterRegroup(t *testing.T) {
 		t.Errorf("t copied the code of %q, want Zeta", got)
 	}
 
-	// Row 2 is Zeta. After ctrl+g, no row 2 is left, so no code shows.
+	// Row 1 is GitHub (Home). After ctrl+g, its collapsed group header is
+	// selected, and a header shows no code.
 	m = newTestVault(items)
-	m.list.Select(2)
+	m.list.Select(1)
 	m.syncSelection()
 	m = press(t, m, tea.KeyPressMsg{Code: 'g', Mod: tea.ModCtrl})
-	if m.selectedItem() == nil && m.totpCode != "" {
-		t.Errorf("after ctrl+g with no selection, code = %q, want none", m.totpCode)
+	if _, ok := m.list.SelectedItem().(GroupHeaderItem); !ok {
+		t.Fatalf("selected = %+v, want the github group header", m.list.SelectedItem())
+	}
+	if m.totpCode != "" || m.totpParams != nil {
+		t.Errorf("after ctrl+g on a group header, code = %q, want none", m.totpCode)
 	}
 }
 

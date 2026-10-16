@@ -4,6 +4,8 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"regexp"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -348,5 +350,92 @@ func TestRootRetryMsg(t *testing.T) {
 
 	if m.state != stateLoading {
 		t.Errorf("state = %d, want stateLoading (%d)", m.state, stateLoading)
+	}
+}
+
+func TestRootViewHasNoMouseMode(t *testing.T) {
+	states := map[string]appState{
+		"loading": stateLoading, "login": stateLogin, "locked": stateLocked,
+		"vault": stateVault, "error": stateError, "quitting": stateQuitting,
+	}
+	for name, state := range states {
+		if mode := rootIn(t, state, 80, 24).View().MouseMode; mode != tea.MouseModeNone {
+			t.Errorf("%s: MouseMode = %v, want MouseModeNone", name, mode)
+		}
+	}
+}
+
+// numberedItems returns n logins named "Item 00", "Item 01" and so on.
+func numberedItems(n int) []bwcmd.Item {
+	items := make([]bwcmd.Item, n)
+	for i := range items {
+		items[i] = bwcmd.Item{ID: strconv.Itoa(i), Type: bwcmd.ItemTypeLogin, Name: fmt.Sprintf("Item %02d", i)}
+	}
+	return items
+}
+
+var itemNumber = regexp.MustCompile(`Item (\d\d)`)
+
+// listRows returns the numbers of the items that the list of the frame
+// shows, from the top. The drawer below the list starts with a line that
+// names no item.
+func listRows(t *testing.T, m RootModel) []int {
+	t.Helper()
+	var rows []int
+	for _, line := range viewLines(m)[2:] {
+		match := itemNumber.FindStringSubmatch(ansi.Strip(line))
+		if match == nil {
+			if len(rows) > 0 {
+				break
+			}
+			continue
+		}
+		n, _ := strconv.Atoi(match[1])
+		rows = append(rows, n)
+	}
+	return rows
+}
+
+// cursorRow returns the list row of the frame that shows the cursor.
+func cursorRow(m RootModel) string {
+	for _, line := range viewLines(m) {
+		if plain := ansi.Strip(line); strings.HasPrefix(plain, "▶ ") {
+			return plain
+		}
+	}
+	return ""
+}
+
+func TestRootPgDnMovesOnePage(t *testing.T) {
+	items := numberedItems(60)
+	for _, resizeFirst := range []bool{true, false} {
+		m := NewRootModel(15 * time.Minute)
+		if resizeFirst {
+			m, _ = update(t, m, tea.WindowSizeMsg{Width: 80, Height: 24})
+		}
+		m, _ = update(t, m, screens.UnlockedMsg{Token: "tok", Email: "u@t.com"})
+		m, _ = update(t, m, bwcmd.ItemsResult{Items: items, Epoch: m.sess.Epoch})
+		if !resizeFirst {
+			m, _ = update(t, m, tea.WindowSizeMsg{Width: 80, Height: 24})
+		}
+		rows := listRows(t, m)
+		page := len(rows)
+		if page < 2 || rows[0] != 0 {
+			t.Fatalf("resize first %v: rows = %v, want a page from item 0", resizeFirst, rows)
+		}
+		for first := page; first < len(items); first += page {
+			m, _ = update(t, m, tea.KeyPressMsg{Code: tea.KeyPgDown})
+			rows = listRows(t, m)
+			if len(rows) == 0 || rows[0] != first {
+				t.Fatalf("resize first %v: after PgDn, rows = %v, want a page from item %d", resizeFirst, rows, first)
+			}
+			// The cursor stays on the first row of the page.
+			if got := cursorRow(m); !strings.Contains(got, fmt.Sprintf("Item %02d", first)) {
+				t.Errorf("resize first %v: after PgDn, cursor row = %q, want item %d", resizeFirst, got, first)
+			}
+		}
+		if last := rows[len(rows)-1]; last != len(items)-1 {
+			t.Errorf("resize first %v: PgDn stops at a page that ends with item %d, want item %d", resizeFirst, last, len(items)-1)
+		}
 	}
 }

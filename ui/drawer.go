@@ -27,6 +27,16 @@ type DrawerProps struct {
 	// for the item. Until then, an item with master password re-prompt
 	// shows no TOTP code and no note text.
 	RepromptVerified bool
+	// Group is the selected group header when no item is selected. The
+	// drawer then shows a summary of the group.
+	Group *GroupSummary
+}
+
+// GroupSummary describes a group header of the vault list for the drawer.
+type GroupSummary struct {
+	Name     string
+	Count    int
+	Expanded bool
 }
 
 // Drawer texts for an item with master password re-prompt.
@@ -50,6 +60,9 @@ func RenderDrawer(props DrawerProps) string {
 	}
 
 	if props.Item == nil {
+		if props.Group != nil {
+			return renderGroupSummary(*props.Group, props, h)
+		}
 		return renderNoSelection(props.Width, h)
 	}
 
@@ -154,6 +167,29 @@ func renderNoSelection(width, height int) string {
 		lines = append(lines, "")
 	}
 	return strings.Join(lines, "\n")
+}
+
+// renderGroupSummary renders the drawer for a selected group header: the
+// group name, the number of items, and the key that expands or collapses
+// the group. Inline, the drawer is exactly height rows.
+func renderGroupSummary(g GroupSummary, props DrawerProps, height int) string {
+	action := "expand"
+	if g.Expanded {
+		action = "collapse"
+	}
+	width := props.Width
+	lines := []string{
+		"  " + StyleTitle.Render(Truncate(SanitizeLine(g.Name), width-2)),
+		StyleFaint.Render(Truncate(fmt.Sprintf("  %d items · enter to %s", g.Count, action), width)),
+	}
+	if props.AutoHeight {
+		return strings.Join(lines, "\n")
+	}
+	lines = append([]string{RenderGradientLine(width)}, lines...)
+	for len(lines) < height {
+		lines = append(lines, "")
+	}
+	return strings.Join(lines[:height], "\n")
 }
 
 // renderHeaderCard renders the item name on the left and the type badge on

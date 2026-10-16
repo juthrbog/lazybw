@@ -104,10 +104,16 @@ func (m RootModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case tea.BackgroundColorMsg:
+		// The huh forms do not get this message. ui.HuhTheme reads
+		// ui.IsDark, so the forms follow the background anyway.
 		ui.IsDark = msg.IsDark()
 		ui.ApplyTheme(ui.CurrentTheme)
+		return m.Update(screens.ThemeChangedMsg{})
+
+	case screens.ThemeChangedMsg:
+		// The theme or the background changed. Restyle the spinner here,
+		// and let the active screen restyle its own parts below.
 		m.spinner.Style = m.spinner.Style.Foreground(ui.ColorHighlight)
-		return m, nil
 
 	case bwcmd.StatusResult:
 		if msg.Err != nil {
@@ -459,7 +465,10 @@ func (m RootModel) View() tea.View {
 	frame = append(frame, footer)
 	v := tea.NewView(lipgloss.JoinVertical(lipgloss.Left, frame...))
 	v.AltScreen = true
-	v.MouseMode = tea.MouseModeCellMotion
+	// No mouse mode: lazybw handles no mouse events. Mouse capture would
+	// stop click and drag from selecting text, and it would stop the
+	// terminals that send arrow keys for the wheel in the alternate screen
+	// from doing so.
 	return v
 }
 

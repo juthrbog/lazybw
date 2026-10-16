@@ -1,6 +1,7 @@
 package screens
 
 import (
+	"reflect"
 	"testing"
 
 	"charm.land/bubbles/v2/list"
@@ -16,16 +17,16 @@ func TestBaseNameKey(t *testing.T) {
 		{"GitHub (Work)", "github"},
 		{"GitHub (Personal)", "github"},
 		{"Gmail", "gmail"},
-		{"Something (a) (b)", "something"},       // strips both suffixes
+		{"Something (a) (b)", "something"}, // strips both suffixes
 		{"(starts with paren)", "(starts with paren)"},
 		{"trailing space (x) ", "trailing space"}, // trimmed then stripped
 		{"", ""},
 		{"No qualifier", "no qualifier"},
 		{"A (B)", "a"},
-		{"GIThub (Org)", "github"},                          // case-folded + stripped
-		{"AWS (Prod) - Recovery Codes", "aws"},              // dash then paren stripped
+		{"GIThub (Org)", "github"},             // case-folded + stripped
+		{"AWS (Prod) - Recovery Codes", "aws"}, // dash then paren stripped
 		{"AWS Access Key - deploy", "aws access key"},
-		{"foo - bar - baz", "foo"},                          // repeated dash stripping
+		{"foo - bar - baz", "foo"}, // repeated dash stripping
 	}
 	for _, tt := range tests {
 		t.Run(tt.input, func(t *testing.T) {
@@ -363,5 +364,87 @@ func dumpItems(t *testing.T, items []list.Item) {
 		case VaultItem:
 			t.Logf("  [%d] Item(%s)", i, v.Name)
 		}
+	}
+}
+
+func TestAbsorptionNeedsWholeWord(t *testing.T) {
+	items := []bwcmd.Item{
+		{ID: "1", Name: "X", Type: bwcmd.ItemTypeLogin},
+		{ID: "2", Name: "X (Work)", Type: bwcmd.ItemTypeLogin},
+		{ID: "3", Name: "Go", Type: bwcmd.ItemTypeLogin},
+		{ID: "4", Name: "Go (Playground)", Type: bwcmd.ItemTypeLogin},
+		{ID: "5", Name: "AWS", Type: bwcmd.ItemTypeLogin},
+		{ID: "6", Name: "AWS (Prod)", Type: bwcmd.ItemTypeLogin},
+		{ID: "7", Name: "Dropbox", Type: bwcmd.ItemTypeLogin},
+		{ID: "8", Name: "Netflix", Type: bwcmd.ItemTypeLogin},
+		{ID: "9", Name: "Google", Type: bwcmd.ItemTypeLogin},
+		{ID: "10", Name: "MongoDB", Type: bwcmd.ItemTypeLogin},
+		{ID: "11", Name: "Django", Type: bwcmd.ItemTypeLogin},
+		{ID: "12", Name: "Laws of Motion", Type: bwcmd.ItemTypeLogin},
+		{ID: "13", Name: "Go Modules Proxy", Type: bwcmd.ItemTypeLogin},
+	}
+	gs := newGroupState()
+	gs.enabled = true
+	result := buildGroupedItems(items, gs)
+
+	counts := map[string]int{}
+	var flat []string
+	for _, r := range result {
+		switch v := r.(type) {
+		case GroupHeaderItem:
+			counts[v.BaseKey] = v.Count
+		case VaultItem:
+			flat = append(flat, v.Name)
+		}
+	}
+	// "Go Modules Proxy" has "go" as a whole word, so the go group takes it.
+	want := map[string]int{"x": 2, "go": 3, "aws": 2}
+	if !reflect.DeepEqual(counts, want) {
+		dumpItems(t, result)
+		t.Errorf("group sizes = %v, want %v", counts, want)
+	}
+	wantFlat := []string{"Dropbox", "Netflix", "Google", "MongoDB", "Django", "Laws of Motion"}
+	if !reflect.DeepEqual(flat, wantFlat) {
+		t.Errorf("ungrouped items = %q, want %q", flat, wantFlat)
+	}
+}
+
+func TestContainsWord(t *testing.T) {
+	tests := []struct {
+		s, key string
+		want   bool
+	}{
+		{"aws access key", "aws", true},
+		{"aws.console.example.com", "aws", true},
+		{"my aws", "aws", true},
+		{"laws of motion", "aws", false},
+		{"dropbox", "x", false},
+		{"google", "go", false},
+		{"django", "go", false},
+		{"go-go", "go", true},
+		{"gogo go", "go", true}, // a later match on a word boundary
+		{"github token", "hub", false},
+		{"hub token", "hub", true},
+		{"café au lait", "caf", false}, // é is a letter
+		{"über mail", "ber", false},
+		{"anything", "", false},
+	}
+	for _, tt := range tests {
+		if got := containsWord(tt.s, tt.key); got != tt.want {
+			t.Errorf("containsWord(%q, %q) = %v, want %v", tt.s, tt.key, got, tt.want)
+		}
+	}
+}
+
+func TestGroupHeaderKeepsItemName(t *testing.T) {
+	gs := newGroupState()
+	gs.enabled = true
+	result := buildGroupedItems(githubItems(), gs)
+	gh, ok := result[0].(GroupHeaderItem)
+	if !ok {
+		t.Fatalf("row 0 = %T, want a group header", result[0])
+	}
+	if gh.BaseKey != "github" || gh.Name != "GitHub" {
+		t.Errorf("header key %q and name %q, want github and GitHub", gh.BaseKey, gh.Name)
 	}
 }

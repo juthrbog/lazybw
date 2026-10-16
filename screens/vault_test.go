@@ -954,3 +954,102 @@ func TestRepromptCopyOpensPasswordPrompt(t *testing.T) {
 		t.Errorf("footer hints = %v, want esc cancel", hints)
 	}
 }
+
+func awsItems() []bwcmd.Item {
+	return []bwcmd.Item{
+		{ID: "p", Type: bwcmd.ItemTypeLogin, Name: "AWS (Prod)", Login: &bwcmd.Login{Username: "prod"}},
+		{ID: "d", Type: bwcmd.ItemTypeLogin, Name: "AWS (Dev)", Login: &bwcmd.Login{Username: "dev"}},
+		{ID: "l", Type: bwcmd.ItemTypeLogin, Name: "Laws of Motion", Login: &bwcmd.Login{Username: "newton"}},
+		{ID: "g", Type: bwcmd.ItemTypeLogin, Name: "Gmail", Login: &bwcmd.Login{Username: "me"}},
+	}
+}
+
+func TestGroupingDuringFilterKeepsMatches(t *testing.T) {
+	m := vaultAt(awsItems(), 80, 24)
+	m = typeKeys(t, m, "/prod")
+	m = press(t, m, tea.KeyPressMsg{Code: tea.KeyEnter})
+	if m.list.FilterState() != list.FilterApplied {
+		t.Fatalf("filter state = %v, want applied", m.list.FilterState())
+	}
+	m = press(t, m, tea.KeyPressMsg{Code: 'g', Mod: tea.ModCtrl})
+	if !m.groups.enabled {
+		t.Fatal("ctrl+g must turn grouping on")
+	}
+	if got := rowNames(m); !reflect.DeepEqual(got, []string{"AWS (Prod)"}) {
+		t.Errorf("rows = %q, want the match AWS (Prod)", got)
+	}
+	if plain := ansi.Strip(m.ViewContent(80, 24-ui.ChromeHeight)); !strings.Contains(plain, "AWS (Prod)") {
+		t.Errorf("AWS (Prod) must stay visible:\n%s", plain)
+	}
+}
+
+// filterItems returns items with three matches for the filter "gi".
+func filterItems() []bwcmd.Item {
+	return []bwcmd.Item{
+		{ID: "a", Type: bwcmd.ItemTypeLogin, Name: "Alpha"},
+		{ID: "h", Type: bwcmd.ItemTypeLogin, Name: "GitHub"},
+		{ID: "t", Type: bwcmd.ItemTypeLogin, Name: "Gitea"},
+		{ID: "b", Type: bwcmd.ItemTypeLogin, Name: "Bravo"},
+		{ID: "l", Type: bwcmd.ItemTypeLogin, Name: "GitLab"},
+	}
+}
+
+func TestFilterDownMovesCursorAndKeepsInput(t *testing.T) {
+	m := vaultAt(filterItems(), 80, 24)
+	m = typeKeys(t, m, "/gi")
+	if n := len(m.list.VisibleItems()); n < 2 {
+		t.Fatalf("the filter gi has %d matches, want at least 2", n)
+	}
+	second := m.list.VisibleItems()[1].(VaultItem).ID
+	m = press(t, m, tea.KeyPressMsg{Code: tea.KeyDown})
+	if !m.list.SettingFilter() {
+		t.Fatalf("after down, filter state = %v, want the input to stay open", m.list.FilterState())
+	}
+	if item := m.selectedItem(); item == nil || item.ID != second {
+		t.Errorf("after down, selected = %+v, want the second match %q", item, second)
+	}
+	// Up moves back to the first match.
+	m = press(t, m, tea.KeyPressMsg{Code: tea.KeyUp})
+	if m.list.Index() != 0 || !m.list.SettingFilter() {
+		t.Errorf("after up, index = %d and input open = %v, want 0 and true", m.list.Index(), m.list.SettingFilter())
+	}
+}
+
+func TestFilterKeysAfterDownGoToInput(t *testing.T) {
+	m := vaultAt(filterItems(), 80, 24)
+	m = typeKeys(t, m, "/gi")
+	m = press(t, m, tea.KeyPressMsg{Code: tea.KeyDown})
+	updated, cmd := m.Update(keyMsg("l"))
+	m = updated.(VaultModel)
+	for _, msg := range runMsgs(cmd) {
+		if _, ok := msg.(LockMsg); ok {
+			t.Fatal("l in the filter input must not lock the vault")
+		}
+	}
+	if got := m.list.FilterValue(); got != "gil" {
+		t.Errorf("filter text = %q, want %q", got, "gil")
+	}
+	if !m.list.SettingFilter() {
+		t.Error("the filter input must stay open")
+	}
+}
+
+func TestOnlyEnterAcceptsFilter(t *testing.T) {
+	keys := map[string]tea.KeyPressMsg{
+		"tab":       {Code: tea.KeyTab},
+		"shift+tab": {Code: tea.KeyTab, Mod: tea.ModShift},
+		"ctrl+j":    {Code: 'j', Mod: tea.ModCtrl},
+		"ctrl+k":    {Code: 'k', Mod: tea.ModCtrl},
+	}
+	for name, k := range keys {
+		m := typeKeys(t, vaultAt(filterItems(), 80, 24), "/gi")
+		m = press(t, m, k)
+		if !m.list.SettingFilter() {
+			t.Errorf("%s must not accept the filter: filter state = %v", name, m.list.FilterState())
+		}
+	}
+	m := typeKeys(t, vaultAt(filterItems(), 80, 24), "/gi")
+	if m = press(t, m, tea.KeyPressMsg{Code: tea.KeyEnter}); m.list.FilterState() != list.FilterApplied {
+		t.Errorf("enter must accept the filter: filter state = %v", m.list.FilterState())
+	}
+}
