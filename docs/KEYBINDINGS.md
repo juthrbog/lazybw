@@ -1,42 +1,244 @@
 # Keybindings
 
+This page lists the keys of each lazybw screen. The key names are the names that Bubble Tea gives the keys, for example `enter`, `shift+down` or `pgdown`.
+
+A test in `ui/keybindings_doc_test.go` reads this file. It fails when a key of `DefaultVaultKeyMap` (`ui/keymap.go`) is not on this page as inline code.
+
+## All screens
+
+| Key | Action |
+|---|---|
+| `ctrl+c` | Quit at once, with no confirmation. lazybw locks the vault, clears the clipboard if it copied a value, and exits. |
+
+When the idle timeout (`--idle-timeout`, 15 minutes by default) is over, lazybw locks the vault. A key press after the timeout only locks the vault. It does not run its action. `ctrl+c` still quits, and the quit also locks the vault.
+
 ## Vault
 
-| Key | Action |
-|---|---|
-| `j` / `k` | Move cursor down / up |
-| `g` / `G` | Jump to top / bottom |
-| `/` | Search / filter |
-| `c` | Copy password |
-| `t` | Copy TOTP code |
-| `u` | Copy username |
-| `o` | Open URL in browser |
-| `J` / `K` | Scroll note content in drawer |
-| `p` | Open password generator |
-| `r` | Sync vault |
-| `l` | Lock vault |
-| `Ctrl+G` | Toggle item grouping |
-| `Enter` | Expand / collapse group |
-| `T` | Open theme picker |
-| `?` | Toggle full help |
-| `q` | Lock and quit |
+### Move in the list
 
-## Password Generator
+The vault list is a list from the bubbles library, and it handles these keys. lazybw changes the page keys, and it turns off the list keys that lazybw uses for other actions.
 
 | Key | Action |
 |---|---|
-| `Enter` / `r` | Regenerate |
-| `+` / `-` | Increase / decrease length (or word count) |
-| `m` / `Tab` | Toggle password / passphrase mode |
-| `1`-`4` | Toggle uppercase / lowercase / numbers / special |
-| `c` | Copy to clipboard |
-| `Esc` | Close generator |
+| `j` / `down` | Move the cursor down one row |
+| `k` / `up` | Move the cursor up one row |
+| `g` / `home` | Go to the first row |
+| `G` / `end` | Go to the last row |
+| `pgdown` / `right` | Go one page down. A page is the list rows that show on the screen. |
+| `pgup` / `left` | Go one page up |
+| `/` | Open the filter input. See [Filter mode](#filter-mode). |
+| `esc` | Clear the filter, when a filter is applied |
 
-## Filter Mode
+The page keys work only when the list has more than one page.
+
+### Actions
+
+These are the bindings of `DefaultVaultKeyMap` in `ui/keymap.go`.
 
 | Key | Action |
 |---|---|
-| Text | Narrow list in real time |
-| `Up` / `Down` | Move cursor in filtered list |
-| `Enter` | Confirm selection |
-| `Esc` | Clear filter |
+| `c` | Copy the main secret. That is the password of a login, the card number, the SSN of an identity or the private key of an SSH key. |
+| `t` | Copy the TOTP code. If the TOTP key does not parse, lazybw shows the error toast "Invalid TOTP secret". |
+| `u` | Copy the username of a login, the email of an identity, or the public key of an SSH key |
+| `n` | Copy the note |
+| `v` | Copy the security code (CVV) of a card |
+| `o` | Open the first URL of a login in the default browser. lazybw opens only http and https URLs. It adds `https://` to a URL that has no scheme. |
+| `J` / `shift+down` | Scroll the note in the drawer down. Only a secure note scrolls. |
+| `K` / `shift+up` | Scroll the note in the drawer up |
+| `+` | Make the inline drawer one row taller |
+| `-` | Make the inline drawer one row shorter |
+| `=` | Set the inline drawer to its default height of 8 rows |
+| `d` | Switch the drawer between inline mode and overlay mode |
+| `p` | Open the password generator |
+| `r` | Sync the vault with `bw sync`, and then load the items again. While a sync runs, `r` does nothing. |
+| `l` | Lock the vault and show the unlock screen |
+| `ctrl+g` | Turn item grouping on or off |
+| `enter` | Expand or collapse the selected group |
+| `T` | Open the theme picker |
+| `?` | Open the help overlay |
+| `q` | Ask for confirmation, and then lock the vault and quit. See [Quit confirmation](#quit-confirmation). |
+| `ctrl+c` | Lock the vault and quit at once, with no confirmation |
+
+A copy key copies nothing when the selected item does not have that field. When the username of a login is empty, `u` shows the toast "No username to copy".
+
+The drawer keys `+`, `-` and `=` do nothing in overlay mode. The drawer height stays between 3 rows and half of the terminal height.
+
+When an item has master password re-prompt, `c`, `t`, `v` and `n` first ask for the master password. See [Master password re-prompt](#master-password-re-prompt).
+
+While an overlay shows (help, generator, theme picker, re-prompt or quit confirmation), the vault keys do nothing. The overlay gets the keys.
+
+## Filter mode
+
+The filter input opens after `/`. The list then shows only the items that match the filter text.
+
+| Key | Action |
+|---|---|
+| Text | Type into the filter. Each time the filter text changes, the cursor goes to the best match (the first row). |
+| `up` / `down` | Move the cursor in the matches. The filter input stays open. |
+| `enter` | Accept the filter. The input closes and the list keeps only the matches. With no filter text, `enter` does nothing. With no match, `enter` clears the filter. |
+| `esc` | Clear the filter and close the input |
+
+All other keys type into the filter. For example, `j`, `k`, `q` and `l` are text in the filter, not vault keys. Only `enter` accepts the filter.
+
+When `esc` clears the filter, the selected match stays selected. If the filter has no text, or no match is selected, lazybw selects the item that was selected before `/` again. A group header counts as an item here.
+
+After `enter`, the vault keys work again on the matches. The footer shows the filter text. `esc` clears the filter, and `/` opens the input again with the same text.
+
+While a filter is active, the list shows no groups. So the filter also finds the items of collapsed groups.
+
+## Quit confirmation
+
+The dialog opens after `q` on the vault screen.
+
+| Key | Action |
+|---|---|
+| `y` | Lock the vault and quit |
+| `n` / `esc` | Close the dialog and go back to the vault |
+
+The dialog ignores all other keys. `ctrl+c` quits at once.
+
+## Help overlay
+
+The help overlay opens after `?`. It lists the vault keys in four groups: Copy, Navigation, Vault and UI.
+
+| Key | Action |
+|---|---|
+| `?` / `esc` | Close the help |
+| `j` / `down` | Scroll down one line |
+| `k` / `up` | Scroll up one line |
+| `pgdown` / `f` / `space` | Scroll down one page |
+| `pgup` / `b` | Scroll up one page |
+| `ctrl+d` / `d` | Scroll down half a page |
+| `ctrl+u` / `u` | Scroll up half a page |
+| `/` | Start to type a filter |
+
+While you type a filter:
+
+| Key | Action |
+|---|---|
+| Text | Add the character to the filter. The help shows only the keys whose key, description or group contains the filter text. Case does not matter. |
+| `backspace` | Delete the last character of the filter |
+| `enter` | Keep the filter and go back to the scroll keys |
+| `esc` | Clear the filter and go back to the scroll keys |
+
+## Theme picker
+
+The theme picker opens after `T`. It is a select form of huh.
+
+| Key | Action |
+|---|---|
+| `up` / `down` | Move to the previous or the next theme. `k` and `j` also work. |
+| `/` | Filter the theme names |
+| `enter` | Apply the selected theme. The footer shows the toast "Theme: <name>". |
+| `esc` | Close the picker and keep the current theme |
+
+`esc` always closes the picker, also while the filter is open. The theme that you select stays until lazybw exits. To set a theme at start, use `--theme` or `LAZYBW_THEME`.
+
+## Password generator
+
+The generator opens after `p`. It opens in password mode, with a length of 20 and all four character sets on. Each change of an option makes a new value at once.
+
+Both modes:
+
+| Key | Action |
+|---|---|
+| `enter` / `r` | Make a new value |
+| `m` / `tab` | Switch between password mode and passphrase mode |
+| `c` | Copy the value. `c` copies nothing while `bw generate` runs or when an error shows. |
+| `esc` | Close the generator |
+
+While the generator shows, the footer shows only its keys. After `c`, the toast "Password sent to clipboard" shows in the footer when you close the generator.
+
+Password mode:
+
+| Key | Action |
+|---|---|
+| `+` / `=` | Make the password one character longer, up to 128 |
+| `-` | Make the password one character shorter, down to 5 |
+| `1` | Turn uppercase letters on or off |
+| `2` | Turn lowercase letters on or off |
+| `3` | Turn numbers on or off |
+| `4` | Turn special characters on or off |
+
+Passphrase mode starts with 4 words, the separator `-`, capital letters on and a number on.
+
+| Key | Action |
+|---|---|
+| `+` / `=` | Add one word, up to 20 |
+| `-` | Remove one word, down to 3. `bw generate` raises a smaller count to 3. |
+| `1` | Turn capital letters on or off |
+| `2` | Turn the number on or off |
+| `3` | Go to the next separator: `-`, `_`, `.` or space |
+
+In passphrase mode, `4` does nothing.
+
+## Master password re-prompt
+
+A Bitwarden item can have master password re-prompt. For such an item, `c`, `t`, `v` and `n` open a prompt that asks for the master password. `u` and `o` do not ask.
+
+| Key | Action |
+|---|---|
+| `enter` | Submit the master password. lazybw runs `bw unlock` with it. If `bw unlock` accepts the password, lazybw copies the field. |
+| `esc` | Close the prompt and copy nothing. `esc` also works while `bw unlock` runs. |
+
+While `bw unlock` runs, the prompt ignores all other keys. The prompt does not accept an empty password.
+
+After `bw unlock` accepts the password, the copy keys of the item do not ask again while the item stays selected. When you select another item, lock the vault, or a sync removes the item, the next copy asks again.
+
+## Unlock and login screens
+
+The unlock screen shows when the vault is locked. The login screen shows when no account is logged in. The forms show no help line. The footer shows their keys.
+
+Unlock screen:
+
+| Key | Action |
+|---|---|
+| `enter` | Unlock the vault with the master password |
+| `ctrl+q` | Quit |
+
+Login screen:
+
+| Key | Action |
+|---|---|
+| `enter` | On the email field, go to the master password field. On the master password field, log in. |
+| `tab` | Go from the email field to the master password field |
+| `shift+tab` | Go back from the master password field to the email field |
+| `ctrl+q` | Quit |
+
+A form does not accept an empty master password or an email that is not valid. It shows an error and stays on the field.
+
+While `bw unlock` or `bw login` runs, only `ctrl+q` and `ctrl+c` work.
+
+### Two-step login
+
+If the account uses two-step login, lazybw first asks for the method and then for the code.
+
+Method form:
+
+| Key | Action |
+|---|---|
+| `up` / `down` | Select the method: Authenticator app, Email or YubiKey OTP. `k` and `j` also work. |
+| `enter` | Use the selected method |
+| `esc` | Go back to the login form |
+| `ctrl+q` | Quit |
+
+Code form:
+
+| Key | Action |
+|---|---|
+| `enter` | Log in with the code |
+| `esc` | Go back to the login form |
+| `ctrl+q` | Quit |
+
+`esc` drops the master password that lazybw kept for the two-step login. You then type it again in the login form.
+
+## Error screen
+
+The error screen shows when `bw status` or the item load fails.
+
+| Key | Action |
+|---|---|
+| `r` | Try again |
+| `q` | Quit at once, with no confirmation. lazybw locks the vault if it is unlocked, and clears the clipboard if it copied a value. |
+
+If the vault is unlocked and the item load failed, `r` loads the items again. Otherwise `r` runs `bw status` again. If the item load fails a second time, lazybw locks the vault, so that the next `r` shows the unlock screen. If that `bw lock` fails, the unlock screen shows its error.
