@@ -51,7 +51,7 @@ func TestLoginFailedTextNamesBothFields(t *testing.T) {
 
 func TestErrorScreenShowsTimeoutText(t *testing.T) {
 	err := fmt.Errorf("bw list items timed out after 2m0s: %w", context.DeadlineExceeded)
-	if got := NewErrorModel(err, false).ViewContent(); !strings.Contains(got, timeoutText) {
+	if got := NewErrorModel(err, false).ViewContent(80); !strings.Contains(got, timeoutText) {
 		t.Errorf("error screen = %q, want the timeout text", got)
 	}
 }

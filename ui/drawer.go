@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"charm.land/lipgloss/v2"
+	"github.com/charmbracelet/x/ansi"
 	"github.com/juthrbog/lazybw/bwcmd"
 )
 
@@ -35,7 +36,12 @@ func RenderDrawer(props DrawerProps) string {
 		return renderNoSelection(props.Width, h)
 	}
 
-	header := renderHeaderCard(props.Item.Name, props.Item.Type, props.Width)
+	// A secure note has no field rows, so its copy hint goes in the header.
+	headerHint := ""
+	if props.Item.Type == bwcmd.ItemTypeSecureNote && props.Item.Notes != "" {
+		headerHint = noteCopyHint
+	}
+	header := renderHeaderCard(props.Item.Name, props.Item.Type, headerHint, props.Width)
 	// In inline mode, add a gradient separator above the header card
 	// to visually distinguish the drawer from the list.
 	var sep string
@@ -44,12 +50,7 @@ func RenderDrawer(props DrawerProps) string {
 	} else {
 		sep = RenderGradientLine(props.Width) + "\n" + header
 	}
-	// Header lines: 2 for inline (gradient + card), 1 for overlay (card only).
-	headerLines := 2
-	if props.AutoHeight {
-		headerLines = 1
-	}
-	maxFields := h - headerLines
+	maxFields := bodyRows(props)
 	var fields []string
 
 	switch props.Item.Type {
@@ -68,21 +69,65 @@ func RenderDrawer(props DrawerProps) string {
 	}
 
 	if !props.AutoHeight {
-		if len(fields) > maxFields {
-			fields = fields[:maxFields]
+		switch {
+		case maxFields <= 0:
+			fields = nil
+		case len(fields) > maxFields:
+			// Replace the last row with a marker, so that the user knows
+			// that fields are hidden.
+			hidden := len(fields) - maxFields + 1
+			more := Truncate(fmt.Sprintf("  ↓ %d more", hidden), props.Width)
+			fields = append(fields[:maxFields-1], StyleFaint.Render(more))
 		}
 		for len(fields) < maxFields {
 			fields = append(fields, "")
 		}
 	}
+	if len(fields) == 0 {
+		// The drawer has rows only for the header.
+		return sep
+	}
 
 	return sep + "\n" + strings.Join(fields, "\n")
+}
+
+// noteCopyHint is the drawer hint for the key that copies the notes.
+const noteCopyHint = "[n] copy"
+
+// bodyRows returns the number of drawer rows below the header card. In
+// inline mode, the gradient line and the header card use 2 of the Height
+// rows. Overlay mode (AutoHeight) has no gradient line, so only the header
+// card uses a row. That mode cuts only a note to bodyRows: it sizes the card
+// to the other fields.
+func bodyRows(props DrawerProps) int {
+	h := props.Height
+	if h <= 0 {
+		h = DefaultDrawerHeight
+	}
+	if props.AutoHeight {
+		return h - 1
+	}
+	return h - 2
+}
+
+// MaxScrollOffset returns the largest useful ScrollOffset for props: the
+// offset that shows the last full page of a secure note. It returns 0 for
+// other item types, because only notes scroll, and for a drawer with no
+// rows for the note. RenderDrawer uses the same line count, so the limit
+// matches what the drawer shows.
+func MaxScrollOffset(props DrawerProps) int {
+	item := props.Item
+	rows := bodyRows(props)
+	if item == nil || item.Type != bwcmd.ItemTypeSecureNote || item.Notes == "" || rows <= 0 {
+		return 0
+	}
+	return max(0, len(NoteLines(item.Notes, props.Width))-rows)
 }
 
 func renderNoSelection(width, height int) string {
 	lines := []string{
 		RenderGradientLine(width),
-		StyleFaint.Render("  No item selected — navigate with j/k or search with /"),
+		StyleFaint.Render(Truncate("  No item selected — navigate with j/k or search with /", width)),
 	}
 	for len(lines) < height {
 		lines = append(lines, "")
@@ -90,28 +135,33 @@ func renderNoSelection(width, height int) string {
 	return strings.Join(lines, "\n")
 }
 
-func renderHeaderCard(name string, itemType bwcmd.ItemType, width int) string {
-	glyph := ItemGlyph(itemType)
+// renderHeaderCard renders the item name on the left and the type badge on
+// the right. A hint, when given, goes before the badge. The hint is dropped
+// when it would leave the name less than rowMinNameW cells.
+func renderHeaderCard(name string, itemType bwcmd.ItemType, hint string, width int) string {
+	prefix := "  " + ItemGlyph(itemType) + "  "
 	badge := StyleHeaderBadge.Render(ItemTypeName(itemType))
-	badgeW := lipgloss.Width(badge)
+	name = SanitizeLine(name)
 
-	// Truncate name if it won't fit.
-	left := "  " + glyph + "  " + StyleTitle.Render(name)
-	leftW := lipgloss.Width(left)
-	maxLeft := width - badgeW - 1
-	if leftW > maxLeft {
-		for lipgloss.Width(name) > 0 && lipgloss.Width("  "+glyph+"  "+StyleTitle.Render(name+"…")) > maxLeft {
-			name = name[:len(name)-1]
-		}
-		left = "  " + glyph + "  " + StyleTitle.Render(name+"…")
-		leftW = lipgloss.Width(left)
+	right := badge
+	if hint != "" {
+		right = StyleFaint.Render(hint) + "  " + badge
+	}
+	// Keep at least one space between the name and the right side.
+	maxName := width - lipgloss.Width(prefix) - lipgloss.Width(right) - 1
+	if hint != "" && maxName < min(lipgloss.Width(name), rowMinNameW) {
+		right = badge
+		maxName = width - lipgloss.Width(prefix) - lipgloss.Width(right) - 1
 	}
 
-	fill := width - leftW - badgeW
-	if fill < 1 {
-		fill = 1
+	left := prefix + StyleTitle.Render(Truncate(name, maxName))
+	fill := max(1, width-lipgloss.Width(left)-lipgloss.Width(right))
+	line := left + strings.Repeat(" ", fill) + right
+	if lipgloss.Width(line) > width {
+		// The drawer is narrower than the glyph and the badge.
+		line = ansi.Truncate(line, max(0, width), "")
 	}
-	return left + strings.Repeat(" ", fill) + badge
+	return line
 }
 
 // ItemGlyph returns the themed glyph string for the given item type.
@@ -163,27 +213,29 @@ func renderLoginFields(props DrawerProps) []string {
 
 	fields = append(fields, fieldRow("Username", username, "[u] copy", w))
 
-	pwDisplay := "••••••••••" //nolint:gosec // display mask, not a credential
 	if password == "" {
-		pwDisplay = StyleFaint.Render("(none)")
+		fields = append(fields, renderedFieldRow("Password", StyleFaint.Render("(none)"), "[c] copy", w))
+	} else {
+		fields = append(fields, fieldRow("Password", "••••••••••", "[c] copy", w))
 	}
-	fields = append(fields, fieldRow("Password", pwDisplay, "[c] copy", w))
 
 	if item.Login != nil && item.Login.Totp != "" {
-		totpDisplay := renderTOTP(props.TOTPCode, props.TOTPSecsLeft, props.TOTPPeriod, props.TOTPInvalid)
-		fields = append(fields, fieldRow("TOTP", totpDisplay, "[t] copy", w))
+		fields = append(fields, totpRow(props, w))
 	}
 
 	if item.Login != nil && len(item.Login.URIs) > 0 {
 		fields = append(fields, fieldRow("URL", item.Login.URIs[0].URI, "[o] open", w))
 	}
 
-	notes := "(none)"
-	if item.Notes != "" {
-		first, _, _ := strings.Cut(item.Notes, "\n")
-		notes = first
+	if item.Notes == "" {
+		fields = append(fields, renderedFieldRow("Notes", StyleFaint.Render("(none)"), "", w))
+	} else {
+		// Cut the note at its first "\r" or "\n", so that the row shows
+		// only the first line. An escape sequence ends at a line break, so
+		// the cut gives the same text as sanitizing all of the note.
+		first := item.Notes[:nextLineBreak(item.Notes, 0)]
+		fields = append(fields, styledFieldRow("Notes", first, StyleFaint, noteCopyHint, w))
 	}
-	fields = append(fields, fieldRow("Notes", StyleFaint.Render(notes), "", w))
 
 	return fields
 }
@@ -219,15 +271,16 @@ func renderNoteFields(props DrawerProps, maxLines int) []string {
 		return []string{"  " + GlyphNote + " " + StyleFaint.Render("(empty note)")}
 	}
 
-	lines := strings.Split(notes, "\n")
+	lines := NoteLines(notes, props.Width)
 
-	// Apply scroll offset.
-	if props.ScrollOffset > 0 && props.ScrollOffset < len(lines) {
-		lines = lines[props.ScrollOffset:]
-	}
-
-	if maxLines > 0 && len(lines) > maxLines {
-		lines = lines[:maxLines]
+	// Apply the scroll offset. An offset past MaxScrollOffset shows the
+	// last full page, not blank rows.
+	if maxLines > 0 {
+		offset := min(max(0, props.ScrollOffset), max(0, len(lines)-maxLines))
+		lines = lines[offset:]
+		if len(lines) > maxLines {
+			lines = lines[:maxLines]
+		}
 	}
 
 	result := make([]string, len(lines))
@@ -341,40 +394,90 @@ func renderSSHKeyFields(item *bwcmd.Item, width int) []string {
 	return fields
 }
 
+// Field row layout, in cells.
+const (
+	fieldIndent    = 2
+	fieldLabelW    = 12
+	fieldHintGap   = 2 // space between value and hint
+	fieldMinValueW = 4 // the hint is dropped when it leaves less for the value
+)
+
+// fieldRow renders a labeled row for a plain value from the vault. It
+// sanitizes the value for display and cuts it to fit the width.
 func fieldRow(label, value, hint string, width int) string {
-	const indent = 2
-	const labelWidth = 12
-	const gap = 2 // space between value and hint
-
-	labelStyle := lipgloss.NewStyle().Width(labelWidth).Align(lipgloss.Left)
-	renderedHint := ""
-	hintWidth := 0
-	if hint != "" {
-		renderedHint = StyleFaint.Render(hint)
-		hintWidth = gap + lipgloss.Width(renderedHint)
-	}
-
-	// Truncate value if it exceeds available space.
-	maxValue := width - indent - labelWidth - hintWidth
-	if maxValue < 1 {
-		maxValue = 1
-	}
-	if lipgloss.Width(value) > maxValue {
-		// Strip to fit, accounting for the ellipsis character.
-		for lipgloss.Width(value) > maxValue-1 && len(value) > 0 {
-			value = value[:len(value)-1]
-		}
-		value += "…"
-	}
-
-	left := "  " + labelStyle.Render(label) + value
-	if renderedHint == "" {
-		return left
-	}
-	return left + "  " + renderedHint
+	return styledFieldRow(label, value, lipgloss.NewStyle(), hint, width)
 }
 
-func renderTOTP(code string, secsLeft, period int, invalid bool) string {
+// styledFieldRow is fieldRow with a style for the value. It cuts the plain
+// value before it applies the style.
+func styledFieldRow(label, value string, style lipgloss.Style, hint string, width int) string {
+	hint, maxValue := fieldLayout(hint, width)
+	value = Truncate(SanitizeLine(value), maxValue)
+	return joinFieldRow(label, style.Render(value), hint, width)
+}
+
+// renderedFieldRow renders a labeled row for a value that lazybw built,
+// such as the TOTP countdown. The value can hold ANSI styles, and it is cut
+// to fit without breaking them.
+func renderedFieldRow(label, value, hint string, width int) string {
+	hint, maxValue := fieldLayout(hint, width)
+	return joinFieldRow(label, Truncate(value, maxValue), hint, width)
+}
+
+// fieldLayout returns the hint to show and the width for the value. It
+// drops the hint when the value would get less than fieldMinValueW cells.
+func fieldLayout(hint string, width int) (string, int) {
+	maxValue := width - fieldIndent - fieldLabelW
+	if hint != "" {
+		if maxValue-fieldHintGap-lipgloss.Width(hint) < fieldMinValueW {
+			return "", maxValue
+		}
+		maxValue -= fieldHintGap + lipgloss.Width(hint)
+	}
+	return hint, maxValue
+}
+
+func joinFieldRow(label, value, hint string, width int) string {
+	labelStyle := lipgloss.NewStyle().Width(fieldLabelW).Align(lipgloss.Left)
+	row := strings.Repeat(" ", fieldIndent) + labelStyle.Render(label) + value
+	if hint != "" {
+		row += strings.Repeat(" ", fieldHintGap) + StyleFaint.Render(hint)
+	}
+	if lipgloss.Width(row) > width {
+		// The drawer is narrower than the label.
+		row = ansi.Truncate(row, max(0, width), "")
+	}
+	return row
+}
+
+// totpRow renders the TOTP row. A cut countdown such as "2…" looks like a
+// wrong time, so a row that is too narrow drops the copy hint first and
+// then the seconds text. Only a drawer that is too narrow for the code and
+// the bar cuts the value. The check uses the widest seconds text of the
+// period, so that the row does not change as the seconds tick.
+func totpRow(props DrawerProps, width int) string {
+	const copyHint = "[t] copy"
+	period := props.TOTPPeriod
+	if period <= 0 {
+		period = 30
+	}
+	widest := lipgloss.Width(renderTOTP(props.TOTPCode, period, period, props.TOTPInvalid, true))
+	valueW := width - fieldIndent - fieldLabelW
+
+	hint, showSecs := "", true
+	switch {
+	case widest <= valueW-fieldHintGap-lipgloss.Width(copyHint):
+		hint = copyHint
+	case widest > valueW:
+		showSecs = false
+	}
+	display := renderTOTP(props.TOTPCode, props.TOTPSecsLeft, period, props.TOTPInvalid, showSecs)
+	return renderedFieldRow("TOTP", display, hint, width)
+}
+
+// renderTOTP renders the TOTP code and its countdown bar. showSecs adds the
+// seconds left as text after the bar.
+func renderTOTP(code string, secsLeft, period int, invalid, showSecs bool) string {
 	if invalid {
 		return StyleError.Render("invalid TOTP secret")
 	}
@@ -426,5 +529,8 @@ func renderTOTP(code string, secsLeft, period int, invalid bool) string {
 
 	style := lipgloss.NewStyle().Foreground(clr)
 	bar := style.Render(filled.String()) + StyleFaint.Render(track.String())
+	if !showSecs {
+		return display + "  " + bar
+	}
 	return fmt.Sprintf("%s  %s %s", display, bar, style.Render(fmt.Sprintf("%ds", secsLeft)))
 }

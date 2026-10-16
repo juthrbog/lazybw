@@ -1,13 +1,20 @@
 package screens
 
 import (
+	"errors"
+	"fmt"
 	"reflect"
 	"strings"
 	"testing"
+	"time"
 
+	"charm.land/bubbles/v2/list"
 	tea "charm.land/bubbletea/v2"
+	"charm.land/lipgloss/v2"
+	"github.com/charmbracelet/x/ansi"
 	"github.com/juthrbog/lazybw/bwcmd"
 	"github.com/juthrbog/lazybw/session"
+	"github.com/juthrbog/lazybw/ui"
 )
 
 func newTestVault(items []bwcmd.Item) VaultModel {
@@ -337,5 +344,440 @@ func TestVaultOpenSuccessShowsNoError(t *testing.T) {
 	}
 	if m.toastIsError {
 		t.Errorf("toast = %q, want no error", m.toast)
+	}
+}
+
+func keyMsg(s string) tea.KeyPressMsg {
+	return tea.KeyPressMsg{Code: []rune(s)[0], Text: s}
+}
+
+// vaultAt returns a vault screen for a terminal of the given size.
+func vaultAt(items []bwcmd.Item, width, height int) VaultModel {
+	m := NewVaultModel(items, &session.State{Email: "test@test.com"}, width, height)
+	updated, _ := m.Update(tea.WindowSizeMsg{Width: width, Height: height})
+	return updated.(VaultModel)
+}
+
+// clipboardWrites returns the values that cmd writes to the clipboard and
+// the CopiedMsg fields that it reports.
+func clipboardWrites(t *testing.T, cmd tea.Cmd, candidates ...string) ([]string, []session.CopyField) {
+	t.Helper()
+	var values []string
+	var fields []session.CopyField
+	for _, msg := range runMsgs(cmd) {
+		if c, ok := msg.(session.CopiedMsg); ok {
+			fields = append(fields, c.Field)
+			continue
+		}
+		for _, want := range candidates {
+			if msg == tea.SetClipboard(want)() {
+				values = append(values, want)
+			}
+		}
+	}
+	return values, fields
+}
+
+// assertArea fails when out is not exactly height lines of at most width
+// cells.
+func assertArea(t *testing.T, out string, width, height int) {
+	t.Helper()
+	lines := strings.Split(out, "\n")
+	if len(lines) != height {
+		t.Errorf("got %d lines, want %d", len(lines), height)
+	}
+	for i, l := range lines {
+		if w := lipgloss.Width(l); w > width {
+			t.Errorf("line %d is %d cells wide, want at most %d: %q", i, w, width, ansi.Strip(l))
+		}
+	}
+}
+
+// cardColumns finds the overlay card in out and returns the columns of its
+// left and right border. It fails when a row of the card does not have
+// both borders in those columns.
+func cardColumns(t *testing.T, out string) (int, int) {
+	t.Helper()
+	left, right := -1, -1
+	inCard := false
+	for _, line := range strings.Split(ansi.Strip(out), "\n") {
+		if !inCard {
+			i := strings.Index(line, "╭")
+			if i < 0 {
+				continue
+			}
+			inCard = true
+			left = lipgloss.Width(line[:i])
+			right = lipgloss.Width(line[:strings.Index(line, "╮")])
+			continue
+		}
+		edge, endEdge := "│", "│"
+		if strings.Contains(line, "╰") {
+			edge, endEdge = "╰", "╯"
+		}
+		l, r := strings.Index(line, edge), strings.LastIndex(line, endEdge)
+		if l < 0 || r < 0 || lipgloss.Width(line[:l]) != left || lipgloss.Width(line[:r]) != right {
+			t.Errorf("card row lost a border: %q", line)
+		}
+		if edge == "╰" {
+			return left, right
+		}
+	}
+	t.Fatalf("no complete card in:\n%s", ansi.Strip(out))
+	return 0, 0
+}
+
+func TestCopyNoteCopiesFullNote(t *testing.T) {
+	note := "line one\r\n\x1b[8mline two\tend\n"
+	items := []bwcmd.Item{{ID: "n", Type: bwcmd.ItemTypeSecureNote, Name: "Keys", Notes: note}}
+	m := newTestVault(items)
+	_, cmd := m.Update(keyMsg("n"))
+	values, fields := clipboardWrites(t, cmd, note)
+	if len(values) != 1 {
+		t.Fatalf("n must copy the full, unchanged note, got %q", values)
+	}
+	if len(fields) != 1 || fields[0] != session.CopyFieldNote {
+		t.Fatalf("n must report a note copy, got %v", fields)
+	}
+	updated, _ := m.Update(session.CopiedMsg{Field: session.CopyFieldNote})
+	m = updated.(VaultModel)
+	if !strings.Contains(m.toast, "Note copied") {
+		t.Errorf("toast = %q, want it to name the note", m.toast)
+	}
+}
+
+func TestCopyNoteWithoutNotesCopiesNothing(t *testing.T) {
+	m := newTestVault(testItems()) // Gmail has no notes
+	_, cmd := m.Update(keyMsg("n"))
+	if _, fields := clipboardWrites(t, cmd); len(fields) != 0 {
+		t.Errorf("n on an item without notes must not copy, got %v", fields)
+	}
+}
+
+func TestCopyKeepsControlCharacters(t *testing.T) {
+	pw := "p\x1b[8m\r\n\tw\x00rd" //nolint:gosec // fake test password
+	user := "user\x1b]8;;x\x07name"
+	items := []bwcmd.Item{{ID: "1", Type: bwcmd.ItemTypeLogin, Name: "Odd\nname", Login: &bwcmd.Login{Username: user, Password: pw}}}
+	m := newTestVault(items)
+	_, cmd := m.Update(keyMsg("c"))
+	if values, _ := clipboardWrites(t, cmd, pw); len(values) != 1 {
+		t.Error("c must copy the stored password without change")
+	}
+	_, cmd = m.Update(keyMsg("u"))
+	if values, _ := clipboardWrites(t, cmd, user); len(values) != 1 {
+		t.Error("u must copy the stored username without change")
+	}
+}
+
+func tenLineNote() bwcmd.Item {
+	var lines []string
+	for i := range 10 {
+		lines = append(lines, fmt.Sprintf("line%02d", i))
+	}
+	return bwcmd.Item{ID: "n", Type: bwcmd.ItemTypeSecureNote, Name: "Keys", Notes: strings.Join(lines, "\n")}
+}
+
+func TestDrawerScrollStopsAtLastPage(t *testing.T) {
+	m := newTestVault([]bwcmd.Item{tenLineNote()})
+	if m.drawerHeight != 8 {
+		t.Fatalf("drawer height = %d, want 8", m.drawerHeight)
+	}
+	for range 20 {
+		m = press(t, m, keyMsg("J"))
+	}
+	// 10 lines in the 6 rows below the drawer header: the last full page
+	// starts at line 4.
+	if m.drawerScroll != 4 {
+		t.Fatalf("after 20 J presses, drawerScroll = %d, want 4", m.drawerScroll)
+	}
+	m = press(t, m, keyMsg("K"))
+	if m.drawerScroll != 3 {
+		t.Errorf("after K, drawerScroll = %d, want 3", m.drawerScroll)
+	}
+	out := m.ViewContent(80, 21)
+	if !strings.Contains(out, "line03") || !strings.Contains(out, "line08") || strings.Contains(out, "line02") {
+		t.Errorf("drawer must show lines 3 to 8:\n%s", ansi.Strip(out))
+	}
+}
+
+func TestDrawerScrollIgnoredForLogin(t *testing.T) {
+	items := []bwcmd.Item{{ID: "1", Type: bwcmd.ItemTypeLogin, Name: "Gmail", Notes: tenLineNote().Notes}}
+	m := newTestVault(items)
+	for _, k := range []string{"J", "J", "K", "J"} {
+		m = press(t, m, keyMsg(k))
+		if m.drawerScroll != 0 {
+			t.Fatalf("after %s on a login, drawerScroll = %d, want 0", k, m.drawerScroll)
+		}
+	}
+}
+
+func TestOverlaysFitSmallTerminals(t *testing.T) {
+	for _, size := range [][2]int{{50, 15}, {30, 10}} {
+		width, height := size[0], size[1]
+		for _, k := range []string{"?", "p", "q", "d", "T"} {
+			m := vaultAt(testItems(), width, height)
+			// Do not run the command: p would start bw generate.
+			updated, _ := m.Update(keyMsg(k))
+			m = updated.(VaultModel)
+			out := m.ViewContent(width, height-ui.ChromeHeight)
+			assertArea(t, out, width, height-ui.ChromeHeight)
+			if width == 50 && k != "d" {
+				// 50x15 has room for the whole card of each dialog.
+				cardColumns(t, out)
+			}
+			if width == 50 && k == "?" && !strings.Contains(ansi.Strip(out), "esc close") {
+				t.Errorf("at 50x15 the help footer must show:\n%s", ansi.Strip(out))
+			}
+		}
+	}
+}
+
+func TestHelpAt80x24ShowsCue(t *testing.T) {
+	m := newTestVault(testItems())
+	m = press(t, m, keyMsg("?"))
+	out := m.ViewContent(80, 24-ui.ChromeHeight)
+	assertArea(t, out, 80, 24-ui.ChromeHeight)
+	cardColumns(t, out)
+	plain := ansi.Strip(out)
+	if !strings.Contains(plain, "esc close") || !strings.Contains(plain, "↓ more") {
+		t.Errorf("help at 80x24 must show its footer and the more cue:\n%s", plain)
+	}
+}
+
+func TestHelpFitsAfterResize(t *testing.T) {
+	m := newTestVault(testItems())
+	m = press(t, m, keyMsg("?"))
+	updated, _ := m.Update(tea.WindowSizeMsg{Width: 50, Height: 15})
+	m = updated.(VaultModel)
+	out := m.ViewContent(50, 15-ui.ChromeHeight)
+	assertArea(t, out, 50, 15-ui.ChromeHeight)
+	left, right := cardColumns(t, out)
+	if right-left+1 > 50 {
+		t.Errorf("help card is %d cells wide, want at most 50", right-left+1)
+	}
+	// The card is sized for the new area, so nothing in it is cut: the
+	// header and the footer of the help both show.
+	plain := ansi.Strip(out)
+	if !strings.Contains(plain, "Keybindings") || !strings.Contains(plain, "esc close") {
+		t.Errorf("help card is cut after the resize:\n%s", plain)
+	}
+}
+
+func TestOverlayDrawerKeepsBorders(t *testing.T) {
+	long := strings.Join(strings.Fields(strings.Repeat("alpha bravo charlie delta echo foxtrot golf ", 4)), " ")[:157]
+	items := []bwcmd.Item{
+		{ID: "1", Type: bwcmd.ItemTypeLogin, Name: "Spoof\nFAKE-ROW", Login: &bwcmd.Login{Username: "a\tb"}, Notes: "first line\r\nsecond"},
+		{ID: "2", Type: bwcmd.ItemTypeLogin, Name: "\x1b]8;;https://evil.example\x07link\x1b]8;;\x07", Notes: "\x1b[8mhidden\r"},
+		{ID: "3", Type: bwcmd.ItemTypeSecureNote, Name: "Pasted", Notes: long},
+	}
+	for i := range items {
+		m := newTestVault(items)
+		m.list.Select(i)
+		m.syncSelection()
+		m = press(t, m, keyMsg("d"))
+		out := m.ViewContent(80, 21)
+		assertArea(t, out, 80, 21)
+		left, right := cardColumns(t, out)
+		if w := right - left + 1; w > overlayDrawerWidth(80)+ui.OverlayEdgeWidth {
+			t.Errorf("item %d: card is %d cells wide, want at most %d", i, w, overlayDrawerWidth(80)+ui.OverlayEdgeWidth)
+		}
+	}
+	// The long note line wraps inside the card, so all of it shows.
+	m := newTestVault(items)
+	m.list.Select(2)
+	m.syncSelection()
+	m = press(t, m, keyMsg("d"))
+	plain := strings.Join(strings.Fields(strings.ReplaceAll(ansi.Strip(m.ViewContent(80, 21)), "│", " ")), " ")
+	if !strings.Contains(plain, long) {
+		t.Errorf("overlay card does not show all of the note:\n%s", plain)
+	}
+}
+
+func TestVaultFooterShowsHelpAndQuitAt80(t *testing.T) {
+	m := newTestVault(testItems())
+	m.sess.LastSync = time.Now()
+	hints, status := m.FooterContent()
+	out := ansi.Strip(ui.RenderFooter(hints, status, 80))
+	for _, want := range []string{"? help", "q quit", "synced just now"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("footer at 80 columns = %q, want it to contain %q", out, want)
+		}
+	}
+}
+
+func TestVaultFooterShowsAppliedFilter(t *testing.T) {
+	m := newTestVault(testItems())
+	// The footer needs only the filter text, not the matches, so the
+	// commands are not run.
+	for _, msg := range []tea.KeyPressMsg{keyMsg("/"), keyMsg("g"), keyMsg("m"), {Code: tea.KeyEnter}} {
+		updated, _ := m.Update(msg)
+		m = updated.(VaultModel)
+	}
+	if m.list.FilterState() != list.FilterApplied {
+		t.Fatalf("filter state = %v, want FilterApplied", m.list.FilterState())
+	}
+	m.sess.LastSync = time.Now()
+	hints, status := m.FooterContent()
+	out := ansi.Strip(ui.RenderFooter(hints, status, 80))
+	for _, want := range []string{"filter: gm", "esc clear", "? help", "q quit", "synced just now"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("footer at 80 columns = %q, want it to contain %q", out, want)
+		}
+	}
+}
+
+func TestVaultFooterLongFilterKeepsHelpAndQuit(t *testing.T) {
+	m := newTestVault(testItems())
+	// As in TestVaultFooterShowsAppliedFilter, the commands are not run.
+	msgs := []tea.KeyPressMsg{keyMsg("/")}
+	for _, r := range "a very long filter text that is cut" {
+		msgs = append(msgs, tea.KeyPressMsg{Code: r, Text: string(r)})
+	}
+	for _, msg := range append(msgs, tea.KeyPressMsg{Code: tea.KeyEnter}) {
+		updated, _ := m.Update(msg)
+		m = updated.(VaultModel)
+	}
+	if m.list.FilterState() != list.FilterApplied {
+		t.Fatalf("filter state = %v, want FilterApplied", m.list.FilterState())
+	}
+	m.sess.LastSync = time.Now()
+	hints, status := m.FooterContent()
+	out := ansi.Strip(ui.RenderFooter(hints, status, 80))
+	for _, want := range []string{"filter: a very long", "…", "esc clear", "? help", "q quit", "synced just now"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("footer at 80 columns = %q, want it to contain %q", out, want)
+		}
+	}
+}
+
+// pressN sends the key k to m n times.
+func pressN(t *testing.T, m VaultModel, k string, n int) VaultModel {
+	t.Helper()
+	for range n {
+		m = press(t, m, keyMsg(k))
+	}
+	return m
+}
+
+func TestOverlayDrawerScrollReachesLastLine(t *testing.T) {
+	for _, size := range [][2]int{{80, 24}, {80, 14}, {80, 12}, {40, 12}, {80, 10}} {
+		width, height := size[0], size[1]
+		m := vaultAt([]bwcmd.Item{tenLineNote()}, width, height)
+		m = press(t, m, keyMsg("d"))
+		m = pressN(t, m, "J", 30)
+		out := m.ViewContent(width, height-ui.ChromeHeight)
+		assertArea(t, out, width, height-ui.ChromeHeight)
+		cardColumns(t, out)
+		if !strings.Contains(ansi.Strip(out), "line09") {
+			t.Errorf("%dx%d: after 30 J presses, the last note line must show (drawerScroll = %d):\n%s",
+				width, height, m.drawerScroll, ansi.Strip(out))
+		}
+		// One K press moves the note back by one line.
+		before := m.drawerScroll
+		if m = press(t, m, keyMsg("K")); m.drawerScroll != before-1 {
+			t.Errorf("%dx%d: after K, drawerScroll = %d, want %d", width, height, m.drawerScroll, before-1)
+		}
+	}
+}
+
+func TestInlineDrawerFitsShortTerminals(t *testing.T) {
+	for height := 7; height <= 24; height++ {
+		m := vaultAt([]bwcmd.Item{tenLineNote()}, 80, height)
+		m = pressN(t, m, "J", 30)
+		// The view must fit the content area by itself. The frame cuts
+		// rows past the area, and those would be the last drawer rows.
+		out := m.ViewContent(80, height-ui.ChromeHeight)
+		if got := len(strings.Split(out, "\n")); got != height-ui.ChromeHeight {
+			t.Errorf("height %d: view has %d lines, want %d", height, got, height-ui.ChromeHeight)
+		}
+		// From 8 rows the drawer has a row for the note.
+		if height >= 8 && !strings.Contains(ansi.Strip(out), "line09") {
+			t.Errorf("height %d: after 30 J presses, the last note line must show:\n%s", height, ansi.Strip(out))
+		}
+	}
+}
+
+func TestDrawerResetFitsShortTerminal(t *testing.T) {
+	m := vaultAt(testItems(), 80, 12)
+	m = pressN(t, m, "-", 3)
+	m = press(t, m, keyMsg("="))
+	if want := clampDrawerHeight(ui.DefaultDrawerHeight, 12); m.drawerHeight != want {
+		t.Errorf("after =, drawer height = %d, want %d", m.drawerHeight, want)
+	}
+	assertArea(t, m.ViewContent(80, 12-ui.ChromeHeight), 80, 12-ui.ChromeHeight)
+}
+
+func TestThemePickerCursorVisibleOnShortTerminal(t *testing.T) {
+	for _, size := range [][2]int{{40, 12}, {60, 14}, {80, 24}} {
+		width, height := size[0], size[1]
+		m := vaultAt(testItems(), width, height)
+		m = press(t, m, keyMsg("T"))
+		for range len(ui.ThemeNames) - 1 {
+			updated, _ := m.Update(tea.KeyPressMsg{Code: tea.KeyDown})
+			m = updated.(VaultModel)
+		}
+		last := ui.ThemeNames[len(ui.ThemeNames)-1]
+		if *m.selectedTheme != last {
+			t.Fatalf("%dx%d: cursor on %q, want %q", width, height, *m.selectedTheme, last)
+		}
+		out := m.ViewContent(width, height-ui.ChromeHeight)
+		assertArea(t, out, width, height-ui.ChromeHeight)
+		cardColumns(t, out)
+		if !strings.Contains(ansi.Strip(out), "> "+last) {
+			t.Errorf("%dx%d: the cursor row must show:\n%s", width, height, ansi.Strip(out))
+		}
+	}
+	// A tall screen shows all themes.
+	m := press(t, vaultAt(testItems(), 80, 24), keyMsg("T"))
+	plain := ansi.Strip(m.ViewContent(80, 24-ui.ChromeHeight))
+	for _, name := range ui.ThemeNames {
+		if !strings.Contains(plain, name) {
+			t.Errorf("at 80x24 the picker must show %q:\n%s", name, plain)
+		}
+	}
+}
+
+func TestThemePickerFitsAfterResize(t *testing.T) {
+	m := press(t, vaultAt(testItems(), 80, 24), keyMsg("T"))
+	for range 4 {
+		updated, _ := m.Update(tea.KeyPressMsg{Code: tea.KeyDown})
+		m = updated.(VaultModel)
+	}
+	want := *m.selectedTheme
+	updated, cmd := m.Update(tea.WindowSizeMsg{Width: 40, Height: 12})
+	m = updated.(VaultModel)
+	if cmd == nil {
+		t.Fatal("a resize that changes the picker height must rebuild the picker")
+	}
+	out := m.ViewContent(40, 12-ui.ChromeHeight)
+	assertArea(t, out, 40, 12-ui.ChromeHeight)
+	cardColumns(t, out)
+	if !strings.Contains(ansi.Strip(out), "> "+want) {
+		t.Errorf("after the resize the cursor must stay on %q and show:\n%s", want, ansi.Strip(out))
+	}
+	// The same size again must not rebuild the picker. Form.Init asks for
+	// the window size, so a rebuild would cause another resize message.
+	if _, cmd := m.Update(tea.WindowSizeMsg{Width: 40, Height: 12}); cmd != nil {
+		t.Error("a resize to the same size must not rebuild the picker")
+	}
+}
+
+func TestSyncErrorToastIsOneFooterLine(t *testing.T) {
+	m := newTestVault(testItems())
+	err := errors.New("bw sync: exit status 1\nmore detail about the failure from the server\n\x1b[31mlast line\x1b[0m")
+	updated, _ := m.Update(bwcmd.SyncResult{Err: err})
+	m = updated.(VaultModel)
+	hints, status := m.FooterContent()
+	for _, width := range []int{40, 80, 120} {
+		out := ui.RenderFooter(hints, status, width)
+		if strings.Contains(out, "\n") {
+			t.Errorf("width %d: footer has more than one line: %q", width, out)
+		}
+		if w := lipgloss.Width(out); w != width {
+			t.Errorf("width %d: footer is %d cells wide", width, w)
+		}
+		if !strings.Contains(ansi.Strip(out), "Sync failed: bw sync") {
+			t.Errorf("width %d: footer = %q, want the start of the error", width, ansi.Strip(out))
+		}
 	}
 }

@@ -8,6 +8,8 @@ import (
 
 	"charm.land/bubbles/v2/spinner"
 	tea "charm.land/bubbletea/v2"
+	"charm.land/lipgloss/v2"
+	"github.com/charmbracelet/x/ansi"
 	"github.com/juthrbog/lazybw/bwcmd"
 	"github.com/juthrbog/lazybw/ui"
 )
@@ -188,6 +190,42 @@ func TestLockedFormSubmitThenSuccessDoesNotResubmit(t *testing.T) {
 			}
 		}
 	case <-time.After(500 * time.Millisecond):
+	}
+}
+
+func TestLockedErrorWrapsToFormWidth(t *testing.T) {
+	msg := "Invalid master password. The request to the server failed because it timed out after 30 seconds"
+	m := NewLockedModel(false)
+	m.state = lockedUnlocking
+	updated, _ := m.Update(bwcmd.UnlockResult{Err: errors.New(msg + "\n    at stack line\x1b[31m")})
+	m = updated.(LockedModel)
+
+	out := m.ViewContent(80, 24-ui.ChromeHeight)
+	// The root centers the widest line. The error must not be wider than
+	// the form, so that the form stays in the middle.
+	formLeft := (80 - lockedFormWidth) / 2
+	for _, line := range strings.Split(out, "\n") {
+		plain := ansi.Strip(line)
+		if w := lipgloss.Width(strings.TrimRight(plain, " ")); w > formLeft+lockedFormWidth {
+			t.Errorf("line ends at column %d, past the form at %d: %q", w, formLeft+lockedFormWidth, plain)
+		}
+		if strings.Contains(plain, "Vault is locked.") && !strings.HasPrefix(plain, strings.Repeat(" ", formLeft)+"V") {
+			t.Errorf("the title must start at column %d: %q", formLeft, plain)
+		}
+		if strings.ContainsAny(plain, "\x1b\r") {
+			t.Errorf("line has control characters: %q", line)
+		}
+	}
+	plain := strings.Join(strings.Fields(ansi.Strip(out)), " ")
+	if !strings.Contains(plain, msg+" at stack line") {
+		t.Errorf("the wrapped error lost text:\n%s", ansi.Strip(out))
+	}
+
+	// On a narrow screen, the error fits the width.
+	for _, line := range strings.Split(m.ViewContent(40, 12-ui.ChromeHeight), "\n") {
+		if w := lipgloss.Width(line); w > 40 {
+			t.Errorf("at 40 columns, line is %d cells wide: %q", w, ansi.Strip(line))
+		}
 	}
 }
 

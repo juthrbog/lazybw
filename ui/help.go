@@ -20,14 +20,16 @@ type HelpBinding struct {
 var categoryOrder = []string{"Copy", "Navigation", "Vault", "UI"}
 
 // HelpOverlay is a scrollable, filterable overlay that displays keybindings
-// grouped by category.
+// grouped by category. The scroll keys work until the user presses "/".
+// Then the typed keys go into the filter until enter or esc.
 type HelpOverlay struct {
-	viewport viewport.Model
-	visible  bool
-	filter   string
-	bindings []HelpBinding
-	width    int
-	height   int
+	viewport  viewport.Model
+	visible   bool
+	filtering bool // true while the typed keys go into the filter
+	filter    string
+	bindings  []HelpBinding
+	width     int
+	height    int
 }
 
 // NewHelpOverlay creates a hidden help overlay.
@@ -35,17 +37,34 @@ func NewHelpOverlay() HelpOverlay {
 	return HelpOverlay{}
 }
 
-// Show opens the help overlay with the given bindings.
+// Show opens the help overlay with the given bindings. Width and height are
+// the size of the content area that the overlay card is drawn in.
 func (h *HelpOverlay) Show(bindings []HelpBinding, width, height int) {
 	h.bindings = bindings
 	h.width = width
 	h.height = height
 	h.filter = ""
+	h.filtering = false
 	h.visible = true
 	h.viewport = viewport.New()
 	h.viewport.SetWidth(h.contentWidth())
 	h.viewport.SetHeight(h.contentHeight())
 	h.viewport.SetContent(h.renderContent())
+}
+
+// Resize fits the overlay to a new content area. It keeps the filter and
+// the scroll position.
+func (h *HelpOverlay) Resize(width, height int) {
+	h.width = width
+	h.height = height
+	if !h.visible {
+		return
+	}
+	offset := h.viewport.YOffset()
+	h.viewport.SetWidth(h.contentWidth())
+	h.viewport.SetHeight(h.contentHeight())
+	h.viewport.SetContent(h.renderContent())
+	h.viewport.SetYOffset(offset)
 }
 
 // Hide dismisses the help overlay.
@@ -58,6 +77,11 @@ func (h HelpOverlay) Visible() bool {
 	return h.visible
 }
 
+// Filtering returns whether the typed keys go into the filter.
+func (h HelpOverlay) Filtering() bool {
+	return h.filtering
+}
+
 // Update handles input when the help overlay is visible.
 func (h HelpOverlay) Update(msg tea.Msg) (HelpOverlay, tea.Cmd) {
 	if !h.visible {
@@ -66,26 +90,17 @@ func (h HelpOverlay) Update(msg tea.Msg) (HelpOverlay, tea.Cmd) {
 
 	switch msg := msg.(type) {
 	case tea.KeyPressMsg:
-		k := msg.String()
-		switch k {
+		if h.filtering {
+			h.updateFilter(msg.String())
+			return h, nil
+		}
+		switch msg.String() {
 		case "?", "esc":
 			h.visible = false
 			return h, nil
-		case "backspace":
-			if len(h.filter) > 0 {
-				h.filter = h.filter[:len(h.filter)-1]
-				h.viewport.SetContent(h.renderContent())
-				h.viewport.GotoTop()
-			}
+		case "/":
+			h.filtering = true
 			return h, nil
-		default:
-			// Single printable character → append to filter.
-			if len(k) == 1 && k[0] >= 32 && k[0] < 127 {
-				h.filter += k
-				h.viewport.SetContent(h.renderContent())
-				h.viewport.GotoTop()
-				return h, nil
-			}
 		}
 
 		// Forward scroll keys to viewport.
@@ -97,28 +112,69 @@ func (h HelpOverlay) Update(msg tea.Msg) (HelpOverlay, tea.Cmd) {
 	return h, nil
 }
 
+// updateFilter handles a key while the user types a filter. Enter keeps the
+// filter, and esc clears it. Both return to the scroll keys.
+func (h *HelpOverlay) updateFilter(k string) {
+	switch k {
+	case "enter":
+		h.filtering = false
+	case "esc":
+		h.filtering = false
+		h.setFilter("")
+	case "backspace":
+		// The filter holds only printable ASCII, so one byte is one key.
+		if len(h.filter) > 0 {
+			h.setFilter(h.filter[:len(h.filter)-1])
+		}
+	default:
+		// Single printable character → append to filter.
+		if len(k) == 1 && k[0] >= 32 && k[0] < 127 {
+			h.setFilter(h.filter + k)
+		}
+	}
+}
+
+func (h *HelpOverlay) setFilter(filter string) {
+	h.filter = filter
+	h.viewport.SetContent(h.renderContent())
+	h.viewport.GotoTop()
+}
+
 // View renders the help overlay as a bordered popup.
 func (h HelpOverlay) View() string {
 	if !h.visible {
 		return ""
 	}
 
-	var header strings.Builder
-	header.WriteString(StyleTitle.Render("Keybindings"))
-	if h.filter != "" {
-		header.WriteString("  " + StyleFaint.Render("/ "+h.filter))
-	} else {
-		header.WriteString("  " + StyleFaint.Render("type to filter"))
+	header := StyleTitle.Render("Keybindings")
+	switch {
+	case h.filtering:
+		header += "  " + StyleFaint.Render("/ "+h.filter+"_")
+	case h.filter != "":
+		header += "  " + StyleFaint.Render("/ "+h.filter)
+	default:
+		header += "  " + StyleFaint.Render("/ to filter")
 	}
-	header.WriteString("\n\n")
 
-	footer := "\n" + StyleFaint.Render("?/esc close")
+	footer := "?/esc close · ↑/↓ scroll"
+	if h.filtering {
+		footer = "enter done · esc clear"
+	}
+	if !h.viewport.AtBottom() {
+		footer += " · ↓ more"
+	}
+
+	// Cut the header and the footer, so that the box does not wrap them
+	// into more lines than contentHeight counts.
+	w := h.contentWidth()
+	header = Truncate(header, w)
+	footer = StyleFaint.Render(Truncate(footer, w))
 
 	box := lipgloss.NewStyle().
 		Padding(0, 1).
 		Width(h.boxWidth())
 
-	return box.Render(header.String() + h.viewport.View() + footer)
+	return box.Render(header + "\n\n" + h.viewport.View() + "\n" + footer)
 }
 
 func (h HelpOverlay) boxWidth() int {
@@ -127,9 +183,11 @@ func (h HelpOverlay) boxWidth() int {
 		w = 70
 	}
 	if w < 40 {
-		w = h.width - 4
+		// The overlay card adds its border and padding.
+		w = h.width - OverlayEdgeWidth
 	}
-	return w
+	// Keep at least 1 cell for the content.
+	return max(3, w)
 }
 
 func (h HelpOverlay) contentWidth() int {
@@ -138,13 +196,9 @@ func (h HelpOverlay) contentWidth() int {
 }
 
 func (h HelpOverlay) contentHeight() int {
-	// screen height minus RenderOverlay border+padding (6) minus internal padding (0)
-	// minus header (2) minus footer (2) minus visual margin (4).
-	ch := h.height - 14
-	if ch < 5 {
-		ch = 5
-	}
-	return ch
+	// The content area minus the overlay card border and padding (4), the
+	// header (2) and the footer (1).
+	return max(1, h.height-OverlayEdgeHeight-3)
 }
 
 // renderContent builds the grouped, filtered binding content.

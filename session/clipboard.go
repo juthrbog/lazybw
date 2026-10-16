@@ -16,6 +16,7 @@ const (
 	CopyFieldPassword CopyField = iota
 	CopyFieldTOTP
 	CopyFieldUsername
+	CopyFieldNote
 )
 
 // CopiedMsg is sent back to the model after a copy operation completes.

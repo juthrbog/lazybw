@@ -410,7 +410,7 @@ func (m RootModel) View() tea.View {
 		hd.ItemCount, hd.SelectedType = m.vault.HeaderInfo()
 	}
 	header := ui.RenderHeader(hd)
-	contentHeight := m.height - 3 // header (2 lines) + footer
+	contentHeight := m.height - ui.ChromeHeight
 
 	var (
 		content string
@@ -428,14 +428,27 @@ func (m RootModel) View() tea.View {
 		content = m.vault.ViewContent(m.width, contentHeight)
 		hints, status = m.vault.FooterContent()
 	case stateError:
-		content = ui.CenterInArea(m.err.ViewContent(), m.width, contentHeight)
+		content = ui.CenterInArea(m.err.ViewContent(m.width), m.width, contentHeight)
 		hints = m.err.FooterHints()
 	case stateQuitting:
 		content = ui.CenterInArea(m.spinner.View()+" Locking vault…", m.width, contentHeight)
 	}
 
 	footer := ui.RenderFooter(hints, status, m.width)
-	v := tea.NewView(lipgloss.JoinVertical(lipgloss.Left, header, content, footer))
+	frame := []string{header}
+	if contentHeight > 0 {
+		// Give the content exactly contentHeight rows, and cut what is too
+		// wide. The renderer drops rows below the terminal, so a content
+		// area that is too tall would push the footer off the screen.
+		content = lipgloss.NewStyle().
+			Height(contentHeight).
+			MaxHeight(contentHeight).
+			MaxWidth(m.width).
+			Render(content)
+		frame = append(frame, content)
+	}
+	frame = append(frame, footer)
+	v := tea.NewView(lipgloss.JoinVertical(lipgloss.Left, frame...))
 	v.AltScreen = true
 	v.MouseMode = tea.MouseModeCellMotion
 	return v

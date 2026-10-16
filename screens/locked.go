@@ -7,7 +7,6 @@ import (
 	"charm.land/bubbles/v2/spinner"
 	tea "charm.land/bubbletea/v2"
 	"charm.land/huh/v2"
-	"charm.land/lipgloss/v2"
 	"github.com/juthrbog/lazybw/bwcmd"
 	"github.com/juthrbog/lazybw/ui"
 )
@@ -22,8 +21,6 @@ var (
 	loginCmd  = bwcmd.LoginUser
 )
 
-// errorWidth is the width at which the error text below the form wraps.
-const errorWidth = 50
 
 // UnlockedMsg is sent to the root model when the unlock succeeds.
 type UnlockedMsg struct {
@@ -91,6 +88,9 @@ func NewLockedModel(isLogin bool) LockedModel {
 	return m
 }
 
+// lockedFormWidth is the width of the unlock form, in cells.
+const lockedFormWidth = 40
+
 func buildLockedForm(isLogin bool, email, password *string) *huh.Form {
 	pwField := huh.NewInput().
 		Key("password").
@@ -140,7 +140,7 @@ func buildCodeForm(method bwcmd.TwoStepMethod, code *string) *huh.Form {
 
 // styleForm gives a form of the locked screen its width and theme.
 func styleForm(form *huh.Form) *huh.Form {
-	form = form.WithWidth(40)
+	form = form.WithWidth(lockedFormWidth)
 	if ui.HuhTheme != nil {
 		form = form.WithTheme(ui.HuhTheme)
 	}
@@ -406,21 +406,12 @@ func (m LockedModel) ViewContent(width, contentHeight int) string {
 	content := title + "\n\n" + form.View()
 
 	if m.errText != "" {
-		content += "\n\n" + renderFormError(m.errText, width)
+		// Wrap the error to the form width. The root centers the widest
+		// line, so a wider error would move the form off center.
+		content += "\n\n" + errorBlock(m.errText, width, lockedFormWidth)
 	}
 
 	return ui.CenterInArea(content, width, contentHeight)
-}
-
-// renderFormError renders text as an error below a form. The text wraps,
-// so that a long hint fits on a narrow screen.
-func renderFormError(text string, width int) string {
-	w := min(errorWidth, width-4)
-	if w < 20 {
-		w = 20
-	}
-	return lipgloss.JoinHorizontal(lipgloss.Top,
-		ui.GlyphError+" ", ui.StyleError.Width(w).Render(text))
 }
 
 // FooterContent returns hints and status for the footer bar.
