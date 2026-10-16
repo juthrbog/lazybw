@@ -82,6 +82,8 @@ type VaultModel struct {
 	totpCode     string
 	totpSecsLeft int
 	totpParams   *totp.Params // parsed TOTP params for the selected item
+	totpItemID   string       // ID of the item that the TOTP state belongs to
+	totpInvalid  bool         // the selected item has a TOTP key that does not parse
 
 	drawerScroll  int
 	drawerHeight  int  // current drawer height (resizable)
@@ -149,14 +151,9 @@ func NewVaultModel(items []bwcmd.Item, sess *session.State, width, height int) V
 		height:       height,
 	}
 
-	// Parse TOTP params for the initially selected item so the first
-	// tick can compute the code immediately (no "loading…" flash).
-	if item := m.selectedItem(); item != nil && item.Login != nil && item.Login.Totp != "" {
-		p, err := totp.Parse(item.Login.Totp)
-		if err == nil {
-			m.totpParams = &p
-		}
-	}
+	// Compute the code for the initially selected item now, so that the
+	// drawer does not show "loading…" until the first tick.
+	m.loadTOTP()
 
 	return m
 }
@@ -185,7 +182,21 @@ func (m VaultModel) Init() tea.Cmd {
 	return tickTOTP()
 }
 
+// Update handles a message and then makes sure that the cached TOTP state
+// belongs to the selected item. The list can change the selection in many
+// ways (filter results, regrouping, a cleared filter), and not all of them
+// move the cursor index.
 func (m VaultModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+	updated, cmd := m.update(msg)
+	vm, ok := updated.(VaultModel)
+	if !ok {
+		return updated, cmd
+	}
+	vm.syncSelection()
+	return vm, cmd
+}
+
+func (m VaultModel) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	var cmds []tea.Cmd
 
 	switch msg := msg.(type) {
@@ -231,7 +242,6 @@ func (m VaultModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		// Forward to list for navigation, filtering, etc.
 		prevFilter := m.list.FilterState()
-		prevIdx := m.list.Index()
 		var cmd tea.Cmd
 		m.list, cmd = m.list.Update(msg)
 		cmds = append(cmds, cmd)
@@ -239,13 +249,10 @@ func (m VaultModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if fs := m.list.FilterState(); fs != prevFilter && m.groups.enabled {
 			switch fs {
 			case list.Filtering:
-				cmds = append(cmds, m.list.SetItems(toListItems(m.rawItems)))
+				cmds = append(cmds, m.setListItems(toListItems(m.rawItems)))
 			case list.Unfiltered:
 				cmds = append(cmds, m.rebuildListItems())
 			}
-		}
-		if m.list.Index() != prevIdx {
-			cmds = append(cmds, m.onCursorChange())
 		}
 		return m, tea.Batch(cmds...)
 
@@ -314,13 +321,9 @@ func (m VaultModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	}
 
 	// Forward non-key messages to the list (e.g. filter debounce timers).
-	prevIdx := m.list.Index()
 	var cmd tea.Cmd
 	m.list, cmd = m.list.Update(msg)
 	cmds = append(cmds, cmd)
-	if m.list.Index() != prevIdx {
-		cmds = append(cmds, m.onCursorChange())
-	}
 	return m, tea.Batch(cmds...)
 }
 
@@ -345,7 +348,14 @@ func (m VaultModel) handleActionKeys(msg tea.KeyPressMsg) (tea.Model, tea.Cmd, b
 		}
 
 	case key.Matches(msg, m.keymap.CopyTOTP):
-		if m.totpCode != "" {
+		if m.totpInvalid {
+			m.setErrorToast("Invalid TOTP secret")
+			return m, nil, true
+		}
+		// Compute the code now. The cached code can be up to a second old
+		// at a step change.
+		if m.totpParams != nil {
+			m.computeTOTP()
 			return m, session.CopyToClipboard(m.totpCode, session.CopyFieldTOTP), true
 		}
 
@@ -458,23 +468,48 @@ func (m VaultModel) handleActionKeys(msg tea.KeyPressMsg) (tea.Model, tea.Cmd, b
 	return m, nil, false
 }
 
-func (m *VaultModel) onCursorChange() tea.Cmd {
+// syncSelection reloads the TOTP state when the selected item is not the
+// item that the state belongs to.
+func (m *VaultModel) syncSelection() {
+	id := ""
+	if item := m.selectedItem(); item != nil {
+		id = item.ID
+	}
+	if id != m.totpItemID {
+		m.onCursorChange()
+	}
+}
+
+// onCursorChange resets the per-item drawer state for a new selection.
+func (m *VaultModel) onCursorChange() {
 	m.drawerScroll = 0
+	m.loadTOTP()
+}
+
+// loadTOTP parses the TOTP key of the selected item and computes its code.
+// It scrubs the params of the previous item.
+func (m *VaultModel) loadTOTP() {
 	if m.totpParams != nil {
 		m.totpParams.Clear()
 		m.totpParams = nil
 	}
 	m.totpCode = ""
+	m.totpInvalid = false
+	m.totpItemID = ""
 
 	item := m.selectedItem()
+	if item != nil {
+		m.totpItemID = item.ID
+	}
 	if item != nil && item.Login != nil && item.Login.Totp != "" {
 		p, err := totp.Parse(item.Login.Totp)
 		if err == nil {
 			m.totpParams = &p
+		} else {
+			m.totpInvalid = true
 		}
 	}
 	m.computeTOTP()
-	return nil
 }
 
 func (m *VaultModel) selectedItem() *bwcmd.Item {
@@ -504,6 +539,15 @@ func (m *VaultModel) computeTOTP() {
 	m.totpSecsLeft = totp.SecsLeft(m.totpParams.Period)
 }
 
+// totpPeriod returns the TOTP period of the selected item, or 0 when it
+// has no TOTP.
+func (m VaultModel) totpPeriod() int {
+	if m.totpParams == nil {
+		return 0
+	}
+	return m.totpParams.Period
+}
+
 // HeaderInfo returns the item count and selected item type name for the header.
 func (m VaultModel) HeaderInfo() (int, string) {
 	count := len(m.list.Items())
@@ -514,7 +558,25 @@ func (m VaultModel) HeaderInfo() (int, string) {
 }
 
 func (m *VaultModel) rebuildListItems() tea.Cmd {
-	return m.list.SetItems(buildGroupedItems(m.rawItems, m.groups))
+	return m.setListItems(buildGroupedItems(m.rawItems, m.groups))
+}
+
+// setListItems replaces the list rows. With a filter active, SetItems
+// clears the visible rows and returns a command that filters again. The
+// result is applied at once, so that the selection never points into an
+// empty list in between. Otherwise the drawer would reset for an item
+// that stays selected.
+func (m *VaultModel) setListItems(items []list.Item) tea.Cmd {
+	cmd := m.list.SetItems(items)
+	if cmd == nil || m.list.FilterState() == list.Unfiltered {
+		return cmd
+	}
+	msg := cmd()
+	if fm, ok := msg.(list.FilterMatchesMsg); ok {
+		m.list, _ = m.list.Update(fm)
+		return nil
+	}
+	return func() tea.Msg { return msg }
 }
 
 // replaceItems swaps in a fresh item list after a sync. It keeps the
@@ -530,33 +592,27 @@ func (m *VaultModel) replaceItems(items []bwcmd.Item) tea.Cmd {
 	// While a filter is active, the list holds flat rows (see Update).
 	var cmd tea.Cmd
 	if m.groups.enabled && m.list.FilterState() != list.Unfiltered {
-		cmd = m.list.SetItems(toListItems(m.rawItems))
+		cmd = m.setListItems(toListItems(m.rawItems))
 	} else {
 		cmd = m.rebuildListItems()
-	}
-	// With a filter active, SetItems clears the visible rows and returns a
-	// command that filters again. Apply its result now, so that the
-	// selection can be restored on the new rows.
-	if cmd != nil && m.list.FilterState() != list.Unfiltered {
-		msg := cmd()
-		if fm, ok := msg.(list.FilterMatchesMsg); ok {
-			m.list, _ = m.list.Update(fm)
-			cmd = nil
-		} else {
-			cmd = func() tea.Msg { return msg }
-		}
 	}
 	if selectedID == "" || !m.selectItemByID(selectedID) {
 		m.clampCursor()
 	}
-	cursorCmd := m.onCursorChange()
+	// The TOTP key of the same item can change in a sync, so reload it.
+	// A different item also gets a fresh drawer.
+	if item := m.selectedItem(); item != nil && item.ID == selectedID {
+		m.loadTOTP()
+	} else {
+		m.onCursorChange()
+	}
 	secutil.ZeroItems(old)
 	// The sync is complete. Drop its toast, so that the footer shows the
 	// time of the last sync again.
 	if strings.HasSuffix(m.toast, " Vault synced") {
 		m.toast = ""
 	}
-	return tea.Batch(cmd, cursorCmd)
+	return cmd
 }
 
 // selectItemByID moves the cursor to the visible row of the item with the
@@ -867,6 +923,8 @@ func (m VaultModel) renderVaultContent(width, contentHeight int) string {
 			Item:         m.selectedItem(),
 			TOTPCode:     m.totpCode,
 			TOTPSecsLeft: m.totpSecsLeft,
+			TOTPPeriod:   m.totpPeriod(),
+			TOTPInvalid:  m.totpInvalid,
 			Width:        overlayW,
 			AutoHeight:   true,
 			ScrollOffset: m.drawerScroll,
@@ -880,6 +938,8 @@ func (m VaultModel) renderVaultContent(width, contentHeight int) string {
 		Item:         m.selectedItem(),
 		TOTPCode:     m.totpCode,
 		TOTPSecsLeft: m.totpSecsLeft,
+		TOTPPeriod:   m.totpPeriod(),
+		TOTPInvalid:  m.totpInvalid,
 		Width:        width,
 		Height:       m.drawerHeight,
 		ScrollOffset: m.drawerScroll,
