@@ -200,3 +200,23 @@ func TestLockedErrorReturnsToInput(t *testing.T) {
 		t.Error("a failed unlock must return to the input state")
 	}
 }
+
+func TestLockedEnterOnEmptyFormStartsNoBw(t *testing.T) {
+	for _, isLogin := range []bool{false, true} {
+		unlocks := stubUnlock(t)
+		logins := stubLogin(t)
+		m := NewLockedModel(isLogin)
+		m.form.Init()
+		m, cmd := pressLocked(m, enterKey)
+		m, _ = drive(t, m, cmd, nil)
+		if m.state != lockedInput {
+			t.Errorf("login=%v: state = %d, want lockedInput", isLogin, m.state)
+		}
+		if len(*unlocks) != 0 || len(*logins) != 0 {
+			t.Errorf("login=%v: Enter on an empty form ran bw: unlock %d, login %d", isLogin, len(*unlocks), len(*logins))
+		}
+		if len(m.form.Errors()) == 0 {
+			t.Errorf("login=%v: the form must show a validation error", isLogin)
+		}
+	}
+}

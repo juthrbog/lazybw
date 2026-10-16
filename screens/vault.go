@@ -3,7 +3,6 @@ package screens
 import (
 	"fmt"
 	"io"
-	"os/exec"
 	"strings"
 	"time"
 
@@ -65,10 +64,10 @@ func toListItems(items []bwcmd.Item) []list.Item {
 
 // VaultModel is the main vault browsing screen.
 type VaultModel struct {
-	list     list.Model
-	keymap   ui.VaultKeyMap
-	help ui.HelpOverlay
-	sess     *session.State
+	list   list.Model
+	keymap ui.VaultKeyMap
+	help   ui.HelpOverlay
+	sess   *session.State
 
 	rawItems []bwcmd.Item
 	groups   groupState
@@ -76,8 +75,8 @@ type VaultModel struct {
 	toast        string
 	toastTime    time.Time
 	toastIsError bool
-	syncing     bool
-	syncSpinner spinner.Model
+	syncing      bool
+	syncSpinner  spinner.Model
 
 	totpCode     string
 	totpSecsLeft int
@@ -283,7 +282,7 @@ func (m VaultModel) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case bwcmd.SyncResult:
 		m.syncing = false
 		if msg.Err != nil {
-			m.setErrorToast("Sync failed: " + msg.Err.Error())
+			m.setErrorToast("Sync failed: " + userError(msg.Err, actionOther))
 			return m, nil
 		}
 		m.sess.LastSync = time.Now()
@@ -292,17 +291,23 @@ func (m VaultModel) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case bwcmd.ItemsResult:
 		if msg.Err != nil {
-			m.setErrorToast("Load failed: " + msg.Err.Error())
+			m.setErrorToast("Load failed: " + userError(msg.Err, actionOther))
 			return m, nil
 		}
 		return m, m.replaceItems(msg.Items)
+
+	case OpenURLResult:
+		if msg.Err != nil {
+			m.setErrorToast("Open URL failed: " + msg.Err.Error())
+		}
+		return m, nil
 
 	case bwcmd.GenerateResult:
 		if msg.Seq != m.genSeq {
 			return m, nil // a newer request is in flight
 		}
 		if msg.Err != nil {
-			m.genPassword = "Error: " + msg.Err.Error()
+			m.genPassword = "Error: " + userError(msg.Err, actionOther)
 		} else {
 			m.genPassword = msg.Password
 		}
@@ -374,9 +379,7 @@ func (m VaultModel) handleActionKeys(msg tea.KeyPressMsg) (tea.Model, tea.Cmd, b
 
 	case key.Matches(msg, m.keymap.OpenURL):
 		if item := m.selectedItem(); item != nil && item.Login != nil && len(item.Login.URIs) > 0 {
-			url := item.Login.URIs[0].URI
-			cmd := exec.Command("xdg-open", url) //nolint:gosec // URL comes from user's own vault data
-			_ = cmd.Start()
+			return m, openURL(item.Login.URIs[0].URI), true
 		}
 		return m, nil, true
 
@@ -1024,8 +1027,6 @@ func (m VaultModel) FooterContent() ([]ui.HintBinding, string) {
 func (m VaultModel) View() tea.View {
 	return tea.NewView(m.ViewContent(m.width, m.height))
 }
-
-
 
 func formatLastSync(t time.Time) string {
 	if t.IsZero() {

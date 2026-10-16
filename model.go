@@ -117,14 +117,11 @@ func (m RootModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.state = stateLogin
 			m.locked = screens.NewLockedModel(true)
 			return m, m.locked.Init()
-		case "locked":
-			m.state = stateLocked
-			m.locked = screens.NewLockedModel(false)
-			return m, m.locked.Init()
-		case "unlocked":
-			m.state = stateLoading
-			return m, bwcmd.FetchItems(m.sess.Token, m.sess.Epoch)
 		default:
+			// "locked" or "unlocked". ParseStatus rejects other values.
+			// lazybw never passes the BW_SESSION of the parent shell to
+			// bw, so "unlocked" cannot mean a session that lazybw can use.
+			// Both ask for the master password.
 			m.state = stateLocked
 			m.locked = screens.NewLockedModel(false)
 			return m, m.locked.Init()

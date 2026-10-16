@@ -1,6 +1,11 @@
 package bwcmd
 
-import "testing"
+import (
+	"encoding/json"
+	"errors"
+	"strings"
+	"testing"
+)
 
 func TestParseStatus(t *testing.T) {
 	tests := []struct {
@@ -33,6 +38,26 @@ func TestParseStatus(t *testing.T) {
 			name:    "empty input",
 			input:   []byte{},
 			wantErr: true,
+		},
+		{
+			name:    "null",
+			input:   []byte("null\n"),
+			wantErr: true,
+		},
+		{
+			name:    "unknown status",
+			input:   []byte(`{"status":"pending","userEmail":"u@t.com"}`),
+			wantErr: true,
+		},
+		{
+			name:    "no status",
+			input:   []byte(`{}`),
+			wantErr: true,
+		},
+		{
+			name:  "byte order mark and white space",
+			input: []byte("\n\xEF\xBB\xBF  {\"status\":\"locked\",\"userEmail\":\"u@t.com\"}\r\n"),
+			want:  VaultStatus{Status: "locked", UserEmail: "u@t.com"},
 		},
 	}
 
@@ -102,6 +127,12 @@ func TestParseItems(t *testing.T) {
 			input:   []byte(`{bad`),
 			wantErr: true,
 		},
+		{
+			name:      "byte order mark",
+			input:     []byte("\xEF\xBB\xBF[{\"id\":\"1\",\"type\":1,\"name\":\"A\"}]\n"),
+			wantCount: 1,
+			wantType:  ItemTypeLogin,
+		},
 	}
 
 	for _, tt := range tests {
@@ -121,6 +152,40 @@ func TestParseItems(t *testing.T) {
 			}
 			if tt.wantType != 0 && len(got) > 0 && got[0].Type != tt.wantType {
 				t.Errorf("Type = %d, want %d", got[0].Type, tt.wantType)
+			}
+		})
+	}
+}
+
+func TestParseErrorsNameTheCommand(t *testing.T) {
+	statusErr := func(in string) error { _, err := ParseStatus([]byte(in)); return err }
+	itemsErr := func(in string) error { _, err := ParseItems([]byte(in)); return err }
+	tests := []struct {
+		name   string
+		err    error
+		prefix string
+		json   bool // the error wraps the encoding/json error
+	}{
+		{"empty status", statusErr(""), "parse bw status output: ", true},
+		{"malformed status", statusErr("{bad"), "parse bw status output: ", true},
+		{"null status", statusErr("null"), "parse bw status output: ", false},
+		{"unknown status", statusErr(`{"status":"pending"}`), "parse bw status output: ", false},
+		{"empty items", itemsErr(""), "parse bw list items output: ", true},
+		{"items not a list", itemsErr(`{"id":"1"}`), "parse bw list items output: ", true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if tt.err == nil {
+				t.Fatal("expected error, got nil")
+			}
+			if !strings.HasPrefix(tt.err.Error(), tt.prefix) {
+				t.Errorf("err = %q, want prefix %q", tt.err, tt.prefix)
+			}
+			var syntaxErr *json.SyntaxError
+			var typeErr *json.UnmarshalTypeError
+			wrapped := errors.As(tt.err, &syntaxErr) || errors.As(tt.err, &typeErr)
+			if wrapped != tt.json {
+				t.Errorf("wraps a json error = %v, want %v", wrapped, tt.json)
 			}
 		})
 	}

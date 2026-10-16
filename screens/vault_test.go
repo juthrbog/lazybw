@@ -1,6 +1,7 @@
 package screens
 
 import (
+	"reflect"
 	"strings"
 	"testing"
 
@@ -287,5 +288,54 @@ func TestGenerateResultOutOfOrderIsDropped(t *testing.T) {
 	m = updated.(VaultModel)
 	if m.genPassword != "new" {
 		t.Errorf("genPassword = %q, want the result of the latest request", m.genPassword)
+	}
+}
+
+// vaultWithURI returns a vault whose selected login has uri.
+func vaultWithURI(uri string) VaultModel {
+	items := []bwcmd.Item{{ID: "1", Type: bwcmd.ItemTypeLogin, Name: "Site",
+		Login: &bwcmd.Login{Username: "u", URIs: []bwcmd.URI{{URI: uri}}}}}
+	return NewVaultModel(items, &session.State{}, 80, 24)
+}
+
+// pressOpen presses o on m, runs the command and feeds its result back.
+func pressOpen(t *testing.T, m VaultModel) VaultModel {
+	t.Helper()
+	updated, cmd := m.Update(tea.KeyPressMsg{Code: 'o', Text: "o"})
+	m = updated.(VaultModel)
+	if cmd == nil {
+		t.Fatal("o must return a command")
+	}
+	updated, _ = m.Update(cmd())
+	return updated.(VaultModel)
+}
+
+func TestVaultOpenRejectsFileURI(t *testing.T) {
+	targets, _ := fakeOpener(t, "exit 0\n")
+	m := pressOpen(t, vaultWithURI("file:///etc/passwd"))
+	if len(*targets) != 0 {
+		t.Errorf("the opener ran for %q", *targets)
+	}
+	if !m.toastIsError || !strings.Contains(m.toast, "http and https") {
+		t.Errorf("toast = %q (error: %v), want an error toast", m.toast, m.toastIsError)
+	}
+}
+
+func TestVaultOpenFailureShowsToast(t *testing.T) {
+	fakeOpener(t, "exit 1\n")
+	m := pressOpen(t, vaultWithURI("example.com"))
+	if _, status := m.FooterContent(); !m.toastIsError || !strings.Contains(status, "Open URL failed") {
+		t.Errorf("status = %q, want an Open URL failed toast", status)
+	}
+}
+
+func TestVaultOpenSuccessShowsNoError(t *testing.T) {
+	targets, _ := fakeOpener(t, "exit 0\n")
+	m := pressOpen(t, vaultWithURI("example.com"))
+	if !reflect.DeepEqual(*targets, []string{"https://example.com"}) {
+		t.Errorf("opener got %q, want https://example.com", *targets)
+	}
+	if m.toastIsError {
+		t.Errorf("toast = %q, want no error", m.toast)
 	}
 }

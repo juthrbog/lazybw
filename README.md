@@ -82,6 +82,12 @@ lazybw
 
 On first launch, lazybw checks `bw status` and prompts you to log in or unlock as needed.
 
+### Two-step login and new-device verification
+
+If your account uses two-step login, lazybw asks for the method and then for the code after you enter your email and master password. lazybw supports an authenticator app, email and YubiKey OTP. If you use email, Bitwarden sends the code to your email address.
+
+Bitwarden can also ask for a new-device code. It does this when an account without two-step login logs in from a new device, for example a new install of `bw`. Bitwarden sends this code by email, but `bw` has no option that takes it, so lazybw cannot pass it to `bw`. To finish the check, run `bw login` once in a terminal and enter the code from the email. Then start lazybw again.
+
 ### Flags
 
 | Flag | Default | Description |

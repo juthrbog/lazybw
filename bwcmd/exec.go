@@ -3,7 +3,9 @@ package bwcmd
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
+	"log"
 	"os"
 	"os/exec"
 	"strings"
@@ -12,7 +14,24 @@ import (
 	tea "charm.land/bubbletea/v2"
 )
 
-const cmdTimeout = 10 * time.Second
+// Time limits for bw commands. Tests shorten them.
+var (
+	// shortTimeout is the limit for bw status, bw lock and bw generate.
+	shortTimeout = 15 * time.Second
+	// longTimeout is the limit for bw list items, bw sync, bw login and
+	// bw unlock. These commands wait for the network, read the whole
+	// vault or run the key derivation.
+	longTimeout = 2 * time.Minute
+	// waitDelay is how long the pipes of a killed bw can stay open. A
+	// process that the kill does not reach keeps the pipes open. On
+	// Windows, the kill stops only the program that lazybw started, such
+	// as a wrapper script, and not the bw that the wrapper started.
+	waitDelay = 2 * time.Second
+)
+
+// errNoToken is the error for a bw unlock or bw login that exits 0 but
+// prints no session key.
+var errNoToken = errors.New("bw did not return a session key")
 
 // CmdResult carries the stdout bytes or an error from a bw subprocess.
 type CmdResult struct {
@@ -62,59 +81,163 @@ type GenerateResult struct {
 	Seq      uint64
 }
 
-// execBw runs the bw CLI with the given args and session token.
-func execBw(sessionToken string, args ...string) ([]byte, error) {
-	ctx, cancel := context.WithTimeout(context.Background(), cmdTimeout)
+// TwoStepMethod is a two-step login method that LoginUser can pass to bw.
+type TwoStepMethod int
+
+const (
+	MethodAuto          TwoStepMethod = iota // bw picks the method
+	MethodAuthenticator                      // authenticator app, bw method 0
+	MethodEmail                              // code sent by email, bw method 1
+	MethodYubiKey                            // YubiKey OTP, bw method 3
+)
+
+// arg returns the value for the bw --method option, or "" for MethodAuto.
+func (m TwoStepMethod) arg() string {
+	switch m {
+	case MethodAuthenticator:
+		return "0"
+	case MethodEmail:
+		return "1"
+	case MethodYubiKey:
+		return "3"
+	}
+	return ""
+}
+
+// TwoStep holds the two-step login options for LoginUser. The zero value
+// sends no two-step options.
+type TwoStep struct {
+	Method TwoStepMethod
+	Code   string // empty sends no code
+}
+
+// strippedEnv lists the variables that childEnv does not copy to bw. The
+// BW_ output variables change what bw prints. BITWARDENCLI_DEBUG makes bw
+// write its debug log to stdout, in front of the JSON and the session key.
+// lazybw sets BW_SESSION, BW_PASSWORD and BW_NOINTERACTION itself.
+var strippedEnv = []string{
+	"BW_SESSION", "BW_PASSWORD", "BW_RESPONSE", "BW_QUIET", "BW_RAW",
+	"BW_PRETTY", "BW_CLEANEXIT", "BW_NOINTERACTION", "BITWARDENCLI_DEBUG",
+}
+
+// childEnv returns the environment for bw. It copies the environment of
+// lazybw without the variables in strippedEnv, so variables such as
+// BITWARDENCLI_APPDATA_DIR, NODE_EXTRA_CA_CERTS and the proxy variables
+// stay. It adds BW_NOINTERACTION=true, so that bw fails at once when it
+// needs an answer that nobody can type. It adds BW_SESSION when token is
+// not empty, and BW_PASSWORD when password is not empty.
+func childEnv(token, password string) []string {
+	parent := os.Environ()
+	env := make([]string, 0, len(parent)+3)
+	for _, kv := range parent {
+		if !isStripped(kv) {
+			env = append(env, kv)
+		}
+	}
+	env = append(env, "BW_NOINTERACTION=true")
+	if token != "" {
+		env = append(env, "BW_SESSION="+token)
+	}
+	if password != "" {
+		env = append(env, "BW_PASSWORD="+password)
+	}
+	return env
+}
+
+// isStripped reports whether the entry kv ("NAME=value") names a variable
+// in strippedEnv. Names on Windows ignore case, so the match ignores case.
+func isStripped(kv string) bool {
+	name, _, _ := strings.Cut(kv, "=")
+	for _, s := range strippedEnv {
+		if strings.EqualFold(name, s) {
+			return true
+		}
+	}
+	return false
+}
+
+// execBw runs bw with args and returns its stdout. The token and the
+// password go to bw in its environment, not in args, which ps and
+// /proc/PID/cmdline show to other users. bw is killed after timeout.
+func execBw(timeout time.Duration, token, password string, args ...string) ([]byte, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
 
-	cmd := exec.CommandContext(ctx, "bw", args...) //nolint:gosec // args are constructed internally, not from user input
-	cmd.Env = append(os.Environ(), "BW_SESSION="+sessionToken)
+	cmd := exec.CommandContext(ctx, "bw", args...) //nolint:gosec // G204: the program is always bw and no shell runs; user text goes only after "--" or in "--code="
+	cmd.Env = childEnv(token, password)
+	cmd.WaitDelay = waitDelay
+	killTreeOnCancel(cmd)
 
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr
 
 	if err := cmd.Run(); err != nil {
-		errMsg := strings.TrimSpace(stderr.String())
-		if errMsg == "" {
-			errMsg = err.Error()
+		clear(stdout.Bytes())
+		log.Printf("bw %s failed: %v\nstderr:\n%s", subcommand(args), err,
+			redact(stderr.String(), privateValues(token, password, args)))
+		if errors.Is(ctx.Err(), context.DeadlineExceeded) {
+			return nil, fmt.Errorf("bw %s timed out after %s: %w", subcommand(args), timeout, ctx.Err())
 		}
-		return nil, fmt.Errorf("%s", errMsg)
+		return nil, newError(err, stderr.Bytes())
 	}
 	return stdout.Bytes(), nil
 }
 
-// execBwWithPassword is like execBw but also sets BW_PASSWORD in the
-// child process environment. This keeps the master password out of the
-// argument list, hiding it from ps/top and /proc/PID/cmdline.
-func execBwWithPassword(sessionToken, password string, args ...string) ([]byte, error) {
-	ctx, cancel := context.WithTimeout(context.Background(), cmdTimeout)
-	defer cancel()
-
-	cmd := exec.CommandContext(ctx, "bw", args...) //nolint:gosec // args are constructed internally, not from user input
-	cmd.Env = append(os.Environ(),
-		"BW_SESSION="+sessionToken,
-		"BW_PASSWORD="+password,
-	)
-
-	var stdout, stderr bytes.Buffer
-	cmd.Stdout = &stdout
-	cmd.Stderr = &stderr
-
-	if err := cmd.Run(); err != nil {
-		errMsg := strings.TrimSpace(stderr.String())
-		if errMsg == "" {
-			errMsg = err.Error()
-		}
-		return nil, fmt.Errorf("%s", errMsg)
+// subcommand returns the bw subcommand in args, such as "unlock" or
+// "list items". It leaves out options and user values.
+func subcommand(args []string) string {
+	if len(args) == 0 {
+		return ""
 	}
-	return stdout.Bytes(), nil
+	if args[0] == "list" && len(args) > 1 {
+		return "list " + args[1]
+	}
+	return args[0]
+}
+
+// privateValues returns the values that the debug log must not show: the
+// session token, the password, the two-step code and the args after "--",
+// which hold the email.
+func privateValues(token, password string, args []string) []string {
+	private := []string{token, password}
+	for i, a := range args {
+		if code, ok := strings.CutPrefix(a, "--code="); ok {
+			private = append(private, code)
+		}
+		if a == "--" {
+			return append(private, args[i+1:]...)
+		}
+	}
+	return private
+}
+
+// redact replaces each non-empty value of private in s with "[hidden]".
+func redact(s string, private []string) string {
+	for _, p := range private {
+		if p != "" {
+			s = strings.ReplaceAll(s, p, "[hidden]")
+		}
+	}
+	return s
+}
+
+// tokenResult turns the stdout of `bw unlock --raw` or `bw login --raw`
+// into an UnlockResult, and then zeros out. An exit code of 0 with no
+// token still means that the unlock or login failed.
+func tokenResult(out []byte) UnlockResult {
+	token := strings.TrimSpace(string(out))
+	clear(out)
+	if token == "" {
+		return UnlockResult{Err: errNoToken}
+	}
+	return UnlockResult{Token: token}
 }
 
 // CheckStatus runs `bw status` and returns a StatusResult.
 func CheckStatus() tea.Cmd {
 	return func() tea.Msg {
-		out, err := execBw("", "status")
+		out, err := execBw(shortTimeout, "", "", "status")
 		if err != nil {
 			return StatusResult{Err: err}
 		}
@@ -130,7 +253,7 @@ func CheckStatus() tea.Cmd {
 // epoch, so the caller can drop a result that belongs to an ended session.
 func FetchItems(token string, epoch uint64) tea.Cmd {
 	return func() tea.Msg {
-		out, err := execBw(token, "list", "items")
+		out, err := execBw(longTimeout, token, "", "list", "items")
 		if err != nil {
 			return ItemsResult{Err: err, Epoch: epoch}
 		}
@@ -148,31 +271,46 @@ func FetchItems(token string, epoch uint64) tea.Cmd {
 // /proc/PID/cmdline.
 func Unlock(password string) tea.Cmd {
 	return func() tea.Msg {
-		out, err := execBwWithPassword("", password, "unlock", "--passwordenv", "BW_PASSWORD", "--raw")
+		out, err := execBw(longTimeout, "", password, "unlock", "--passwordenv", "BW_PASSWORD", "--raw")
 		if err != nil {
 			return UnlockResult{Err: err}
 		}
-		return UnlockResult{Token: strings.TrimSpace(string(out))}
+		return tokenResult(out)
 	}
 }
 
-// LoginUser runs `bw login [email] --passwordenv BW_PASSWORD --raw` and
-// returns an UnlockResult. The password is passed via a process-local
-// environment variable instead of a CLI argument.
-func LoginUser(email, password string) tea.Cmd {
+// LoginUser runs `bw login --passwordenv BW_PASSWORD --raw [--method N]
+// [--code=X] -- email` and returns an UnlockResult. The password is passed
+// via a process-local environment variable instead of a CLI argument. The
+// email comes after "--", so that bw cannot read it as an option.
+func LoginUser(email, password string, step TwoStep) tea.Cmd {
+	args := loginArgs(email, step)
 	return func() tea.Msg {
-		out, err := execBwWithPassword("", password, "login", email, "--passwordenv", "BW_PASSWORD", "--raw")
+		out, err := execBw(longTimeout, "", password, args...)
 		if err != nil {
 			return UnlockResult{Err: err}
 		}
-		return UnlockResult{Token: strings.TrimSpace(string(out))}
+		return tokenResult(out)
 	}
+}
+
+// loginArgs returns the bw arguments for LoginUser.
+func loginArgs(email string, step TwoStep) []string {
+	args := []string{"login", "--passwordenv", "BW_PASSWORD", "--raw"}
+	if m := step.Method.arg(); m != "" {
+		args = append(args, "--method", m)
+	}
+	if step.Code != "" {
+		// One argument, so that a code that starts with "-" stays a value.
+		args = append(args, "--code="+step.Code)
+	}
+	return append(args, "--", email)
 }
 
 // Lock runs `bw lock`.
 func Lock(token string) tea.Cmd {
 	return func() tea.Msg {
-		_, err := execBw(token, "lock")
+		_, err := execBw(shortTimeout, token, "", "lock")
 		return LockResult{Err: err}
 	}
 }
@@ -180,7 +318,7 @@ func Lock(token string) tea.Cmd {
 // Sync runs `bw sync` and returns a SyncResult tagged with epoch.
 func Sync(token string, epoch uint64) tea.Cmd {
 	return func() tea.Msg {
-		_, err := execBw(token, "sync")
+		_, err := execBw(longTimeout, token, "", "sync")
 		return SyncResult{Err: err, Epoch: epoch}
 	}
 }
@@ -190,7 +328,7 @@ func Sync(token string, epoch uint64) tea.Cmd {
 func Generate(seq uint64, args ...string) tea.Cmd {
 	return func() tea.Msg {
 		fullArgs := append([]string{"generate"}, args...)
-		out, err := execBw("", fullArgs...)
+		out, err := execBw(shortTimeout, "", "", fullArgs...)
 		if err != nil {
 			return GenerateResult{Err: err, Seq: seq}
 		}
