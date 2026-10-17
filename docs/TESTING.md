@@ -261,7 +261,7 @@ This test in package `bwcmd` makes sure that `Lock` runs `bw lock`:
 func TestLockArgs(t *testing.T) {
 	fakeBw(t, `echo "$*" > "$FAKE_BW_LOG"`)
 	path := logFile(t)
-	if err := Lock("tok")().(LockResult).Err; err != nil {
+	if err := Lock("tok", 1)().(LockResult).Err; err != nil {
 		t.Fatal(err)
 	}
 	if got := readFile(t, path); got != "lock\n" {
