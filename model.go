@@ -1,13 +1,17 @@
 package main
 
 import (
+	"io"
+	"log"
 	"time"
 
 	"charm.land/bubbles/v2/spinner"
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
+	"github.com/charmbracelet/x/ansi"
 	"github.com/juthrbog/lazybw/bwcmd"
 	"github.com/juthrbog/lazybw/screens"
+	"github.com/juthrbog/lazybw/secutil"
 	"github.com/juthrbog/lazybw/session"
 	"github.com/juthrbog/lazybw/ui"
 )
@@ -44,6 +48,19 @@ type RootModel struct {
 	spinner spinner.Model
 	width   int
 	height  int
+
+	// clipGen counts copies to the clipboard. clipDirty is true while a
+	// copied value can still be on the clipboard.
+	clipGen   uint64
+	clipDirty bool
+
+	// pendingLock holds the token of a `bw lock` that has not returned
+	// yet. If the program stops first, cleanupAfterExit locks again.
+	pendingLock string
+	// retried is true after a retry of a failed item fetch. A second
+	// failure locks the session, so that the next retry asks for the
+	// password again.
+	retried bool
 }
 
 func NewRootModel(idleTimeout time.Duration) RootModel {
@@ -106,7 +123,7 @@ func (m RootModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, m.locked.Init()
 		case "unlocked":
 			m.state = stateLoading
-			return m, bwcmd.FetchItems(m.sess.Token)
+			return m, bwcmd.FetchItems(m.sess.Token, m.sess.Epoch)
 		default:
 			m.state = stateLocked
 			m.locked = screens.NewLockedModel(false)
@@ -121,82 +138,133 @@ func (m RootModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.sess.Touch()
 		m.state = stateLoading
 		m.spinner.Spinner = ui.SpinnerLoad
-		return m, tea.Batch(bwcmd.FetchItems(m.sess.Token), m.spinner.Tick)
+		return m, tea.Batch(bwcmd.FetchItems(m.sess.Token, m.sess.Epoch), m.spinner.Tick)
 
 	case bwcmd.ItemsResult:
-		if msg.Err != nil {
-			m.state = stateError
-			m.err = screens.NewErrorModel(msg.Err, false)
+		// A fetch that started before a lock (or before an earlier unlock)
+		// belongs to an ended session. Drop it, so that it cannot open the
+		// vault again.
+		if msg.Epoch != m.sess.Epoch {
+			secutil.ZeroItems(msg.Items)
 			return m, nil
 		}
-		m.state = stateVault
-		m.vault = screens.NewVaultModel(msg.Items, m.sess, m.width, m.height)
-		return m, m.vault.Init()
+		switch m.state {
+		case stateLoading:
+			if msg.Err != nil {
+				m.state = stateError
+				m.err = screens.NewErrorModel(msg.Err, false)
+				if m.retried {
+					// The token can be invalid, for example after a lock
+					// in another shell. Lock, so that the next retry
+					// shows the unlock screen.
+					m.retried = false
+					return m, m.endSession()
+				}
+				return m, nil
+			}
+			m.retried = false
+			m.state = stateVault
+			m.vault = screens.NewVaultModel(msg.Items, m.sess, m.width, m.height)
+			return m, m.vault.Init()
+		case stateVault:
+			// A refresh after sync. The vault keeps its UI state.
+			updated, cmd := m.vault.Update(msg)
+			m.vault = updated.(screens.VaultModel)
+			return m, cmd
+		}
+		secutil.ZeroItems(msg.Items)
+		return m, nil
+
+	case bwcmd.SyncResult:
+		if msg.Epoch != m.sess.Epoch || m.state != stateVault {
+			return m, nil
+		}
+
+	case session.CopiedMsg:
+		m.clipGen++
+		m.clipDirty = true
+		clearCmd := session.ScheduleClipboardClear(m.clipGen)
+		if m.state == stateVault {
+			updated, cmd := m.vault.Update(msg)
+			m.vault = updated.(screens.VaultModel)
+			return m, tea.Batch(clearCmd, cmd)
+		}
+		return m, clearCmd
+
+	case session.ClipboardClearedMsg:
+		// Only the timer of the latest copy clears the clipboard. An older
+		// timer must not clear a newer value early.
+		if msg.Gen != m.clipGen || !m.clipDirty {
+			return m, nil
+		}
+		m.clipDirty = false
+		if m.state == stateVault {
+			updated, cmd := m.vault.Update(msg)
+			m.vault = updated.(screens.VaultModel)
+			return m, tea.Batch(session.ClearClipboard(), cmd)
+		}
+		return m, session.ClearClipboard()
 
 	case screens.LockMsg:
-		m.lockFor = intentLock
-		m.spinner.Spinner = ui.SpinnerLock
-		if m.sess.Token != "" {
-			m.state = stateQuitting
-			token := m.sess.Token
-			m.vault.Clear()
-			m.sess.Lock()
-			return m, tea.Batch(m.spinner.Tick, bwcmd.Lock(token))
+		return m.lock()
+
+	case screens.QuitMsg:
+		return m.quit()
+
+	case bwcmd.LockResult:
+		m.pendingLock = ""
+		if msg.Err != nil {
+			// The token is already gone from memory, so the vault stays
+			// locked for lazybw. Record the failure for --debug.
+			log.Printf("bw lock failed: %v", msg.Err)
+		}
+		// Only a lock that the quitting screen waits for needs an action. An
+		// idle lock already shows the unlock screen, and rebuilding it here
+		// would wipe what the user typed in the meantime.
+		if m.state != stateQuitting {
+			return m, nil
+		}
+		if m.lockFor == intentQuit {
+			cmd := m.exit()
+			return m, cmd
 		}
 		m.state = stateLocked
 		m.locked = screens.NewLockedModel(false)
 		return m, m.locked.Init()
 
-	case screens.QuitMsg:
-		m.lockFor = intentQuit
-		m.state = stateQuitting
-		m.spinner.Spinner = ui.SpinnerLock
-		if m.sess.Token != "" {
-			token := m.sess.Token
-			m.vault.Clear()
-			m.sess.Lock()
-			return m, tea.Batch(m.spinner.Tick, bwcmd.Lock(token))
-		}
-		return m, tea.Quit
-
-	case bwcmd.LockResult:
-		if m.lockFor == intentQuit {
-			return m, tea.Quit
-		}
-		m.state = stateLocked
-		m.locked = screens.NewLockedModel(false)
-		return m, tea.Batch(m.locked.Init(), tickIdleCheck())
-
 	case screens.RetryMsg:
+		// Only the error screen sends RetryMsg. In any other state it is
+		// stale, for example after r and ctrl+c in one input read.
+		if m.state != stateError {
+			return m, nil
+		}
 		m.state = stateLoading
-		return m, bwcmd.CheckStatus()
+		m.spinner.Spinner = ui.SpinnerLoad
+		if !m.sess.IsLocked() {
+			// The vault is unlocked, but loading the items failed.
+			m.retried = true
+			return m, tea.Batch(bwcmd.FetchItems(m.sess.Token, m.sess.Epoch), m.spinner.Tick)
+		}
+		return m, tea.Batch(bwcmd.CheckStatus(), m.spinner.Tick)
 
 	case idleCheckMsg:
-		if m.state == stateVault && m.sess.IsIdle() {
-			token := m.sess.Token
-			m.vault.Clear()
-			m.sess.Lock()
-			m.lockFor = intentLock
-			m.state = stateLocked
-			m.locked = screens.NewLockedModel(false)
-			return m, tea.Batch(bwcmd.Lock(token), m.locked.Init(), tickIdleCheck())
+		if m.idle() {
+			m, cmd := m.idleLock()
+			return m, tea.Batch(cmd, tickIdleCheck())
 		}
 		return m, tickIdleCheck()
 
 	case tea.KeyPressMsg:
-		m.sess.Touch()
+		// quit also locks the vault, so ctrl+c needs no idle check.
 		if msg.String() == "ctrl+c" {
-			m.lockFor = intentQuit
-			m.state = stateQuitting
-			m.spinner.Spinner = ui.SpinnerLock
-			if m.sess.Token != "" {
-				token := m.sess.Token
-				m.vault.Clear()
-				m.sess.Lock()
-				return m, tea.Batch(m.spinner.Tick, bwcmd.Lock(token))
-			}
-			return m, tea.Quit
+			return m.quit()
 		}
+		// After a suspend, the first key press can arrive before the next
+		// idle check. It must lock the vault, not count as activity.
+		if m.idle() {
+			return m.idleLock()
+		}
+		m.sess.Touch()
 	}
 
 	// Delegate to active child.
@@ -220,6 +288,110 @@ func (m RootModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	}
 
 	return m, cmd
+}
+
+// idle reports whether an unlocked session, or a vault screen, passed its
+// idle timeout.
+func (m RootModel) idle() bool {
+	open := m.state == stateVault || !m.sess.IsLocked()
+	return open && m.state != stateQuitting && m.sess.IsIdle()
+}
+
+// endSession scrubs the vault, ends the session and returns the `bw lock`
+// command. The caller sets the next state.
+func (m *RootModel) endSession() tea.Cmd {
+	token := m.sess.Token
+	m.vault.Clear()
+	m.sess.Lock()
+	m.pendingLock = token
+	return bwcmd.Lock(token)
+}
+
+// lock ends the session and shows the unlock screen when `bw lock` returns.
+func (m RootModel) lock() (RootModel, tea.Cmd) {
+	m.lockFor = intentLock
+	m.spinner.Spinner = ui.SpinnerLock
+	clearCmd := m.clearClipboard()
+	m.vault.Clear()
+	if m.sess.IsLocked() {
+		m.state = stateLocked
+		m.locked = screens.NewLockedModel(false)
+		return m, tea.Batch(clearCmd, m.locked.Init())
+	}
+	lockCmd := m.endSession()
+	m.state = stateQuitting
+	return m, tea.Batch(clearCmd, m.spinner.Tick, lockCmd)
+}
+
+// idleLock ends the session and shows the unlock screen at once. The
+// LockResult that follows is ignored.
+func (m RootModel) idleLock() (RootModel, tea.Cmd) {
+	clearCmd := m.clearClipboard()
+	lockCmd := m.endSession()
+	m.lockFor = intentLock
+	m.state = stateLocked
+	m.locked = screens.NewLockedModel(false)
+	return m, tea.Batch(clearCmd, lockCmd, m.locked.Init())
+}
+
+// quit locks the vault if it is unlocked, clears the clipboard and exits.
+func (m RootModel) quit() (RootModel, tea.Cmd) {
+	m.lockFor = intentQuit
+	m.state = stateQuitting
+	m.spinner.Spinner = ui.SpinnerLock
+	m.vault.Clear()
+	if m.sess.IsLocked() {
+		cmd := m.exit()
+		return m, cmd
+	}
+	// Clear the clipboard now, and again in exit after bw lock returns.
+	var clearCmd tea.Cmd
+	if m.clipDirty {
+		clearCmd = session.ClearClipboard()
+	}
+	lockCmd := m.endSession()
+	return m, tea.Batch(clearCmd, m.spinner.Tick, lockCmd)
+}
+
+// exit returns the command that ends the program. If a copied value can
+// still be on the clipboard, the clipboard is cleared first. tea.Sequence
+// makes sure that the clear is written before the program stops.
+// tea.Batch gives no order, and the clear is often lost.
+func (m *RootModel) exit() tea.Cmd {
+	if !m.clipDirty {
+		return tea.Quit
+	}
+	m.clipDirty = false
+	return tea.Sequence(session.ClearClipboard(), tea.Quit)
+}
+
+// clearClipboard returns a command that clears the clipboard if a copied
+// value can still be on it. Otherwise it returns nil, so that unrelated
+// clipboard content is left alone.
+func (m *RootModel) clearClipboard() tea.Cmd {
+	if !m.clipDirty {
+		return nil
+	}
+	m.clipDirty = false
+	return session.ClearClipboard()
+}
+
+// cleanupAfterExit runs after the program stops. On the normal quit path
+// there is nothing left to do. When the program stops in another way, for
+// example on SIGTERM or SIGHUP, it clears the clipboard by writing OSC 52
+// to w and locks the vault. It also runs `bw lock` again when a lock was
+// still running, because a closed terminal can kill that child process.
+func (m RootModel) cleanupAfterExit(w io.Writer) {
+	if m.clipDirty {
+		_, _ = io.WriteString(w, ansi.SetSystemClipboard(""))
+	}
+	token := m.pendingLock
+	if m.sess != nil && !m.sess.IsLocked() {
+		token = m.sess.Token
+	}
+	if token != "" {
+		_ = bwcmd.Lock(token)()
+	}
 }
 
 func (m RootModel) View() tea.View {
@@ -262,8 +434,11 @@ func (m RootModel) View() tea.View {
 	return v
 }
 
+// idleCheckInterval is the time between two idle checks. Tests shorten it.
+var idleCheckInterval = 30 * time.Second
+
 func tickIdleCheck() tea.Cmd {
-	return tea.Tick(30*time.Second, func(time.Time) tea.Msg {
+	return tea.Tick(idleCheckInterval, func(time.Time) tea.Msg {
 		return idleCheckMsg{}
 	})
 }

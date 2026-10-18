@@ -4,6 +4,7 @@ import (
 	"strings"
 	"testing"
 
+	tea "charm.land/bubbletea/v2"
 	"github.com/juthrbog/lazybw/bwcmd"
 	"github.com/juthrbog/lazybw/session"
 )
@@ -223,5 +224,68 @@ func TestGenArgsPassphrase(t *testing.T) {
 	}
 	if hasIncludeNum {
 		t.Error("--includeNumber should not be present when disabled")
+	}
+}
+
+func TestSyncKeyIgnoredWhileSyncing(t *testing.T) {
+	m := newTestVault(testItems())
+	updated, cmd := m.Update(tea.KeyPressMsg{Code: 'r', Text: "r"})
+	m = updated.(VaultModel)
+	if cmd == nil || !m.syncing {
+		t.Fatal("r must start a sync")
+	}
+	_, cmd = m.Update(tea.KeyPressMsg{Code: 'r', Text: "r"})
+	if cmd != nil {
+		t.Error("r during a sync must not start a second sync")
+	}
+}
+
+func TestReplaceItemsKeepsSelectionAndScrubsOldItems(t *testing.T) {
+	old := testItems()
+	old[0].Login.Password = "old-pw"
+	m := newTestVault(old)
+	m.list.Select(1) // Visa
+
+	fresh := testItems()
+	// The item moved to the end of the new list.
+	fresh = []bwcmd.Item{fresh[0], fresh[2], fresh[1]}
+	updated, _ := m.Update(bwcmd.ItemsResult{Items: fresh})
+	m = updated.(VaultModel)
+
+	if item := m.selectedItem(); item == nil || item.ID != "2" {
+		t.Errorf("selected item = %+v, want ID 2", item)
+	}
+	if old[0].Login.Password != "" {
+		t.Error("the replaced items must be scrubbed")
+	}
+}
+
+func TestCopiedMsgLeavesClearToRoot(t *testing.T) {
+	m := newTestVault(testItems())
+	updated, cmd := m.Update(session.CopiedMsg{Field: session.CopyFieldPassword})
+	m = updated.(VaultModel)
+	if cmd != nil {
+		t.Error("the vault must not schedule the clipboard clear")
+	}
+	if !strings.Contains(m.toast, "copied") {
+		t.Errorf("toast = %q, want a copy toast", m.toast)
+	}
+}
+
+func TestGenerateResultOutOfOrderIsDropped(t *testing.T) {
+	m := newTestVault(testItems())
+	updated, _ := m.openGenerator()
+	m = updated.(VaultModel)
+	first := m.genSeq
+	updated, _ = m.updateGenerator(tea.KeyPressMsg{Code: '+', Text: "+"})
+	m = updated.(VaultModel)
+	latest := m.genSeq
+
+	updated, _ = m.Update(bwcmd.GenerateResult{Password: "new", Seq: latest})
+	m = updated.(VaultModel)
+	updated, _ = m.Update(bwcmd.GenerateResult{Password: "old", Seq: first})
+	m = updated.(VaultModel)
+	if m.genPassword != "new" {
+		t.Errorf("genPassword = %q, want the result of the latest request", m.genPassword)
 	}
 }

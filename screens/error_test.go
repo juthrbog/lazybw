@@ -11,7 +11,16 @@ import (
 
 func TestMain(m *testing.M) {
 	_ = os.Setenv("NO_COLOR", "1")
-	os.Exit(m.Run())
+	// Point PATH at an empty directory, so that a test that runs a bwcmd
+	// command can never reach the real bw.
+	dir, err := os.MkdirTemp("", "lazybw-nobw-")
+	if err != nil {
+		os.Exit(1)
+	}
+	_ = os.Setenv("PATH", dir)
+	code := m.Run()
+	_ = os.RemoveAll(dir)
+	os.Exit(code)
 }
 
 func TestErrorViewContent(t *testing.T) {
@@ -78,5 +87,10 @@ func TestErrorUpdateQuit(t *testing.T) {
 	_, cmd := m.Update(tea.KeyPressMsg{Text: "q"})
 	if cmd == nil {
 		t.Fatal("expected quit command")
+	}
+	// The root model must see the quit, so that it can lock the vault
+	// and clear the clipboard. tea.Quit would skip both.
+	if _, ok := cmd().(QuitMsg); !ok {
+		t.Errorf("q returned %T, want QuitMsg", cmd())
 	}
 }

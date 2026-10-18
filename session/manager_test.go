@@ -92,3 +92,42 @@ func TestIsIdleZeroLastActive(t *testing.T) {
 		t.Error("should not be idle when LastActive is zero")
 	}
 }
+
+func TestEpochChangesOnUnlockAndLock(t *testing.T) {
+	s := State{}
+	e0 := s.Epoch
+	s.SetToken("tok")
+	e1 := s.Epoch
+	s.Lock()
+	e2 := s.Epoch
+	if e0 == e1 || e1 == e2 || e0 == e2 {
+		t.Errorf("epochs %d, %d, %d must all differ", e0, e1, e2)
+	}
+}
+
+func TestIsIdleAfterSuspend(t *testing.T) {
+	// During a suspend the monotonic clock stops, but the wall clock moves
+	// on. Simulate 20 minutes of sleep right after the last key press.
+	orig := wallNow
+	t.Cleanup(func() { wallNow = orig })
+	wallNow = func() time.Time { return time.Now().Round(0).Add(20 * time.Minute) }
+
+	s := State{LastActive: time.Now(), IdleTimeout: 15 * time.Minute}
+	if time.Since(s.LastActive) > s.IdleTimeout {
+		t.Fatal("the monotonic reading must still be under the timeout")
+	}
+	if !s.IsIdle() {
+		t.Error("should be idle when the wall clock shows the timeout passed")
+	}
+}
+
+func TestIsIdleBothClocksUnderTimeout(t *testing.T) {
+	orig := wallNow
+	t.Cleanup(func() { wallNow = orig })
+	wallNow = func() time.Time { return time.Now().Round(0).Add(time.Minute) }
+
+	s := State{LastActive: time.Now(), IdleTimeout: 15 * time.Minute}
+	if s.IsIdle() {
+		t.Error("should not be idle when both clocks are under the timeout")
+	}
+}

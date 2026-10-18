@@ -3,10 +3,13 @@ package main
 import (
 	"flag"
 	"fmt"
+	"io"
 	"log"
 	"os"
 	"os/exec"
+	"os/signal"
 	"path/filepath"
+	"syscall"
 	"time"
 
 	tea "charm.land/bubbletea/v2"
@@ -47,6 +50,9 @@ func main() {
 		os.Exit(1)
 	}
 
+	// Without --debug, drop log output. The default target is stderr,
+	// which would draw over the TUI.
+	log.SetOutput(io.Discard)
 	if *debug {
 		if err := setupDebugLog(); err != nil {
 			fmt.Fprintln(os.Stderr, "failed to open debug log:", err)
@@ -58,7 +64,28 @@ func main() {
 		NewRootModel(*idleTimeout),
 	)
 
-	if _, err := p.Run(); err != nil {
+	// Bubble Tea turns SIGTERM into a quit, but it does not handle SIGHUP,
+	// which the system sends when the terminal closes. Quit on SIGHUP too,
+	// so that the cleanup below runs.
+	hup := make(chan os.Signal, 1)
+	signal.Notify(hup, syscall.SIGHUP)
+	go func() {
+		if _, ok := <-hup; ok {
+			p.Quit()
+		}
+	}()
+
+	final, err := p.Run()
+	signal.Stop(hup)
+	close(hup)
+	// Ignore further signals until the cleanup is done. A child process
+	// inherits the ignored signals, so a closed terminal cannot stop the
+	// `bw lock` that the cleanup runs.
+	signal.Ignore(syscall.SIGHUP, syscall.SIGTERM, os.Interrupt)
+	if m, ok := final.(RootModel); ok {
+		m.cleanupAfterExit(os.Stdout)
+	}
+	if err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}
