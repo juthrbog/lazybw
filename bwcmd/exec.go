@@ -168,7 +168,8 @@ func execBw(timeout time.Duration, token, password string, args ...string) ([]by
 	cmd.WaitDelay = waitDelay
 	killTreeOnCancel(cmd)
 
-	var stdout, stderr bytes.Buffer
+	var stdout secretBuffer
+	var stderr bytes.Buffer
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr
 
@@ -183,6 +184,28 @@ func execBw(timeout time.Duration, token, password string, args ...string) ([]by
 	}
 	return stdout.Bytes(), nil
 }
+
+// secretBuffer collects the stdout of bw, which can hold the whole
+// decrypted vault. Unlike bytes.Buffer, it zeros the old array each time
+// it grows, so that no partial copy stays behind in memory. The copy
+// buffers inside os/exec are out of reach.
+type secretBuffer struct {
+	b []byte
+}
+
+func (s *secretBuffer) Write(p []byte) (int, error) {
+	if len(s.b)+len(p) > cap(s.b) {
+		grown := make([]byte, len(s.b), 2*cap(s.b)+len(p))
+		copy(grown, s.b)
+		clear(s.b)
+		s.b = grown
+	}
+	s.b = append(s.b, p...)
+	return len(p), nil
+}
+
+// Bytes returns the collected output. The caller owns it and zeros it.
+func (s *secretBuffer) Bytes() []byte { return s.b }
 
 // subcommand returns the bw subcommand in args, such as "unlock" or
 // "list items". It leaves out options and user values.
@@ -257,12 +280,20 @@ func FetchItems(token string, epoch uint64) tea.Cmd {
 		if err != nil {
 			return ItemsResult{Err: err, Epoch: epoch}
 		}
-		items, err := ParseItems(out)
-		if err != nil {
-			return ItemsResult{Err: err, Epoch: epoch}
-		}
-		return ItemsResult{Items: items, Epoch: epoch}
+		return itemsResult(out, epoch)
 	}
+}
+
+// itemsResult parses the stdout of `bw list items` and then zeros it. The
+// output holds the whole decrypted vault, including fields that lazybw
+// does not parse, such as the password history.
+func itemsResult(out []byte, epoch uint64) ItemsResult {
+	defer clear(out)
+	items, err := ParseItems(out)
+	if err != nil {
+		return ItemsResult{Err: err, Epoch: epoch}
+	}
+	return ItemsResult{Items: items, Epoch: epoch}
 }
 
 // Unlock runs `bw unlock --passwordenv BW_PASSWORD --raw` and returns

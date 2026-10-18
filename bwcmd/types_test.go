@@ -36,7 +36,7 @@ func TestItemDescription(t *testing.T) {
 		{
 			name: "note with content",
 			item: Item{Type: ItemTypeSecureNote, Notes: "first line\nsecond line"},
-			want: "first line",
+			want: "(note)",
 		},
 		{
 			name: "note empty content",

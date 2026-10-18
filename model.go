@@ -133,6 +133,9 @@ func (m RootModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.sess.Email = msg.Email
 		}
 		m.sess.Touch()
+		// Drop the unlock screen and its form. Every way back to the
+		// unlock screen builds a new one.
+		m.locked = screens.LockedModel{}
 		m.state = stateLoading
 		m.spinner.Spinner = ui.SpinnerLoad
 		return m, tea.Batch(bwcmd.FetchItems(m.sess.Token, m.sess.Epoch), m.spinner.Tick)
@@ -294,11 +297,18 @@ func (m RootModel) idle() bool {
 	return open && m.state != stateQuitting && m.sess.IsIdle()
 }
 
+// dropVault scrubs the vault model and drops it, so that no list row,
+// filter text or cached TOTP state stays reachable after a lock.
+func (m *RootModel) dropVault() {
+	m.vault.Clear()
+	m.vault = screens.VaultModel{}
+}
+
 // endSession scrubs the vault, ends the session and returns the `bw lock`
 // command. The caller sets the next state.
 func (m *RootModel) endSession() tea.Cmd {
 	token := m.sess.Token
-	m.vault.Clear()
+	m.dropVault()
 	m.sess.Lock()
 	m.pendingLock = token
 	return bwcmd.Lock(token)
@@ -309,7 +319,7 @@ func (m RootModel) lock() (RootModel, tea.Cmd) {
 	m.lockFor = intentLock
 	m.spinner.Spinner = ui.SpinnerLock
 	clearCmd := m.clearClipboard()
-	m.vault.Clear()
+	m.dropVault()
 	if m.sess.IsLocked() {
 		m.state = stateLocked
 		m.locked = screens.NewLockedModel(false)
@@ -336,7 +346,7 @@ func (m RootModel) quit() (RootModel, tea.Cmd) {
 	m.lockFor = intentQuit
 	m.state = stateQuitting
 	m.spinner.Spinner = ui.SpinnerLock
-	m.vault.Clear()
+	m.dropVault()
 	if m.sess.IsLocked() {
 		cmd := m.exit()
 		return m, cmd

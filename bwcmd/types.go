@@ -110,10 +110,7 @@ func (i Item) Description() string {
 			return "•••• " + i.Card.Number[len(i.Card.Number)-4:]
 		}
 	case ItemTypeSecureNote:
-		if i.Notes != "" {
-			first, _, _ := strings.Cut(i.Notes, "\n")
-			return first
-		}
+		// The note body is a secret. Show it only in the drawer.
 		return "(note)"
 	case ItemTypeIdentity:
 		if i.Identity != nil {
