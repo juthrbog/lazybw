@@ -1,0 +1,4 @@
+# gitleaks reports zetaKey in the TOTP cache tests as a generic API key.
+# The value is the RFC 6238 test secret, the base32 form of
+# "12345678901234567890". It is not a real secret.
+93774f87591c5de2ce4582f7318f9ec9475f866e:screens/totp_cache_test.go:generic-api-key:17
