@@ -131,8 +131,8 @@ func TestRenderItemRowIndentedSelected(t *testing.T) {
 
 func TestRenderGroupRowCollapsed(t *testing.T) {
 	out := RenderGroupRow("Discord", 3, false, false, 60)
-	if !strings.Contains(out, "▶") {
-		t.Error("collapsed group should show ▶")
+	if !strings.Contains(out, "▸") {
+		t.Error("collapsed group should show ▸")
 	}
 	if !strings.Contains(out, "Discord") {
 		t.Error("group row should contain base name")
@@ -144,15 +144,45 @@ func TestRenderGroupRowCollapsed(t *testing.T) {
 
 func TestRenderGroupRowExpanded(t *testing.T) {
 	out := RenderGroupRow("Discord", 3, true, false, 60)
-	if !strings.Contains(out, "▼") {
-		t.Error("expanded group should show ▼")
+	if !strings.Contains(out, "▾") {
+		t.Error("expanded group should show ▾")
 	}
 }
 
 func TestRenderGroupRowSelected(t *testing.T) {
-	out := RenderGroupRow("Discord", 3, false, true, 60)
-	if !strings.Contains(out, "▶") {
-		t.Error("selected group should contain cursor ▶")
+	out := ansi.Strip(RenderGroupRow("Discord", 3, false, true, 60))
+	if !strings.HasPrefix(out, "▶ ▸  Discord (3)") {
+		t.Errorf("selected collapsed group = %q, want the cursor and the chevron once each", out)
+	}
+	if n := strings.Count(out, "▶"); n != 1 {
+		t.Errorf("selected collapsed group shows ▶ %d times, want once: %q", n, out)
+	}
+}
+
+func TestRenderGroupRowFitsWidth(t *testing.T) {
+	names := []string{
+		"AWS",
+		"Corporate single sign-on portal for the finance department",
+		"東京都庁の職員ポータルサイトのログイン情報です",
+		"Name\x1b[31m with an escape\ttab",
+	}
+	for _, name := range names {
+		for _, width := range []int{4, 12, 30, 60} {
+			for _, expanded := range []bool{false, true} {
+				for _, selected := range []bool{false, true} {
+					row := RenderGroupRow(name, 12, expanded, selected, width)
+					if w := lipgloss.Width(row); w != width {
+						t.Errorf("%q at %d (expanded %v, selected %v): width = %d", name, width, expanded, selected, w)
+					}
+					if width >= 30 && !strings.Contains(ansi.Strip(row), "(12)") {
+						t.Errorf("%q at %d: the count must stay: %q", name, width, ansi.Strip(row))
+					}
+					if strings.Contains(row, "\x1b[31m") {
+						t.Errorf("%q at %d: the name must be sanitized: %q", name, width, row)
+					}
+				}
+			}
+		}
 	}
 }
 

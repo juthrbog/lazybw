@@ -9,6 +9,12 @@ import (
 // ClipboardClearDelay is how long a copied value stays on the clipboard.
 const ClipboardClearDelay = 60 * time.Second
 
+// ClearPlaceholder is the value that a clipboard clear writes. tmux ignores
+// an OSC 52 write with an empty payload, and other multiplexers can do the
+// same, so an empty clear can leave the secret on the clipboard. One space
+// overwrites it.
+const ClearPlaceholder = " "
+
 // CopyField enumerates what kind of value is being copied.
 type CopyField int
 
@@ -17,6 +23,12 @@ const (
 	CopyFieldTOTP
 	CopyFieldUsername
 	CopyFieldNote
+	CopyFieldCardNumber
+	CopyFieldCVV // the card security code
+	CopyFieldSSN
+	CopyFieldPrivateKey // the private key of an SSH key item
+	CopyFieldPublicKey  // the public key of an SSH key item
+	CopyFieldEmail      // the email of an identity item
 )
 
 // CopiedMsg is sent back to the model after a copy operation completes.
@@ -32,7 +44,8 @@ type ClipboardClearedMsg struct {
 }
 
 // CopyToClipboard returns a tea.Cmd that writes value to the system clipboard
-// via OSC 52 and notifies the model with a CopiedMsg.
+// via OSC 52 and notifies the model with a CopiedMsg. The terminal sends no
+// reply to OSC 52, so the CopiedMsg means only that the request was sent.
 func CopyToClipboard(value string, field CopyField) tea.Cmd {
 	return tea.Batch(
 		tea.SetClipboard(value),
@@ -48,7 +61,8 @@ func ScheduleClipboardClear(gen uint64) tea.Cmd {
 	})
 }
 
-// ClearClipboard returns a Cmd that clears the clipboard via OSC 52.
+// ClearClipboard returns a Cmd that overwrites the clipboard with
+// ClearPlaceholder via OSC 52.
 func ClearClipboard() tea.Cmd {
-	return tea.SetClipboard("")
+	return tea.SetClipboard(ClearPlaceholder)
 }

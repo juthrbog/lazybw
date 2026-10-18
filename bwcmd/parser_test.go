@@ -157,6 +157,27 @@ func TestParseItems(t *testing.T) {
 	}
 }
 
+func TestParseItemsReprompt(t *testing.T) {
+	input := []byte(`[
+		{"id":"1","type":1,"name":"Bank","reprompt":1,"login":{"username":"u","password":"pw"}},
+		{"id":"2","type":1,"name":"Forum","reprompt":0,"login":{"username":"u","password":"pw"}},
+		{"id":"3","type":2,"name":"Old","notes":"n"}
+	]`)
+	items, err := ParseItems(input)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	want := []int{RepromptPassword, RepromptNone, RepromptNone}
+	if len(items) != len(want) {
+		t.Fatalf("got %d items, want %d", len(items), len(want))
+	}
+	for i, w := range want {
+		if items[i].Reprompt != w {
+			t.Errorf("item %s: Reprompt = %d, want %d", items[i].ID, items[i].Reprompt, w)
+		}
+	}
+}
+
 func TestParseErrorsNameTheCommand(t *testing.T) {
 	statusErr := func(in string) error { _, err := ParseStatus([]byte(in)); return err }
 	itemsErr := func(in string) error { _, err := ParseItems([]byte(in)); return err }

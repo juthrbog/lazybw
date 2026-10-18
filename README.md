@@ -53,6 +53,8 @@ lazybw puts your entire vault in a keyboard-driven TUI so you never have to leav
 - **Go 1.22+** (to build from source)
 - **[Bitwarden CLI (`bw`)](https://bitwarden.com/help/cli/#download-and-install)** -- must be installed and available in your `$PATH`
 - A terminal emulator with Unicode support
+- A terminal that supports OSC 52, the escape sequence that sets the clipboard. lazybw copies only through OSC 52. The terminal sends no reply, so lazybw cannot tell if a copy worked. If a copy does not reach your clipboard, turn on OSC 52 in your terminal settings.
+- In tmux, add `set -g set-clipboard on` to your tmux configuration. With the default setting, tmux does not pass the copy to your terminal. tmux also keeps each copy in a paste buffer, and lazybw does not delete these buffers.
 
 ## Installation
 
@@ -114,6 +116,7 @@ Press `T` in the vault to open the theme picker and switch themes on the fly.
 | `c` | Copy password |
 | `t` | Copy TOTP code |
 | `u` | Copy username |
+| `v` | Copy card security code |
 | `o` | Open URL in browser |
 | `p` | Open password generator |
 | `r` | Sync vault |

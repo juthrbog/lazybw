@@ -10,6 +10,7 @@ import (
 	tea "charm.land/bubbletea/v2"
 	"github.com/juthrbog/lazybw/bwcmd"
 	"github.com/juthrbog/lazybw/screens"
+	"github.com/juthrbog/lazybw/session"
 )
 
 // fakeBwScript stands in for the Bitwarden CLI in tests. It appends its
@@ -109,8 +110,9 @@ func isSequence(msg tea.Msg) bool {
 	return msg != nil && reflect.TypeOf(msg).Name() == "sequenceMsg"
 }
 
-// clipboardClear is the message that session.ClearClipboard produces.
-var clipboardClear = tea.SetClipboard("")()
+// clipboardClear is the message that session.ClearClipboard produces: a
+// write of the placeholder, not an empty write.
+var clipboardClear = tea.SetClipboard(session.ClearPlaceholder)()
 
 func hasMsg(msgs []tea.Msg, want tea.Msg) bool {
 	for _, m := range msgs {

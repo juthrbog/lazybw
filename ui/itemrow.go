@@ -9,19 +9,30 @@ import (
 	"github.com/juthrbog/lazybw/bwcmd"
 )
 
-// RenderGroupRow renders a collapsible group header row.
-func RenderGroupRow(baseName string, count int, expanded, selected bool, width int) string {
+// RenderGroupRow renders a collapsible group header row: the cursor, a
+// chevron, the group name and the number of items in the group. The row is
+// exactly width cells wide. A long name is cut, so that the count stays.
+func RenderGroupRow(name string, count int, expanded, selected bool, width int) string {
 	cursor := "  "
 	if selected {
 		cursor = "▶ "
 	}
 
-	chevron := "▶"
+	// The chevrons differ from the cursor, so that a selected collapsed
+	// group does not show the same glyph twice.
+	chevron := "▸"
 	if expanded {
-		chevron = "▼"
+		chevron = "▾"
 	}
 
-	label := fmt.Sprintf("%s%s  %s (%d)", cursor, chevron, baseName, count)
+	prefix := cursor + chevron + "  "
+	countText := fmt.Sprintf(" (%d)", count)
+	nameMax := width - lipgloss.Width(prefix) - lipgloss.Width(countText)
+	label := prefix + Truncate(SanitizeLine(name), nameMax) + countText
+	if lipgloss.Width(label) > width {
+		// The row is narrower than the cursor, the chevron and the count.
+		label = ansi.Truncate(label, max(0, width), "")
+	}
 
 	// Pad to full width.
 	gap := width - lipgloss.Width(label)

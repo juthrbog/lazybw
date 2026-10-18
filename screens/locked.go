@@ -21,7 +21,6 @@ var (
 	loginCmd  = bwcmd.LoginUser
 )
 
-
 // UnlockedMsg is sent to the root model when the unlock succeeds.
 type UnlockedMsg struct {
 	Token string
@@ -138,9 +137,10 @@ func buildCodeForm(method bwcmd.TwoStepMethod, code *string) *huh.Form {
 	return styleForm(huh.NewForm(huh.NewGroup(field)))
 }
 
-// styleForm gives a form of the locked screen its width and theme.
+// styleForm gives a form of the locked screen its width and theme. The form
+// shows no help, because the footer shows the keys.
 func styleForm(form *huh.Form) *huh.Form {
-	form = form.WithWidth(lockedFormWidth)
+	form = form.WithWidth(lockedFormWidth).WithShowHelp(false)
 	if ui.HuhTheme != nil {
 		form = form.WithTheme(ui.HuhTheme)
 	}
@@ -199,6 +199,12 @@ func (m LockedModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.WindowSizeMsg:
 		m.width = msg.Width
 		m.height = msg.Height
+		return m, nil
+
+	case ThemeChangedMsg:
+		// The forms take their colors from ui.HuhTheme when they draw, but
+		// the spinner keeps a copy of its color.
+		m.spinner.Style = m.spinner.Style.Foreground(ui.ColorHighlight)
 		return m, nil
 
 	case bwcmd.UnlockResult:
@@ -419,10 +425,25 @@ func (m LockedModel) FooterContent() ([]ui.HintBinding, string) {
 	switch {
 	case m.state == lockedUnlocking:
 		return nil, ""
+	case m.state == lockedTwoStep && m.stage == stageMethod:
+		return []ui.HintBinding{
+			{Key: "enter", Desc: "submit"},
+			{Key: "↑/↓", Desc: "navigate"},
+			{Key: "esc", Desc: "back"},
+			{Key: "ctrl+q", Desc: "quit"},
+		}, ""
 	case m.state == lockedTwoStep:
 		return []ui.HintBinding{
 			{Key: "enter", Desc: "submit"},
 			{Key: "esc", Desc: "back"},
+			{Key: "ctrl+q", Desc: "quit"},
+		}, ""
+	case m.isLogin && m.form != nil && m.form.GetFocusedField().GetKey() == "password":
+		// The form shows no help, so the footer shows the key that goes back
+		// to the email field.
+		return []ui.HintBinding{
+			{Key: "enter", Desc: "submit"},
+			{Key: "shift+tab", Desc: "back"},
 			{Key: "ctrl+q", Desc: "quit"},
 		}, ""
 	case m.isLogin:

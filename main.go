@@ -9,6 +9,7 @@ import (
 	"os/exec"
 	"os/signal"
 	"path/filepath"
+	"strings"
 	"syscall"
 	"time"
 
@@ -22,7 +23,7 @@ func main() {
 	debug := flag.Bool("debug", false, "write debug log to $XDG_CACHE_HOME/lazybw/debug.log")
 	ver := flag.Bool("version", false, "print version and exit")
 	idleTimeout := flag.Duration("idle-timeout", 15*time.Minute, "lock vault after this duration of inactivity (minimum 30s)")
-	theme := flag.String("theme", "", "color theme (catppuccin-mocha, catppuccin-frappe, catppuccin-macchiato, catppuccin-latte, dracula, charm, base16)")
+	theme := flag.String("theme", "", "color theme ("+strings.Join(ui.ThemeNames, ", ")+")")
 	flag.Parse()
 
 	if *ver {
@@ -35,9 +36,7 @@ func main() {
 	if themeName == "" {
 		themeName = os.Getenv("LAZYBW_THEME")
 	}
-	if themeName != "" {
-		ui.ApplyTheme(themeName)
-	}
+	setTheme(themeName, os.Stderr)
 
 	if *idleTimeout < 30*time.Second {
 		fmt.Fprintf(os.Stderr, "Warning: idle-timeout minimum is 30s (got %s), using 30s\n", *idleTimeout)
@@ -60,9 +59,8 @@ func main() {
 		}
 	}
 
-	p := tea.NewProgram(
-		NewRootModel(*idleTimeout),
-	)
+	root := NewRootModel(*idleTimeout)
+	p := tea.NewProgram(root)
 
 	// Bubble Tea turns SIGTERM into a quit, but it does not handle SIGHUP,
 	// which the system sends when the terminal closes. Quit on SIGHUP too,
@@ -82,13 +80,26 @@ func main() {
 	// inherits the ignored signals, so a closed terminal cannot stop the
 	// `bw lock` that the cleanup runs.
 	signal.Ignore(syscall.SIGHUP, syscall.SIGTERM, os.Interrupt)
-	if m, ok := final.(RootModel); ok {
-		m.cleanupAfterExit(os.Stdout)
-	}
+	cleanupFor(final, root.lastCleanup).run(os.Stdout)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}
+}
+
+// setTheme applies the theme from --theme or LAZYBW_THEME. An empty name
+// keeps the default theme. For a name that is not a theme, it writes a
+// warning with the theme names to w and applies the default theme.
+func setTheme(name string, w io.Writer) {
+	if name == "" {
+		return
+	}
+	if !ui.IsTheme(name) {
+		_, _ = fmt.Fprintf(w, "Warning: unknown theme %q, using %s. Themes: %s\n",
+			name, ui.DefaultTheme, strings.Join(ui.ThemeNames, ", "))
+		name = ui.DefaultTheme
+	}
+	ui.ApplyTheme(name)
 }
 
 func setupDebugLog() error {

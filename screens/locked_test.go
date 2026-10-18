@@ -51,6 +51,25 @@ func TestLockedFooterContentLogin(t *testing.T) {
 	}
 }
 
+func TestLoginFooterShowsBackOnPasswordField(t *testing.T) {
+	m := NewLockedModel(true)
+	m.form.Init()
+	if hints, _ := m.FooterContent(); hasHintKey(hints, "shift+tab") {
+		t.Errorf("on the email field, hints = %v, want no shift+tab: the email is the first field", hints)
+	}
+	m = typeText(m, "u@t.com")
+	m, cmd := pressLocked(m, enterKey)
+	m, _ = drive(t, m, cmd, focusIs("password"))
+	hints, _ := m.FooterContent()
+	found := false
+	for _, h := range hints {
+		found = found || (h.Key == "shift+tab" && h.Desc == "back")
+	}
+	if !found {
+		t.Errorf("on the password field, hints = %v, want shift+tab back", hints)
+	}
+}
+
 func TestLockedFooterContentUnlocking(t *testing.T) {
 	m := NewLockedModel(false)
 	m.state = lockedUnlocking
@@ -256,5 +275,56 @@ func TestLockedEnterOnEmptyFormStartsNoBw(t *testing.T) {
 		if len(m.form.Errors()) == 0 {
 			t.Errorf("login=%v: the form must show a validation error", isLogin)
 		}
+	}
+}
+
+// lockedView returns the view of a new locked screen. Init focuses the
+// first field, and an update of the form builds the view of its group.
+func lockedView(isLogin bool) string {
+	m := NewLockedModel(isLogin)
+	m.form.Init()
+	m.form.Update(struct{}{})
+	return m.ViewContent(80, 24-ui.ChromeHeight)
+}
+
+func TestUnlockFormUsesDarkPaletteOnDark(t *testing.T) {
+	keepTheme(t)
+	ui.IsDark = true
+	ui.ApplyTheme("catppuccin-mocha")
+	view := lockedView(false)
+	const mochaMauve = "38;2;203;166;247"
+	if !strings.Contains(view, mochaMauve) {
+		t.Errorf("the unlock form must use the Mocha mauve %s: %q", mochaMauve, view)
+	}
+	// Latte mauve, text and subtext.
+	for _, latte := range []string{"38;2;136;57;239", "38;2;76;79;105", "38;2;108;111;133"} {
+		if strings.Contains(view, latte) {
+			t.Errorf("the unlock form must not use the Latte color %s: %q", latte, view)
+		}
+	}
+}
+
+func TestLockedFormsShowNoHelpLine(t *testing.T) {
+	for _, isLogin := range []bool{false, true} {
+		plain := ansi.Strip(lockedView(isLogin))
+		if !strings.Contains(plain, "Master password") {
+			t.Fatalf("login=%v: the form must show:\n%s", isLogin, plain)
+		}
+		for _, help := range []string{"submit", "enter next", "shift+tab"} {
+			if strings.Contains(plain, help) {
+				t.Errorf("login=%v: the form must show no huh help line, found %q:\n%s", isLogin, help, plain)
+			}
+		}
+	}
+}
+
+func TestLockedSpinnerFollowsTheme(t *testing.T) {
+	keepTheme(t)
+	m := NewLockedModel(false)
+	ui.ApplyTheme("dracula")
+	updated, _ := m.Update(ThemeChangedMsg{})
+	m = updated.(LockedModel)
+	if got := m.spinner.Style.GetForeground(); !sameColor(got, ui.ColorHighlight) {
+		t.Errorf("spinner color = %v, want the dracula highlight %v", got, ui.ColorHighlight)
 	}
 }

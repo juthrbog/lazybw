@@ -36,6 +36,19 @@ func (s *State) SetToken(token string) {
 	s.Epoch++
 }
 
+// ReplaceToken stores a new token for the session that is open now. The
+// master password re-prompt runs `bw unlock` in an open session. bw then
+// returns a new token, and the old token stops working. The session goes
+// on, so Epoch does not change: the results of bw commands that started in
+// this session still belong to it. ReplaceToken does nothing when the
+// session is locked, so that it cannot open a session that ended.
+func (s *State) ReplaceToken(token string) {
+	if s.IsLocked() || token == "" {
+		return
+	}
+	s.Token = token
+}
+
 // Touch updates the last-active timestamp.
 func (s *State) Touch() {
 	s.LastActive = time.Now()

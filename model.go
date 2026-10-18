@@ -61,6 +61,14 @@ type RootModel struct {
 	// failure locks the session, so that the next retry asks for the
 	// password again.
 	retried bool
+	// lastSync is the time of the last vault sync that lazybw knows of:
+	// from bw status, or from the session before a lock. A lock clears
+	// the time in the session, and an unlock puts it back.
+	lastSync time.Time
+
+	// lastCleanup holds the exit cleanup of the model after the last
+	// Update. All copies of the model share it. See cleanupFor.
+	lastCleanup *exitCleanup
 }
 
 func NewRootModel(idleTimeout time.Duration) RootModel {
@@ -74,6 +82,7 @@ func NewRootModel(idleTimeout time.Duration) RootModel {
 			IdleTimeout: idleTimeout,
 			LastActive:  time.Now(),
 		},
+		lastCleanup: &exitCleanup{},
 	}
 }
 
@@ -81,7 +90,17 @@ func (m RootModel) Init() tea.Cmd {
 	return tea.Batch(bwcmd.CheckStatus(), tickIdleCheck(), m.spinner.Tick, func() tea.Msg { return tea.RequestBackgroundColor() })
 }
 
+// Update handles msg and records the exit cleanup of the new model in
+// lastCleanup.
 func (m RootModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+	next, cmd := m.update(msg)
+	if r, ok := next.(RootModel); ok && r.lastCleanup != nil {
+		*r.lastCleanup = r.pendingCleanup()
+	}
+	return next, cmd
+}
+
+func (m RootModel) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
 		m.width = msg.Width
@@ -100,10 +119,16 @@ func (m RootModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case tea.BackgroundColorMsg:
+		// The huh forms do not get this message. ui.HuhTheme reads
+		// ui.IsDark, so the forms follow the background anyway.
 		ui.IsDark = msg.IsDark()
 		ui.ApplyTheme(ui.CurrentTheme)
+		return m.Update(screens.ThemeChangedMsg{})
+
+	case screens.ThemeChangedMsg:
+		// The theme or the background changed. Restyle the spinner here,
+		// and let the active screen restyle its own parts below.
 		m.spinner.Style = m.spinner.Style.Foreground(ui.ColorHighlight)
-		return m, nil
 
 	case bwcmd.StatusResult:
 		if msg.Err != nil {
@@ -112,6 +137,7 @@ func (m RootModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 		m.sess.Email = msg.Status.UserEmail
+		m.lastSync = parseLastSync(msg.Status.LastSync)
 		switch msg.Status.Status {
 		case "unauthenticated":
 			m.state = stateLogin
@@ -129,6 +155,7 @@ func (m RootModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case screens.UnlockedMsg:
 		m.sess.SetToken(msg.Token)
+		m.sess.LastSync = m.lastSync
 		if msg.Email != "" {
 			m.sess.Email = msg.Email
 		}
@@ -308,6 +335,9 @@ func (m *RootModel) dropVault() {
 // command. The caller sets the next state.
 func (m *RootModel) endSession() tea.Cmd {
 	token := m.sess.Token
+	if !m.sess.LastSync.IsZero() {
+		m.lastSync = m.sess.LastSync
+	}
 	m.dropVault()
 	m.sess.Lock()
 	m.pendingLock = token
@@ -383,22 +413,54 @@ func (m *RootModel) clearClipboard() tea.Cmd {
 	return session.ClearClipboard()
 }
 
+// exitCleanup is the work that is left when the program stops.
+type exitCleanup struct {
+	// clipDirty is true when a copied value can still be on the clipboard.
+	clipDirty bool
+	// lockToken is the token of a session that is not locked yet.
+	lockToken string
+}
+
+// run clears the clipboard by writing OSC 52 to w, and locks the session.
+func (c exitCleanup) run(w io.Writer) {
+	if c.clipDirty {
+		_, _ = io.WriteString(w, ansi.SetSystemClipboard(session.ClearPlaceholder))
+	}
+	if c.lockToken != "" {
+		_ = bwcmd.Lock(c.lockToken)()
+	}
+}
+
+// pendingCleanup returns the exit cleanup for m. The token to lock is the
+// token of the open session, or the token of a `bw lock` that has not
+// returned yet, because a closed terminal can kill that child process.
+func (m RootModel) pendingCleanup() exitCleanup {
+	c := exitCleanup{clipDirty: m.clipDirty, lockToken: m.pendingLock}
+	if m.sess != nil && !m.sess.IsLocked() {
+		c.lockToken = m.sess.Token
+	}
+	return c
+}
+
+// cleanupFor returns the exit cleanup for the model that tea.Program.Run
+// returned. Run returns no model after a panic in Update or View, so then
+// it returns the cleanup that the last Update recorded in last.
+func cleanupFor(final tea.Model, last *exitCleanup) exitCleanup {
+	if m, ok := final.(RootModel); ok {
+		return m.pendingCleanup()
+	}
+	if last != nil {
+		return *last
+	}
+	return exitCleanup{}
+}
+
 // cleanupAfterExit runs after the program stops. On the normal quit path
 // there is nothing left to do. When the program stops in another way, for
-// example on SIGTERM or SIGHUP, it clears the clipboard by writing OSC 52
-// to w and locks the vault. It also runs `bw lock` again when a lock was
-// still running, because a closed terminal can kill that child process.
+// example on SIGTERM, SIGHUP or a panic, it clears the clipboard and locks
+// the vault. See pendingCleanup.
 func (m RootModel) cleanupAfterExit(w io.Writer) {
-	if m.clipDirty {
-		_, _ = io.WriteString(w, ansi.SetSystemClipboard(""))
-	}
-	token := m.pendingLock
-	if m.sess != nil && !m.sess.IsLocked() {
-		token = m.sess.Token
-	}
-	if token != "" {
-		_ = bwcmd.Lock(token)()
-	}
+	m.pendingCleanup().run(w)
 }
 
 func (m RootModel) View() tea.View {
@@ -450,8 +512,21 @@ func (m RootModel) View() tea.View {
 	frame = append(frame, footer)
 	v := tea.NewView(lipgloss.JoinVertical(lipgloss.Left, frame...))
 	v.AltScreen = true
-	v.MouseMode = tea.MouseModeCellMotion
+	// No mouse mode: lazybw handles no mouse events. Mouse capture would
+	// stop click and drag from selecting text, and it would stop the
+	// terminals that send arrow keys for the wheel in the alternate screen
+	// from doing so.
 	return v
+}
+
+// parseLastSync parses the lastSync value of bw status, an RFC 3339 time.
+// It returns the zero time for an empty or a malformed value.
+func parseLastSync(s string) time.Time {
+	t, err := time.Parse(time.RFC3339, s)
+	if err != nil {
+		return time.Time{}
+	}
+	return t
 }
 
 // idleCheckInterval is the time between two idle checks. Tests shorten it.
