@@ -152,7 +152,7 @@ esac`)
 	_ = FetchItems("tok", 1)()
 	_ = Unlock("pw")()
 	_ = LoginUser("u@t.com", "pw", TwoStep{})()
-	_ = Lock("tok")()
+	_ = Lock("tok", 1)()
 	_ = Sync("tok", 1)()
 	_ = Generate(1, "--length", "20")()
 
@@ -352,9 +352,12 @@ exit 1`)
 
 func TestEmptyStderrGivesExecError(t *testing.T) {
 	fakeBw(t, `exit 3`)
-	err := Lock("tok")().(LockResult).Err
-	if err == nil || err.Error() != "exit status 3" {
+	res := Lock("tok", 7)().(LockResult)
+	if err := res.Err; err == nil || err.Error() != "exit status 3" {
 		t.Errorf("err = %q, want %q", err, "exit status 3")
+	}
+	if res.Seq != 7 {
+		t.Errorf("Seq = %d, want the sequence number 7 that was passed to Lock", res.Seq)
 	}
 }
 

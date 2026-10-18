@@ -69,7 +69,7 @@ func (k VaultKeyMap) HelpBindings() []HelpBinding {
 		{Key: "enter", Desc: "expand/collapse", Category: "Vault"},
 		// UI
 		{Key: "?", Desc: "help", Category: "UI"},
-		{Key: "T", Desc: "cycle theme", Category: "UI"},
+		{Key: "T", Desc: "theme picker", Category: "UI"},
 		{Key: "q", Desc: "quit", Category: "UI"},
 	}
 }

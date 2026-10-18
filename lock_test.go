@@ -33,7 +33,7 @@ func TestLateItemsResultAfterLockIsDropped(t *testing.T) {
 		t.Error("a dropped ItemsResult must be scrubbed")
 	}
 
-	m, _ = update(t, m, bwcmd.LockResult{})
+	m, _ = update(t, m, lockResult(m, nil))
 	if m.state != stateLocked {
 		t.Fatalf("state = %d, want stateLocked", m.state)
 	}
@@ -141,7 +141,7 @@ func TestCopyThenQuitClearsClipboardBeforeExit(t *testing.T) {
 				t.Error("quit must run bw lock")
 			}
 
-			_, cmd = update(t, m, bwcmd.LockResult{})
+			_, cmd = update(t, m, lockResult(m, nil))
 			seq := cmd()
 			if !isSequence(seq) {
 				t.Fatalf("exit command = %T, want a tea.Sequence", seq)
@@ -218,7 +218,7 @@ func TestLockResultAfterIdleLockIsIgnored(t *testing.T) {
 	if m.state != stateLocked {
 		t.Fatalf("state = %d, want stateLocked", m.state)
 	}
-	m, cmd := update(t, m, bwcmd.LockResult{})
+	m, cmd := update(t, m, lockResult(m, nil))
 	if m.state != stateLocked || cmd != nil {
 		t.Error("a LockResult after an idle lock must not rebuild the unlock screen")
 	}
@@ -335,7 +335,9 @@ func TestCleanupAfterExit(t *testing.T) {
 
 	// SIGTERM ends the program without a call to Update.
 	var buf bytes.Buffer
-	m.cleanupAfterExit(&buf)
+	if err := m.pendingCleanup().run(&buf); err != nil {
+		t.Errorf("cleanup = %v, want no error from the fake bw lock", err)
+	}
 	if buf.String() != ansi.SetSystemClipboard(session.ClearPlaceholder) {
 		t.Errorf("cleanup wrote %q, want an OSC 52 clear", buf.String())
 	}
@@ -348,7 +350,9 @@ func TestCleanupAfterNormalExitDoesNothing(t *testing.T) {
 	log := fakeBwLog(t)
 	m := NewRootModel(15 * time.Minute)
 	var buf bytes.Buffer
-	m.cleanupAfterExit(&buf)
+	if err := m.pendingCleanup().run(&buf); err != nil {
+		t.Errorf("cleanup = %v, want no error", err)
+	}
 	if buf.Len() != 0 || log() != "" {
 		t.Error("cleanup after a normal exit must not write or run bw")
 	}
@@ -371,7 +375,7 @@ func TestLateItemsResultAfterLockResultIsDropped(t *testing.T) {
 			syncEpoch := m.sess.Epoch
 			m, _ = update(t, m, bwcmd.SyncResult{Epoch: syncEpoch})
 			m, _ = update(t, m, screens.LockMsg{})
-			m, _ = update(t, m, bwcmd.LockResult{})
+			m, _ = update(t, m, lockResult(m, nil))
 			late := tc.msg(syncEpoch)
 			m, _ = update(t, m, late)
 			if m.state != stateLocked {
@@ -394,7 +398,7 @@ func TestRetryOutsideErrorScreenIsIgnored(t *testing.T) {
 	if m.state != stateQuitting || cmd != nil {
 		t.Errorf("state = %d, want stateQuitting and no command", m.state)
 	}
-	m, _ = update(t, m, bwcmd.LockResult{})
+	m, _ = update(t, m, lockResult(m, nil))
 	if m.state != stateQuitting {
 		t.Error("the quit must go on after a stale RetryMsg")
 	}
@@ -457,11 +461,13 @@ func TestCleanupRunsPendingLock(t *testing.T) {
 	if m.pendingLock == "" {
 		t.Fatal("quit must remember the pending lock")
 	}
-	m.cleanupAfterExit(&bytes.Buffer{})
+	if err := m.pendingCleanup().run(&bytes.Buffer{}); err != nil {
+		t.Errorf("cleanup = %v, want no error from the fake bw lock", err)
+	}
 	if !ranBwLock(log(), "tok") {
 		t.Errorf("cleanup must run bw lock again for a pending lock, bw log:\n%s", log())
 	}
-	m, _ = update(t, m, bwcmd.LockResult{})
+	m, _ = update(t, m, lockResult(m, nil))
 	if m.pendingLock != "" {
 		t.Error("LockResult must forget the pending lock")
 	}
@@ -500,7 +506,7 @@ func TestLockResultDoesNotStartAnotherIdleCheck(t *testing.T) {
 
 	m := unlockedVault(t, testItems())
 	m, _ = update(t, m, screens.LockMsg{})
-	_, cmd := update(t, m, bwcmd.LockResult{})
+	_, cmd := update(t, m, lockResult(m, nil))
 	if hasMsgType[idleCheckMsg](collectMsgsWithin(cmd, 100*time.Millisecond)) {
 		t.Error("LockResult must not start a second idle-check chain")
 	}
@@ -518,7 +524,7 @@ func TestLockResultAfterIdleLockKeepsTypedText(t *testing.T) {
 	if typed == fresh {
 		t.Fatal("typing must change the unlock form")
 	}
-	m, _ = update(t, m, bwcmd.LockResult{})
+	m, _ = update(t, m, lockResult(m, nil))
 	if got := m.locked.ViewContent(80, 20); got != typed {
 		t.Error("a LockResult after an idle lock must keep the typed text")
 	}

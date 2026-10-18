@@ -4,9 +4,12 @@ import (
 	"fmt"
 	"image/color"
 	"os"
+	"strings"
 	"testing"
 
 	"charm.land/lipgloss/v2"
+	"github.com/charmbracelet/x/ansi"
+	"github.com/juthrbog/lazybw/bwcmd"
 )
 
 func TestMain(m *testing.M) {
@@ -68,6 +71,32 @@ func TestApplyThemeUpdatesGlyphs(t *testing.T) {
 	}
 	if GlyphCard == "" {
 		t.Error("GlyphCard should not be empty after ApplyTheme")
+	}
+}
+
+// TestGlyphRunes checks the code point of each item glyph and of the header
+// glyph. docs/GLYPHS.md names the same code points.
+func TestGlyphRunes(t *testing.T) {
+	tests := []struct {
+		name  string
+		glyph string
+		want  rune
+	}{
+		{"login (nf-md-lock)", ItemGlyph(bwcmd.ItemTypeLogin), 0xF033E},
+		{"card (nf-md-credit_card)", ItemGlyph(bwcmd.ItemTypeCard), 0xF0FEF},
+		{"secure note (nf-md-note_text)", ItemGlyph(bwcmd.ItemTypeSecureNote), 0xF039E},
+		{"identity (nf-md-account)", ItemGlyph(bwcmd.ItemTypeIdentity), 0xF0004},
+		{"SSH key (nf-md-ssh)", ItemGlyph(bwcmd.ItemTypeSSHKey), 0xF08C0},
+		{"header logo (nf-md-shield_lock)", GlyphLogo, 0xF099D},
+	}
+	for _, tt := range tests {
+		if got := []rune(ansi.Strip(tt.glyph)); len(got) != 1 || got[0] != tt.want {
+			t.Errorf("%s glyph = %U, want %U", tt.name, got, tt.want)
+		}
+	}
+	logo := string(rune(0xF099D)) + " lazybw"
+	if header := ansi.Strip(RenderHeader(HeaderData{Width: 40})); !strings.Contains(header, logo) {
+		t.Errorf("header = %q, want %q", header, logo)
 	}
 }
 

@@ -1,6 +1,8 @@
 package main
 
 import (
+	"context"
+	"errors"
 	"io"
 	"log"
 	"time"
@@ -55,8 +57,16 @@ type RootModel struct {
 	clipDirty bool
 
 	// pendingLock holds the token of a `bw lock` that has not returned
-	// yet. If the program stops first, cleanupAfterExit locks again.
+	// yet. If the program stops first, the exit cleanup locks again (see
+	// cleanupFor and exitCleanup.run).
 	pendingLock string
+	// lockSeq numbers the `bw lock` runs. A LockResult with another Seq
+	// belongs to an earlier lock, and Update drops it.
+	lockSeq uint64
+	// lockErr is the text of a failed `bw lock` that no screen shows yet,
+	// for example after the lock from the error screen. The next unlock
+	// screen shows it, and a quit gives it to main.
+	lockErr string
 	// retried is true after a retry of a failed item fetch. A second
 	// failure locks the session, so that the next retry asks for the
 	// password again.
@@ -69,6 +79,9 @@ type RootModel struct {
 	// lastCleanup holds the exit cleanup of the model after the last
 	// Update. All copies of the model share it. See cleanupFor.
 	lastCleanup *exitCleanup
+	// quitError is the text of a `bw lock` error on the way out. main
+	// prints it after the terminal is restored.
+	quitError string
 }
 
 func NewRootModel(idleTimeout time.Duration) RootModel {
@@ -132,14 +145,20 @@ func (m RootModel) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case bwcmd.StatusResult:
 		if msg.Err != nil {
+			log.Printf("bw status failed: %s", logReason(msg.Err))
 			m.state = stateError
 			m.err = screens.NewErrorModel(msg.Err, false)
 			return m, nil
 		}
+		// Log the status only. The other fields hold the email.
+		log.Printf("bw status: %s", msg.Status.Status)
 		m.sess.Email = msg.Status.UserEmail
 		m.lastSync = parseLastSync(msg.Status.LastSync)
 		switch msg.Status.Status {
 		case "unauthenticated":
+			// bw has no logged-in account, so an old session key opens
+			// nothing. A kept bw lock error does not matter now.
+			m.lockErr = ""
 			m.state = stateLogin
 			m.locked = screens.NewLockedModel(true)
 			return m, m.locked.Init()
@@ -149,11 +168,12 @@ func (m RootModel) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			// bw, so "unlocked" cannot mean a session that lazybw can use.
 			// Both ask for the master password.
 			m.state = stateLocked
-			m.locked = screens.NewLockedModel(false)
+			m.locked = m.newUnlockScreen()
 			return m, m.locked.Init()
 		}
 
 	case screens.UnlockedMsg:
+		log.Print("vault unlocked, loading the items")
 		m.sess.SetToken(msg.Token)
 		m.sess.LastSync = m.lastSync
 		if msg.Email != "" {
@@ -172,8 +192,14 @@ func (m RootModel) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// belongs to an ended session. Drop it, so that it cannot open the
 		// vault again.
 		if msg.Epoch != m.sess.Epoch {
+			log.Print("dropped the items of an ended session")
 			secutil.ZeroItems(msg.Items)
 			return m, nil
+		}
+		if msg.Err != nil {
+			log.Printf("loading the items failed: %s", logReason(msg.Err))
+		} else {
+			log.Printf("loaded %d items", len(msg.Items))
 		}
 		switch m.state {
 		case stateLoading:
@@ -184,6 +210,7 @@ func (m RootModel) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					// The token can be invalid, for example after a lock
 					// in another shell. Lock, so that the next retry
 					// shows the unlock screen.
+					log.Print("locking the vault: the retry failed too")
 					m.retried = false
 					return m, m.endSession()
 				}
@@ -204,7 +231,13 @@ func (m RootModel) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case bwcmd.SyncResult:
 		if msg.Epoch != m.sess.Epoch || m.state != stateVault {
+			log.Print("dropped the sync result of an ended session")
 			return m, nil
+		}
+		if msg.Err != nil {
+			log.Printf("bw sync failed: %s", logReason(msg.Err))
+		} else {
+			log.Print("bw sync done")
 		}
 
 	case session.CopiedMsg:
@@ -239,24 +272,33 @@ func (m RootModel) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m.quit()
 
 	case bwcmd.LockResult:
-		m.pendingLock = ""
 		if msg.Err != nil {
-			// The token is already gone from memory, so the vault stays
-			// locked for lazybw. Record the failure for --debug.
-			log.Printf("bw lock failed: %v", msg.Err)
+			log.Printf("bw lock failed: %s", logReason(msg.Err))
+		} else {
+			log.Print("bw lock done")
 		}
-		// Only a lock that the quitting screen waits for needs an action. An
-		// idle lock already shows the unlock screen, and rebuilding it here
-		// would wipe what the user typed in the meantime.
-		if m.state != stateQuitting {
+		if msg.Seq != m.lockSeq {
+			// A newer lock runs, for example the lock key after an idle
+			// lock and an unlock. That lock reports its own result, and
+			// pendingLock holds its token.
+			log.Print("dropped the result of an earlier bw lock")
 			return m, nil
 		}
+		m.pendingLock = ""
+		// The token is already gone from memory, so the vault stays locked
+		// for lazybw. But bw can still accept the token, so the user must
+		// learn of a failure.
+		lockErr := screens.LockErrorText(msg.Err)
+		if m.state != stateQuitting {
+			return m.showLockError(lockErr), nil
+		}
 		if m.lockFor == intentQuit {
+			m.quitError = lockErr
 			cmd := m.exit()
 			return m, cmd
 		}
 		m.state = stateLocked
-		m.locked = screens.NewLockedModel(false)
+		m.locked = screens.NewLockedModel(false).WithLockError(lockErr)
 		return m, m.locked.Init()
 
 	case screens.RetryMsg:
@@ -269,9 +311,11 @@ func (m RootModel) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.spinner.Spinner = ui.SpinnerLoad
 		if !m.sess.IsLocked() {
 			// The vault is unlocked, but loading the items failed.
+			log.Print("retry: loading the items again")
 			m.retried = true
 			return m, tea.Batch(bwcmd.FetchItems(m.sess.Token, m.sess.Epoch), m.spinner.Tick)
 		}
+		log.Print("retry: running bw status again")
 		return m, tea.Batch(bwcmd.CheckStatus(), m.spinner.Tick)
 
 	case idleCheckMsg:
@@ -341,7 +385,41 @@ func (m *RootModel) endSession() tea.Cmd {
 	m.dropVault()
 	m.sess.Lock()
 	m.pendingLock = token
-	return bwcmd.Lock(token)
+	m.lockSeq++
+	return bwcmd.Lock(token, m.lockSeq)
+}
+
+// showLockError puts text, the error of a `bw lock` that returned outside
+// stateQuitting, where the user can see it. An empty text does nothing.
+func (m RootModel) showLockError(text string) RootModel {
+	switch {
+	case text == "":
+	case m.state == stateLogin:
+		// bw reported no logged-in account, so the old session key opens
+		// nothing.
+	case m.state == stateLocked:
+		// An idle lock already shows the unlock screen. Add the error to
+		// that screen, because a new screen wipes what the user typed in
+		// the meantime.
+		m.locked = m.locked.WithLockError(text)
+	case m.sess.IsLocked():
+		// For example the lock after a second failed item load, while the
+		// error screen shows. Keep the error for the next unlock screen.
+		m.lockErr = text
+	default:
+		// The user unlocked again before the result arrived. The error
+		// goes to the log only.
+		log.Print("the bw lock error came after a new unlock")
+	}
+	return m
+}
+
+// newUnlockScreen returns a new unlock screen with the kept error of a
+// failed `bw lock`, and forgets that error.
+func (m *RootModel) newUnlockScreen() screens.LockedModel {
+	s := screens.NewLockedModel(false).WithLockError(m.lockErr)
+	m.lockErr = ""
+	return s
 }
 
 // lock ends the session and shows the unlock screen when `bw lock` returns.
@@ -351,18 +429,21 @@ func (m RootModel) lock() (RootModel, tea.Cmd) {
 	clearCmd := m.clearClipboard()
 	m.dropVault()
 	if m.sess.IsLocked() {
+		log.Print("lock key: the vault is already locked")
 		m.state = stateLocked
-		m.locked = screens.NewLockedModel(false)
+		m.locked = m.newUnlockScreen()
 		return m, tea.Batch(clearCmd, m.locked.Init())
 	}
+	log.Print("locking the vault: lock key")
 	lockCmd := m.endSession()
 	m.state = stateQuitting
 	return m, tea.Batch(clearCmd, m.spinner.Tick, lockCmd)
 }
 
 // idleLock ends the session and shows the unlock screen at once. The
-// LockResult that follows is ignored.
+// LockResult that follows only adds a bw lock error to that screen.
 func (m RootModel) idleLock() (RootModel, tea.Cmd) {
+	log.Print("locking the vault: idle timeout")
 	clearCmd := m.clearClipboard()
 	lockCmd := m.endSession()
 	m.lockFor = intentLock
@@ -378,9 +459,13 @@ func (m RootModel) quit() (RootModel, tea.Cmd) {
 	m.spinner.Spinner = ui.SpinnerLock
 	m.dropVault()
 	if m.sess.IsLocked() {
+		log.Print("quit: the vault is locked")
+		// main prints a bw lock error that no screen showed.
+		m.quitError, m.lockErr = m.lockErr, ""
 		cmd := m.exit()
 		return m, cmd
 	}
+	log.Print("locking the vault: quit")
 	// Clear the clipboard now, and again in exit after bw lock returns.
 	var clearCmd tea.Cmd
 	if m.clipDirty {
@@ -422,13 +507,20 @@ type exitCleanup struct {
 }
 
 // run clears the clipboard by writing OSC 52 to w, and locks the session.
-func (c exitCleanup) run(w io.Writer) {
+// It returns the error of bw lock.
+func (c exitCleanup) run(w io.Writer) error {
 	if c.clipDirty {
 		_, _ = io.WriteString(w, ansi.SetSystemClipboard(session.ClearPlaceholder))
 	}
-	if c.lockToken != "" {
-		_ = bwcmd.Lock(c.lockToken)()
+	if c.lockToken == "" {
+		return nil
 	}
+	// No model gets this result, so the sequence number does not matter.
+	res, _ := bwcmd.Lock(c.lockToken, 0)().(bwcmd.LockResult)
+	if res.Err != nil {
+		log.Printf("bw lock in the exit cleanup failed: %s", logReason(res.Err))
+	}
+	return res.Err
 }
 
 // pendingCleanup returns the exit cleanup for m. The token to lock is the
@@ -455,12 +547,25 @@ func cleanupFor(final tea.Model, last *exitCleanup) exitCleanup {
 	return exitCleanup{}
 }
 
-// cleanupAfterExit runs after the program stops. On the normal quit path
-// there is nothing left to do. When the program stops in another way, for
-// example on SIGTERM, SIGHUP or a panic, it clears the clipboard and locks
-// the vault. See pendingCleanup.
-func (m RootModel) cleanupAfterExit(w io.Writer) {
-	m.pendingCleanup().run(w)
+// logReason returns the text that the debug log shows for the error of a
+// bw command. The text never holds the message or the output of bw. The
+// message of a bw error is the last line that bw wrote to stderr, and a
+// parse error can quote a part of the output. bwcmd logs the stderr of a
+// failed bw command itself, with the private values taken out.
+func logReason(err error) string {
+	var bwErr *bwcmd.Error
+	switch {
+	case errors.Is(err, context.DeadlineExceeded):
+		return "timed out"
+	case errors.Is(err, bwcmd.ErrNotLoggedIn):
+		return "not logged in"
+	case errors.As(err, &bwErr) && bwErr.Err != nil:
+		// The error of os/exec, for example "exit status 1".
+		return "bw error (" + bwErr.Err.Error() + ")"
+	case errors.As(err, &bwErr):
+		return "bw error"
+	}
+	return "unexpected output from bw"
 }
 
 func (m RootModel) View() tea.View {

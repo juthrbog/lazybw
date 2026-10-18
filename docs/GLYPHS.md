@@ -1,187 +1,214 @@
-# Glyph & Icon Design Guide
+# Glyphs
 
-Reference for every glyph used in lazybw and conventions for adding new ones.
+This page lists each glyph that lazybw draws, and the rules for a new glyph. A glyph is one character on the screen, for example an icon or a block shape.
 
-## Design Principles
+## Font
 
-1. **Primary icon set: nf-md- (Nerd Font Material Design)** — broadest coverage for security/credential concepts (~6,000 glyphs). All current Nerd Font icons in lazybw already use nf-md-.
-2. **Plain Unicode for geometric indicators** — circles, triangles, blocks, bullets. These don't require Nerd Fonts and render consistently.
-3. **Charm ecosystem alignment** — Charm apps (huh, bubbles) use plain Unicode (`✓`, `•`, `→`, `○`). We follow this for non-icon glyphs.
-4. **Nerd Font Mono required** — users should use a "Nerd Font Mono" variant (not Propo) to ensure single-cell-width rendering of PUA glyphs.
+lazybw takes its icons from Nerd Fonts. Use a Nerd Fonts v3 font in its Mono variant, for example "JetBrainsMono Nerd Font Mono". Without a Nerd Font, the icons, the header logo and the unlock spinner show as empty boxes.
 
-## Current Glyph Inventory
+The icons are Material Design icons, the nf-md- set of Nerd Fonts. The code points on this page are the Nerd Fonts v3 code points.
 
-### Item Type Icons (nf-md-, `ui/theme.go`)
+The names and the code points on this page come from the font files of Nerd Fonts 3.5.1. In the font file, a glyph name has no prefix, for example `md-lock`. The Nerd Fonts cheat sheet adds the `nf-` prefix: `nf-md-lock`.
 
-| Variable       | Glyph | Codepoint | NF Name             | Color          |
-| -------------- | ----- | --------- | -------------------- | -------------- |
-| `GlyphLogin`   | 󰌾    | U+F033E   | `nf-md-lock`         | ColorHighlight |
-| `GlyphCard`    | 󰁯    | U+F006F   | `nf-md-credit_card`  | ColorGreen     |
-| `GlyphNote`    | 󱙒    | U+F1652   | `nf-md-note_text`    | ColorYellow    |
-| `GlyphIdentity`| 󰀄    | U+F0004   | `nf-md-account`      | ColorHighlight |
-| `GlyphSSHKey`  | 󰣀    | U+F08C0   | `nf-md-console`      | ColorGreen     |
+## Design principles
 
-### App Branding (`ui/frame.go`)
+1. Use nf-md- icons (Material Design) for icons. This set has the most icons for security and credentials. All Nerd Font icons in lazybw are from this set.
+2. Use plain Unicode for shapes: triangles, blocks and bullets. They need no Nerd Font.
+3. Follow the Charm apps. huh and bubbles use plain Unicode, such as `✓`, `•` and `→`. lazybw does the same for each glyph that is not an icon.
+4. Use a Nerd Font Mono font, not a Propo font. A Mono font draws each icon in one cell.
 
-| Glyph | Codepoint | NF Name           | Usage                 |
-| ----- | --------- | ------------------ | --------------------- |
-| 󰊙    | U+F0299   | `nf-md-bitwarden`  | Header title icon     |
+## Current glyphs
 
-### Lock/Unlock Spinners (`ui/theme.go`)
+### Item type icons (`ui/theme.go`)
 
-| Glyph | Codepoint | NF Name                | Role              |
-| ----- | --------- | ----------------------- | ----------------- |
-| 󰌾    | U+F033E   | `nf-md-lock`            | Locked state      |
-| 󰷖    | U+F1DD6   | `nf-md-lock_clock`      | Transition frame  |
-| 󰌆    | U+F0306   | `nf-md-key`             | Transition frame  |
-| 󰌿    | U+F033F   | `nf-md-lock_open`       | Unlocked state    |
+`initStyles()` renders each glyph in its theme color. `ItemGlyph` in `ui/drawer.go` returns the glyph for an item type. The list rows and the header card of the drawer show it.
 
-### TOTP Countdown Micro-Bar (`ui/drawer.go`)
+| Variable | Glyph | Code point | Nerd Font name | Color |
+| --- | --- | --- | --- | --- |
+| `GlyphLogin` | 󰌾 | U+F033E | `nf-md-lock` | `ColorHighlight` |
+| `GlyphCard` | 󰿯 | U+F0FEF | `nf-md-credit_card` | `ColorGreen` |
+| `GlyphNote` | 󰎞 | U+F039E | `nf-md-note_text` | `ColorYellow` |
+| `GlyphIdentity` | 󰀄 | U+F0004 | `nf-md-account` | `ColorHighlight` |
+| `GlyphSSHKey` | 󰣀 | U+F08C0 | `nf-md-ssh` | `ColorGreen` |
 
-4-character bar using block elements, depletes per-second (32 states for 30s).
+### Header logo (`ui/frame.go`)
 
-| Glyph | Codepoint | Usage                                    |
-| ----- | --------- | ---------------------------------------- |
-| █     | U+2588    | Full block (filled portion)              |
-| ▉▊▋▌▍▎▏ | U+2589-258F | Fractional blocks (partial fill)   |
-| ░     | U+2591    | Light shade (empty track)                |
+| Constant | Glyph | Code point | Nerd Font name | Use |
+| --- | --- | --- | --- | --- |
+| `GlyphLogo` | 󰦝 | U+F099D | `nf-md-shield_lock` | The icon before "lazybw" in the header |
 
-Color shifts green → yellow → red based on urgency (>15s / >10s / <=10s).
+The logo is part of the title text, so it gets the color gradient of the title. Nerd Fonts has no Bitwarden glyph.
 
-### Navigation & Selection (`ui/itemrow.go`)
+### Lock and unlock spinners (`ui/theme.go`)
 
-| Glyph | Codepoint | Usage                        |
-| ----- | --------- | ---------------------------- |
-| ▶     | U+25B6    | Cursor / selected item       |
-| ▼     | U+25BC    | Expanded group indicator     |
+`SpinnerUnlock` shows these frames in this order, 3 frames per second. `SpinnerLock` shows them in the reverse order.
 
-### Status Indicators (`ui/theme.go`, `screens/vault.go`)
+| Frame | Glyph | Code point | Nerd Font name |
+| --- | --- | --- | --- |
+| 1 | 󰌾 | U+F033E | `nf-md-lock` |
+| 2 | 󰷖 | U+F0DD6 | `nf-md-key_outline` |
+| 3 | 󰌆 | U+F0306 | `nf-md-key` |
+| 4 | 󰌿 | U+F033F | `nf-md-lock_open` |
 
-| Variable       | Glyph | Codepoint | Color     | Usage                        |
-| -------------- | ----- | --------- | --------- | ---------------------------- |
-| `GlyphSuccess` | ✓     | U+2713    | ColorGreen| Success toasts               |
-| `GlyphError`   | ✗     | U+2717    | ColorRed  | Error toasts, error screens  |
-| `GlyphCopy`    | 󰆏    | U+F018F   | ColorGreen| Copy/clipboard toasts        |
-| (inline)       | ✓     | U+2713    | —         | Enabled toggle               |
-| (inline)       | ·     | U+00B7    | —         | Disabled / false toggle      |
-| (inline)       | ↑↓    | U+2191-93 | —         | Navigation direction hints   |
+The unlock screen shows `SpinnerUnlock` while `bw unlock` or `bw login` runs. The "Locking vault…" screen shows `SpinnerLock`.
 
-### Data Masking (`ui/drawer.go`)
+`SpinnerLoad` is `spinner.Dot` from bubbles. Its frames are the braille characters ⣾ ⣽ ⣻ ⢿ ⡿ ⣟ ⣯ ⣷ (U+28FE, U+28FD, U+28FB, U+28BF, U+287F, U+28DF, U+28EF and U+28F7). It shows while the vault loads and while a sync runs. It needs no Nerd Font.
 
-| Glyph | Codepoint | Usage                                     |
-| ----- | --------- | ----------------------------------------- |
-| •     | U+2022    | Password, card number, CVV, SSN masking   |
+### Status glyphs (`ui/theme.go`)
 
-### Visual Chrome
+| Variable | Glyph | Code point | Nerd Font name | Color | Use |
+| --- | --- | --- | --- | --- | --- |
+| `GlyphSuccess` | ✓ | U+2713 | none (Unicode) | `ColorGreen` | The "Vault synced" toast |
+| `GlyphError` | ✗ | U+2717 | none (Unicode) | `ColorRed` | Error toasts, the error screen, and the errors of the unlock screen, the re-prompt prompt and the generator |
+| `GlyphCopy` | 󰆏 | U+F018F | `nf-md-content_copy` | `ColorGreen` | The copy toast |
 
-| Glyph | Codepoint | File             | Usage                  |
-| ----- | --------- | ---------------- | ---------------------- |
-| ▄     | U+2584    | `ui/gradient.go` | Gradient separator     |
-| …     | U+2026    | various          | Text truncation        |
-| ·     | U+00B7    | `ui/hints.go`    | Hint key separator     |
+### Generator options (`screens/vault.go`)
 
-## Semantic Categories
+| Glyph | Code point | Use |
+| --- | --- | --- |
+| ✓ | U+2713 | An option that is on, in `ColorGreen` |
+| · | U+00B7 | An option that is off, in `ColorFaint` |
 
-When adding new glyphs, use these categories to pick the right style:
+### TOTP countdown bar (`ui/drawer.go`)
 
-### Item Types — use nf-md- icons, colored per theme
+The bar is 4 cells wide. Each cell has 8 fill steps, so the bar has 32 steps for one TOTP period. For a period of 30 seconds, the bar changes about once a second.
 
-For new Bitwarden item types, pick from nf-md- and assign a theme color:
-- Login: 󰌾 `nf-md-lock` (ColorHighlight)
-- Card: 󰁯 `nf-md-credit_card` (ColorGreen)
-- Note: 󱙒 `nf-md-note_text` (ColorYellow)
-- Identity: 󰀄 `nf-md-account` (ColorHighlight)
-- SSH Key: 󰣀 `nf-md-console` (ColorGreen)
+| Glyph | Code point | Use |
+| --- | --- | --- |
+| █ | U+2588 | A full cell |
+| ▉ ▊ ▋ ▌ ▍ ▎ ▏ | U+2589 to U+258F | A cell that is part full |
+| ░ | U+2591 | The empty track, in `ColorFaint` |
 
-### Status Indicators — use plain Unicode
+The color of the bar depends on the time that is left. The bar is green while more than half of the period is left. It is yellow while more than a third is left, and red for the rest. For a period of 30 seconds, the bar is green above 15 seconds and yellow from 11 to 15 seconds. It is red at 10 seconds and less.
 
-| Semantic       | Glyph | Codepoint |
-| -------------- | ----- | --------- |
-| Success        | ✓     | U+2713    |
-| Error          | ✗     | U+2717    |
-| Warning        | ▲     | U+25B2    |
-| Copy           | 󰆏     | U+F018F nf-md-content_copy |
-| Loading        | (use spinner) | —   |
-| Enabled        | ✓     | U+2713    |
-| Disabled       | ·     | U+00B7    |
+### List rows (`ui/itemrow.go`)
 
-### Progress — use Unicode geometric shapes
+| Glyph | Code point | Use |
+| --- | --- | --- |
+| ▶ | U+25B6 | The cursor on the selected row. lazybw uses it only for the cursor. |
+| ▸ | U+25B8 | A collapsed group |
+| ▾ | U+25BE | An expanded group |
 
-| Semantic         | Glyphs              | Codepoints         |
-| ---------------- | -------------------- | ------------------- |
-| Countdown (TOTP) | █▉▊▋▌▍▎▏ + ░ track  | U+2588-258F, U+2591|
-| Progress bar     | █ ▉ ▊ ▋ ▌ ▍ ▎ ▏     | U+2588-U+258F      |
-| Shade fill       | ░ ▒ ▓               | U+2591-U+2593      |
+The group glyphs are not the cursor glyph. So a selected collapsed group does not show the same glyph two times.
 
-### Navigation — use Unicode triangles/arrows
+### Masks (`ui/drawer.go`, `bwcmd/types.go`)
 
-| Semantic         | Glyph | Codepoint |
-| ---------------- | ----- | --------- |
-| Cursor/selected  | ▶     | U+25B6    |
-| Expanded         | ▼     | U+25BC    |
-| Up/Down hints    | ↑ ↓   | U+2191-93 |
-| Left/Right hints | ← →   | U+2190-92 |
+| Glyph | Code point | Use |
+| --- | --- | --- |
+| • | U+2022 | Hides the password, the card number, the CVV, the SSN, the passport number, the license number and the SSH private key in the drawer. The list row of a card shows •••• and the last 4 digits. |
 
-## Candidate Glyphs for Future Work
+### Frame and text
 
-### TOTP Countdown Enhancement (#38) — DONE
+| Glyph | Code point | File | Use |
+| --- | --- | --- | --- |
+| ▄ | U+2584 | `ui/gradient.go` | The gradient line below the header and above the inline drawer |
+| … | U+2026 | `ui/text.go` and others | The end of a cut text (`Truncate`), and texts such as "Loading vault…" |
+| · | U+00B7 | `ui/hints.go` | The separator between the footer hints. The copy toast also uses it. |
+| ↑ ↓ | U+2191, U+2193 | `screens/`, `ui/drawer.go`, `ui/help.go` | The hint "↑/↓ navigate", the "↓ N more" row of the drawer, and "↓ more" in the help |
+| ╭ ╮ ╰ ╯ ─ │ | U+256D, U+256E, U+2570, U+256F, U+2500, U+2502 | `ui/overlay.go` | The rounded border of the overlay cards (`lipgloss.RoundedBorder`) |
 
-Replaced 5-state circle indicator with 4-char micro-bar using block elements.
-32 distinct visual states for per-second feedback. Optional future refinement:
-- nf-md- timer: 󰔛 `nf-md-timer` (U+F051B) — prefix before bar
+The huh forms draw their own glyphs, for example the field border ┃ (U+2503). The huh theme sets them. The huh forms are the unlock, login and two-step forms, the re-prompt prompt and the theme picker.
 
-### Vault Editing (#6)
+## Rules for a new glyph
 
-| Concept    | Glyph | Codepoint | NF Name              |
-| ---------- | ----- | --------- | --------------------- |
-| Edit/Pencil| 󰏫    | U+F03EB   | `nf-md-pencil`        |
-| Save       | 󰆓    | U+F0193   | `nf-md-content_save`  |
-| Delete     | 󰆴    | U+F01B4   | `nf-md-delete`        |
-| Undo       | 󰕌    | U+F054C   | `nf-md-undo`          |
+### Item types: nf-md- icons in a theme color
 
-### Folders & Collections (#7)
+For a new Bitwarden item type, pick an nf-md- icon and a theme color. The item type table above shows the current icons.
 
-| Concept         | Glyph | Codepoint | NF Name              |
-| --------------- | ----- | --------- | --------------------- |
-| Folder closed   | 󰉋    | U+F024B   | `nf-md-folder`        |
-| Folder open     | 󰝰    | U+F0770   | `nf-md-folder_open`   |
-| Collection      | 󱉟    | U+F125F   | `nf-md-folder_star`   |
+### Status: plain Unicode
 
-### Password Strength
+| Meaning | Glyph | Code point |
+| --- | --- | --- |
+| Success | ✓ | U+2713 |
+| Error | ✗ | U+2717 |
+| Warning | ▲ | U+25B2 |
+| Copy | 󰆏 | U+F018F (`nf-md-content_copy`, the one icon in this table) |
+| Loading | a spinner | none |
+| On | ✓ | U+2713 |
+| Off | · | U+00B7 |
 
-| Concept    | Glyph | Codepoint | NF Name                |
-| ---------- | ----- | --------- | ----------------------- |
-| Shield     | 󰒃    | U+F0483   | `nf-md-shield`          |
-| Shield OK  | 󰕥    | U+F0565   | `nf-md-shield_check`    |
-| Shield warn| 󱍝    | U+F135D   | `nf-md-shield_alert`    |
+### Progress: Unicode block shapes
 
-### Copy/Clipboard Actions
+| Meaning | Glyphs | Code points |
+| --- | --- | --- |
+| TOTP countdown | █▉▊▋▌▍▎▏ and the track ░ | U+2588 to U+258F, U+2591 |
+| Progress bar | █ ▉ ▊ ▋ ▌ ▍ ▎ ▏ | U+2588 to U+258F |
+| Shade fill | ░ ▒ ▓ | U+2591 to U+2593 |
 
-| Concept   | Glyph | Codepoint | NF Name                 |
-| --------- | ----- | --------- | ------------------------ |
-| Copy      | 󰆏    | U+F018F   | `nf-md-content_copy`     |
-| Copied OK | 󰄬    | U+F012C   | `nf-md-check`            |
+### Navigation: Unicode triangles and arrows
 
-### Visibility Toggle
+| Meaning | Glyph | Code point |
+| --- | --- | --- |
+| Cursor | ▶ | U+25B6 |
+| Collapsed group | ▸ | U+25B8 |
+| Expanded group | ▾ | U+25BE |
+| Up and down hints | ↑ ↓ | U+2191, U+2193 |
+| Left and right hints | ← → | U+2190, U+2192 |
 
-| Concept  | Glyph | Codepoint | NF Name          |
-| -------- | ----- | --------- | ----------------- |
-| Show     | 󰈈    | U+F0208   | `nf-md-eye`       |
-| Hide     | 󰈉    | U+F0209   | `nf-md-eye_off`   |
+## Candidate glyphs for future work
 
-## Glyphs to Avoid
+### TOTP countdown (#38, done)
 
-- **Emoji** (U+1F000+) — inconsistent double-width rendering, breaks TUI alignment
-- **CJK characters** — double-width by spec, breaks column layouts
-- **Em-dash** (U+2014) — some terminals render at ambiguous width
-- **nf-weather-** set — large glyphs, inconsistent cell width
-- **Complex multi-path Nerd Font glyphs** — can overflow cell boundaries in non-Mono font variants
-- **Mixing icon sets** — stick to nf-md- for consistency; don't mix nf-fa- and nf-md- for the same semantic category
+The 4-cell bar replaced the indicator with 5 circle steps. It has 32 steps, so it changes about once a second. A possible next step is a timer icon before the bar.
 
-## Adding New Glyphs Checklist
+| Concept | Glyph | Code point | Nerd Font name |
+| --- | --- | --- | --- |
+| Timer | 󱎫 | U+F13AB | `nf-md-timer` |
+| Timer outline | 󰔛 | U+F051B | `nf-md-timer_outline` |
 
-1. Check the [Nerd Fonts cheat sheet](https://www.nerdfonts.com/cheat-sheet) for nf-md- candidates
-2. Pick from the semantic category tables above, or find an nf-md- icon that fits
-3. Define as a themed variable in `ui/theme.go` (inside `initStyles()`) following the `Glyph*` naming pattern
-4. Verify rendering in at least two terminals (one of: kitty, wezterm, ghostty)
-5. Update this file with the new glyph entry
+### Vault editing (#6)
+
+| Concept | Glyph | Code point | Nerd Font name |
+| --- | --- | --- | --- |
+| Edit | 󰏫 | U+F03EB | `nf-md-pencil` |
+| Save | 󰆓 | U+F0193 | `nf-md-content_save` |
+| Delete | 󰆴 | U+F01B4 | `nf-md-delete` |
+| Undo | 󰕌 | U+F054C | `nf-md-undo` |
+
+### Folders and collections (#7)
+
+| Concept | Glyph | Code point | Nerd Font name |
+| --- | --- | --- | --- |
+| Folder, closed | 󰉋 | U+F024B | `nf-md-folder` |
+| Folder, open | 󰝰 | U+F0770 | `nf-md-folder_open` |
+| Collection | 󰚝 | U+F069D | `nf-md-folder_star` |
+
+### Password strength
+
+| Concept | Glyph | Code point | Nerd Font name |
+| --- | --- | --- | --- |
+| Shield | 󰒘 | U+F0498 | `nf-md-shield` |
+| Shield, OK | 󰕥 | U+F0565 | `nf-md-shield_check` |
+| Shield, warning | 󰻌 | U+F0ECC | `nf-md-shield_alert` |
+
+### Copy actions
+
+| Concept | Glyph | Code point | Nerd Font name |
+| --- | --- | --- | --- |
+| Copy | 󰆏 | U+F018F | `nf-md-content_copy` |
+| Copied | 󰄬 | U+F012C | `nf-md-check` |
+
+### Show and hide
+
+| Concept | Glyph | Code point | Nerd Font name |
+| --- | --- | --- | --- |
+| Show | 󰈈 | U+F0208 | `nf-md-eye` |
+| Hide | 󰈉 | U+F0209 | `nf-md-eye_off` |
+
+## Glyphs to avoid
+
+- Emoji (U+1F000 and higher). Their width is not the same in all terminals, and they break the alignment of the rows.
+- CJK characters. The Unicode standard makes them 2 cells wide, so they break the columns.
+- The em dash (U+2014). Unicode gives it an ambiguous width, so its width is not the same in all terminals. One text still uses it: the drawer text when no item is selected.
+- The nf-weather- set. Its glyphs are large, and their cell width is not the same in all fonts.
+- Nerd Font glyphs with many paths. They can go past the cell in a font that is not a Mono font.
+- Mixed icon sets. Use nf-md- icons. Do not use nf-fa- icons and nf-md- icons for one meaning.
+
+## Steps to add a glyph
+
+1. Find an nf-md- icon in the [Nerd Fonts cheat sheet](https://www.nerdfonts.com/cheat-sheet).
+2. Use the rules above to pick an icon or a plain Unicode glyph.
+3. Add a `Glyph*` variable in `ui/theme.go`, and set it in `initStyles()` with its theme color.
+4. If the glyph is an item glyph or the header glyph, add its rune to `TestGlyphRunes` in `ui/theme_test.go`. That test fails when the rune of an item glyph or of the header glyph changes.
+5. Make sure that the glyph shows correctly in at least two terminals, for example kitty, WezTerm or Ghostty.
+6. Add the glyph to this page.

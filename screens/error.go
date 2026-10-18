@@ -8,7 +8,8 @@ import (
 	"github.com/juthrbog/lazybw/ui"
 )
 
-// RetryMsg tells the root model to re-attempt whatever caused the error.
+// RetryMsg tells the root model to try again. If the vault is unlocked,
+// the root model loads the items again. Otherwise it runs bw status again.
 type RetryMsg struct{}
 
 // ErrorModel displays a recoverable or fatal error with retry/quit options.

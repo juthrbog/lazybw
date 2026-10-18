@@ -50,6 +50,9 @@ type LockedModel struct {
 	state   lockedState
 	spinner spinner.Model
 	errText string
+	// lockErr is the error of a bw lock that failed. It shows below the
+	// form, above errText, until the root model drops the screen.
+	lockErr string
 	width   int
 	height  int
 
@@ -84,6 +87,13 @@ func NewLockedModel(isLogin bool) LockedModel {
 		spinner:  s,
 	}
 	m.form = buildLockedForm(isLogin, m.email, m.password)
+	return m
+}
+
+// WithLockError returns m with text as the error of a failed bw lock. The
+// form and what the user typed stay.
+func (m LockedModel) WithLockError(text string) LockedModel {
+	m.lockErr = text
 	return m
 }
 
@@ -409,12 +419,20 @@ func (m LockedModel) ViewContent(width, contentHeight int) string {
 		title = "Log in to Bitwarden"
 	}
 
-	content := title + "\n\n" + form.View()
-
-	if m.errText != "" {
-		// Wrap the error to the form width. The root centers the widest
-		// line, so a wider error would move the form off center.
-		content += "\n\n" + errorBlock(m.errText, width, lockedFormWidth)
+	// The lock error comes before the unlock error. CenterInArea cuts the
+	// lines at the bottom when the content is too tall, and the lock error
+	// is a security warning. Each error wraps to the form width. The root
+	// centers the widest line, so a wider error moves the form off center.
+	parts := []string{title, form.View()}
+	for _, text := range []string{m.lockErr, m.errText} {
+		if text != "" {
+			parts = append(parts, errorBlock(text, width, lockedFormWidth))
+		}
+	}
+	content := strings.Join(parts, "\n\n")
+	if strings.Count(content, "\n") >= contentHeight {
+		// On a short terminal, leave out the blank lines between the parts.
+		content = strings.Join(parts, "\n")
 	}
 
 	return ui.CenterInArea(content, width, contentHeight)
