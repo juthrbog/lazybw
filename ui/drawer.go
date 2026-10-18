@@ -16,6 +16,8 @@ type DrawerProps struct {
 	Item         *bwcmd.Item
 	TOTPCode     string
 	TOTPSecsLeft int
+	TOTPPeriod   int  // TOTP time step in seconds; 0 means 30
+	TOTPInvalid  bool // the TOTP key does not parse
 	Width        int
 	Height       int  // 0 means DefaultDrawerHeight
 	AutoHeight   bool // true = size to content (no padding/truncation)
@@ -168,7 +170,7 @@ func renderLoginFields(props DrawerProps) []string {
 	fields = append(fields, fieldRow("Password", pwDisplay, "[c] copy", w))
 
 	if item.Login != nil && item.Login.Totp != "" {
-		totpDisplay := renderTOTP(props.TOTPCode, props.TOTPSecsLeft)
+		totpDisplay := renderTOTP(props.TOTPCode, props.TOTPSecsLeft, props.TOTPPeriod, props.TOTPInvalid)
 		fields = append(fields, fieldRow("TOTP", totpDisplay, "[t] copy", w))
 	}
 
@@ -372,9 +374,15 @@ func fieldRow(label, value, hint string, width int) string {
 	return left + "  " + renderedHint
 }
 
-func renderTOTP(code string, secsLeft int) string {
+func renderTOTP(code string, secsLeft, period int, invalid bool) string {
+	if invalid {
+		return StyleError.Render("invalid TOTP secret")
+	}
 	if code == "" {
 		return StyleFaint.Render("loading…")
+	}
+	if period <= 0 {
+		period = 30
 	}
 
 	// Format code with mid-space: "843 291"
@@ -385,11 +393,11 @@ func renderTOTP(code string, secsLeft int) string {
 
 	// Micro-bar countdown: 4-character bar using block elements (U+2588-258F)
 	// with light shade (░) for the empty track. 4 chars * 8 levels = 32 states
-	// for a 30-second window, giving a visible change every second.
+	// for the period, giving a visible change every second at 30 seconds.
 	const barWidth = 4
 	blocks := [8]rune{'█', '▉', '▊', '▋', '▌', '▍', '▎', '▏'}
 
-	fill := secsLeft * barWidth * 8 / 30
+	fill := min(secsLeft*barWidth*8/period, barWidth*8)
 	full := fill / 8
 	frac := fill % 8
 
@@ -404,12 +412,13 @@ func renderTOTP(code string, secsLeft int) string {
 		}
 	}
 
-	// Color based on urgency: green → yellow → red.
+	// Color based on urgency: green → yellow → red. For 30 seconds, yellow
+	// starts at 15 and red at 10.
 	var clr color.Color
 	switch {
-	case secsLeft > 15:
+	case secsLeft > period/2:
 		clr = ColorGreen
-	case secsLeft > 10:
+	case secsLeft > period/3:
 		clr = ColorYellow
 	default:
 		clr = ColorRed

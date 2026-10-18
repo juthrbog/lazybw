@@ -1,6 +1,12 @@
 package totp
 
 import (
+	"bytes"
+	"crypto/hmac"
+	"crypto/sha1" //nolint:gosec // SHA1 is required by RFC 6238 (TOTP)
+	"encoding/base32"
+	"encoding/binary"
+	"fmt"
 	"testing"
 	"time"
 )
@@ -181,5 +187,192 @@ func TestSecsLeft(t *testing.T) {
 	s := SecsLeft(30)
 	if s < 1 || s > 30 {
 		t.Errorf("SecsLeft(30) = %d, want 1-30", s)
+	}
+}
+
+func TestParse_Steam(t *testing.T) {
+	// Test vector from the Bitwarden SDK (crates/bitwarden-vault/src/totp.rs).
+	p, err := Parse("steam://HXDMVJECJJWSRB3HWIZR4IFUGFTMXBOZ")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if p.Algorithm != AlgorithmSteam || p.Digits != 5 || p.Period != 30 {
+		t.Errorf("Params = %+v, want Steam, 5 digits, 30s", p)
+	}
+	at := time.Date(2023, 1, 1, 0, 0, 0, 0, time.UTC)
+	if got := CodeAt(p, at); got != "7W6CJ" {
+		t.Errorf("CodeAt = %q, want 7W6CJ", got)
+	}
+}
+
+func TestParse_LenientBase32(t *testing.T) {
+	clean, err := Parse("JBSWY3DPEHPK3PXP")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, raw := range []string{
+		"JBSW\tY3DP\tEHPK\t3PXP",
+		"JBSW.Y3DP.EHPK.3PXP",
+		"JBSWY3DPEHPK3PXP========",
+		"jbsw_y3dp_ehpk_3pxp",
+		"otpauth://totp/x?SECRET=JBSWY3DPEHPK3PXP",
+		"otpauth://totp/x?Secret=JBSWY3DPEHPK3PXP&Digits=8",
+	} {
+		p, err := Parse(raw)
+		if err != nil {
+			t.Errorf("Parse(%q): %v", raw, err)
+			continue
+		}
+		if !bytes.Equal(p.Secret, clean.Secret) {
+			t.Errorf("Parse(%q) secret = %x, want %x", raw, p.Secret, clean.Secret)
+		}
+	}
+}
+
+func TestParse_InvalidSecret(t *testing.T) {
+	for _, raw := range []string{"!!!!", "otpauth://totp/x?secret=0189", "steam://"} {
+		if _, err := Parse(raw); err == nil {
+			t.Errorf("Parse(%q) returned no error", raw)
+		}
+	}
+}
+
+func TestParse_DigitsClamped(t *testing.T) {
+	p, err := Parse("otpauth://totp/x?secret=JBSWY3DPEHPK3PXP&digits=20")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if p.Digits != 10 {
+		t.Errorf("Digits = %d, want 10", p.Digits)
+	}
+}
+
+func TestCodeAt_NoPanicForBadParams(t *testing.T) {
+	secret := []byte("12345678901234567890")
+	for _, d := range []int{-1, 0, 19, 20, 100} {
+		for _, period := range []int{-30, 0, 30} {
+			p := Params{Secret: secret, Period: period, Digits: d, Algorithm: "SHA1"}
+			if got := CodeAt(p, time.Unix(59, 0)); got == "" {
+				t.Errorf("CodeAt(digits=%d, period=%d) = empty", d, period)
+			}
+		}
+	}
+	if s := SecsLeft(0); s < 1 || s > 30 {
+		t.Errorf("SecsLeft(0) = %d, want 1-30", s)
+	}
+}
+
+// referenceCode computes an RFC 4226 code with uint64 math only.
+func referenceCode(secret []byte, counter uint64, digits int) string {
+	var buf [8]byte
+	binary.BigEndian.PutUint64(buf[:], counter)
+	mac := hmac.New(sha1.New, secret)
+	mac.Write(buf[:])
+	sum := mac.Sum(nil)
+	off := sum[len(sum)-1] & 0x0f
+	v := uint64(binary.BigEndian.Uint32(sum[off:off+4]) & 0x7fffffff)
+	mod := uint64(1)
+	for i := 0; i < digits; i++ {
+		mod *= 10
+	}
+	return fmt.Sprintf("%0*d", digits, v%mod)
+}
+
+func TestGenerateCode_MatchesReferenceForAllLengths(t *testing.T) {
+	secret := []byte("12345678901234567890")
+	for d := 1; d <= 10; d++ {
+		for c := uint64(0); c < 2000; c++ {
+			if got, want := generateCode(secret, c, d, "SHA1"), referenceCode(secret, c, d); got != want {
+				t.Fatalf("digits=%d counter=%d: got %q, want %q", d, c, got, want)
+			}
+		}
+	}
+}
+
+func TestParse_RFC6238VectorsThroughURI(t *testing.T) {
+	secret := base32.StdEncoding.EncodeToString([]byte("12345678901234567890"))
+	p, err := Parse("otpauth://totp/x?secret=" + secret + "&digits=8")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for ts, want := range map[int64]string{
+		59:          "94287082",
+		1111111109:  "07081804",
+		1111111111:  "14050471",
+		1234567890:  "89005924",
+		2000000000:  "69279037",
+		20000000000: "65353130",
+	} {
+		if got := CodeAt(p, time.Unix(ts, 0)); got != want {
+			t.Errorf("CodeAt(%d) = %q, want %q", ts, got, want)
+		}
+	}
+}
+
+func FuzzParse(f *testing.F) {
+	for _, seed := range []string{
+		"JBSWY3DPEHPK3PXP",
+		"steam://HXDMVJECJJWSRB3HWIZR4IFUGFTMXBOZ",
+		"otpauth://totp/x?secret=JBSWY3DPEHPK3PXP&digits=20&period=0",
+		"otpauth://totp/x?secret=JBSWY3DPEHPK3PXP&algorithm=sha512&digits=-3",
+		"",
+	} {
+		f.Add(seed)
+	}
+	f.Fuzz(func(t *testing.T, raw string) {
+		p, err := Parse(raw)
+		if err != nil {
+			return
+		}
+		code := CodeAt(p, time.Unix(1234567890, 0))
+		if code == "" {
+			t.Errorf("Parse(%q) gave an empty code", raw)
+		}
+	})
+}
+
+func TestParse_DuplicateKeysLastWins(t *testing.T) {
+	// Bitwarden reads the query in order, and a later key wins.
+	for i := 0; i < 50; i++ {
+		p, err := Parse("otpauth://totp/x?secret=JBSWY3DPEHPK3PXP&digits=8&Digits=6")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if p.Digits != 6 {
+			t.Fatalf("Digits = %d, want 6 from the last key", p.Digits)
+		}
+	}
+	p, err := Parse("otpauth://totp/x?SECRET=GEZDGNBVGY3TQOJQ&secret=JBSWY3DPEHPK3PXP")
+	if err != nil {
+		t.Fatal(err)
+	}
+	clean, _ := Parse("JBSWY3DPEHPK3PXP")
+	if !bytes.Equal(p.Secret, clean.Secret) {
+		t.Error("the last secret key must win")
+	}
+}
+
+func TestParse_LenientURI(t *testing.T) {
+	clean, err := Parse("JBSWY3DPEHPK3PXP")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, raw := range []string{
+		"otpauth://totp/100%?secret=JBSWY3DPEHPK3PXP",
+		"otpauth://totp/a%zz?secret=JBSWY3DPEHPK3PXP",
+		"otpauth://totp/x?secret=JBSW%Y3DPEHPK3PXP",
+		"otpauth://totp/x?secret=JBSW;Y3DPEHPK3PXP",
+		"otpauth://totp/x?secret=JBSW%59%33DPEHPK3PXP",
+		"otpauth://totp/x?secret=JBSWY3DP\nEHPK3PXP",
+		"otpauth://totp/x?issuer=a+b&secret=JBSWY3DPEHPK3PXP#frag",
+	} {
+		p, err := Parse(raw)
+		if err != nil {
+			t.Errorf("Parse(%q): %v", raw, err)
+			continue
+		}
+		if !bytes.Equal(p.Secret, clean.Secret) {
+			t.Errorf("Parse(%q) secret = %x, want %x", raw, p.Secret, clean.Secret)
+		}
 	}
 }

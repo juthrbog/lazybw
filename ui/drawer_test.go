@@ -268,3 +268,37 @@ func assertMinLineCount(t *testing.T, output string, minExpected int) {
 		t.Errorf("got %d newlines, want at least %d", count, minExpected)
 	}
 }
+
+func TestRenderDrawerTOTPBarUsesPeriod(t *testing.T) {
+	item := &bwcmd.Item{
+		Type:  bwcmd.ItemTypeLogin,
+		Name:  "Test",
+		Login: &bwcmd.Login{Totp: "seed"},
+	}
+	out := RenderDrawer(DrawerProps{
+		Item:         item,
+		TOTPCode:     "123456",
+		TOTPSecsLeft: 45,
+		TOTPPeriod:   60,
+		Width:        80,
+	})
+	plain := ansiRe.ReplaceAllString(out, "")
+	if strings.Contains(plain, "████") {
+		t.Errorf("with 45 of 60 seconds left, the bar must not be full:\n%s", plain)
+	}
+	if !strings.Contains(plain, "███░") {
+		t.Errorf("with 45 of 60 seconds left, the bar must be three quarters full:\n%s", plain)
+	}
+}
+
+func TestRenderDrawerTOTPInvalid(t *testing.T) {
+	item := &bwcmd.Item{
+		Type:  bwcmd.ItemTypeLogin,
+		Name:  "Test",
+		Login: &bwcmd.Login{Totp: "!!!!"},
+	}
+	out := RenderDrawer(DrawerProps{Item: item, TOTPInvalid: true, Width: 60})
+	if !strings.Contains(out, "invalid TOTP secret") || strings.Contains(out, "loading") {
+		t.Error("an invalid TOTP key must show 'invalid TOTP secret', not 'loading'")
+	}
+}
