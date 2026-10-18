@@ -71,6 +71,23 @@ func TestRootStatusResultUnauthenticated(t *testing.T) {
 	}
 }
 
+func TestRootStatusResultUnlockedAsksForPassword(t *testing.T) {
+	m := NewRootModel(15 * time.Minute)
+	m.width = 80
+	m.height = 24
+
+	msg := bwcmd.StatusResult{
+		Status: bwcmd.VaultStatus{Status: "unlocked", UserEmail: "u@t.com"},
+	}
+	updated, _ := m.Update(msg)
+	m = updated.(RootModel)
+
+	// lazybw has no session token here, so it must not fetch the items.
+	if m.state != stateLocked {
+		t.Errorf("state = %d, want stateLocked (%d)", m.state, stateLocked)
+	}
+}
+
 func TestRootStatusResultError(t *testing.T) {
 	m := NewRootModel(15 * time.Minute)
 	m.width = 80

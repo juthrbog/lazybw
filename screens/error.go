@@ -41,7 +41,7 @@ func (m ErrorModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 func (m ErrorModel) ViewContent() string {
 	errText := "unknown error"
 	if m.err != nil {
-		errText = m.err.Error()
+		errText = userError(m.err, actionOther)
 	}
 	return ui.GlyphError + " " + ui.StyleError.Render(errText)
 }
