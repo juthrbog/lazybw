@@ -262,6 +262,27 @@ func TestLoginUserArgs(t *testing.T) {
 	}
 }
 
+// TestUnlockArgs checks that the master password goes to bw in the
+// BW_PASSWORD variable and never in argv, where other users can read it.
+func TestUnlockArgs(t *testing.T) {
+	fakeBw(t, `for a in "$@"; do printf 'arg=%s\n' "$a"; done > "$FAKE_BW_LOG"; printf 'env=%s\n' "$BW_PASSWORD" >> "$FAKE_BW_LOG"; echo token`)
+	path := logFile(t)
+	res := Unlock("hunter2")().(UnlockResult)
+	if res.Err != nil || res.Token != "token" {
+		t.Fatalf("Unlock = %+v, want the token", res)
+	}
+	got := strings.Split(strings.TrimSuffix(readFile(t, path), "\n"), "\n")
+	want := []string{"arg=unlock", "arg=--passwordenv", "arg=BW_PASSWORD", "arg=--raw", "env=hunter2"}
+	if !reflect.DeepEqual(got, want) {
+		t.Errorf("bw got %q, want %q", got, want)
+	}
+	for _, line := range got {
+		if strings.HasPrefix(line, "arg=") && strings.Contains(line, "hunter2") {
+			t.Errorf("the password is in argv: %q", line)
+		}
+	}
+}
+
 func TestTimeoutError(t *testing.T) {
 	fakeBw(t, `exec sleep 1`)
 	setTimeouts(t, 50*time.Millisecond, 100*time.Millisecond)

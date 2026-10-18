@@ -165,26 +165,34 @@ func TestQuitConfirmationShowsHints(t *testing.T) {
 	}
 }
 
-func TestQuitConfirmationCancelOnAnyKey(t *testing.T) {
-	m := newTestVault(testItems())
-	m.confirmingQuit = true
-	if !m.confirmingQuit {
-		t.Fatal("expected confirmingQuit to be true")
-	}
-	// Pressing 'n' should cancel.
-	m.confirmingQuit = false // simulate cancel
-	if m.confirmingQuit {
-		t.Error("expected confirmingQuit to be false after cancel")
-	}
-}
-
-func TestQuitConfirmationCancelOnEsc(t *testing.T) {
-	m := newTestVault(testItems())
-	m.confirmingQuit = true
-	// Any key except 'y' cancels — esc is just another key.
-	m.confirmingQuit = false
-	if m.confirmingQuit {
-		t.Error("expected confirmingQuit to be false after esc")
+func TestQuitConfirmationKeys(t *testing.T) {
+	for _, tc := range []struct {
+		name     string
+		key      tea.KeyPressMsg
+		wantOpen bool
+		wantQuit bool
+	}{
+		{"y quits", keyMsg("y"), false, true},
+		{"n cancels", keyMsg("n"), false, false},
+		{"esc cancels", tea.KeyPressMsg{Code: tea.KeyEscape}, false, false},
+		{"other keys keep the dialog", keyMsg("x"), true, false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			m := newTestVault(testItems())
+			updated, _ := m.Update(keyMsg("q"))
+			m = updated.(VaultModel)
+			if !m.confirmingQuit {
+				t.Fatal("q must open the quit dialog")
+			}
+			updated, cmd := m.Update(tc.key)
+			m = updated.(VaultModel)
+			if m.confirmingQuit != tc.wantOpen {
+				t.Errorf("confirmingQuit = %v, want %v", m.confirmingQuit, tc.wantOpen)
+			}
+			if got := hasMsgOfType[QuitMsg](runMsgs(cmd)); got != tc.wantQuit {
+				t.Errorf("QuitMsg sent = %v, want %v", got, tc.wantQuit)
+			}
+		})
 	}
 }
 

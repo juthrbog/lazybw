@@ -2,15 +2,6 @@ package secutil
 
 import "github.com/juthrbog/lazybw/bwcmd"
 
-// ZeroBytes overwrites every element in b with zero. This is effective
-// for []byte-backed secrets (e.g. decoded TOTP keys) because Go allows
-// in-place mutation of byte slices.
-func ZeroBytes(b []byte) {
-	for i := range b {
-		b[i] = 0
-	}
-}
-
 // ZeroItem drops references to sensitive string fields on a vault item.
 // Go strings are immutable, so we cannot zero their backing memory — we
 // can only release references so the GC can collect the underlying data

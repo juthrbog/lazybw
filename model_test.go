@@ -16,10 +16,12 @@ import (
 	"github.com/juthrbog/lazybw/bwcmd"
 	"github.com/juthrbog/lazybw/screens"
 	"github.com/juthrbog/lazybw/session"
+	"github.com/juthrbog/lazybw/ui"
 )
 
 func TestMain(m *testing.M) {
-	_ = os.Setenv("NO_COLOR", "1")
+	// The theme at the start, to find a test that does not restore it.
+	theme, dark, highlight := ui.CurrentTheme, ui.IsDark, ui.ColorHighlight
 	dir, err := installFakeBw()
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "install fake bw:", err)
@@ -27,6 +29,10 @@ func TestMain(m *testing.M) {
 	}
 	code := m.Run()
 	_ = os.RemoveAll(dir)
+	if code == 0 && (ui.CurrentTheme != theme || ui.IsDark != dark || !sameColor(ui.ColorHighlight, highlight)) {
+		fmt.Fprintf(os.Stderr, "a test left the theme at %s (dark %v): use withTheme or keepTheme\n", ui.CurrentTheme, ui.IsDark)
+		code = 1
+	}
 	os.Exit(code)
 }
 

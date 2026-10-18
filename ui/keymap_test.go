@@ -1,36 +1,64 @@
 package ui
 
-import "testing"
+import (
+	"reflect"
+	"slices"
+	"testing"
+
+	"charm.land/bubbles/v2/key"
+)
 
 func TestDefaultVaultKeyMap(t *testing.T) {
-	km := DefaultVaultKeyMap()
-
-	// All fields should have at least one key binding.
-	bindings := []struct {
-		name string
-		keys []string
-	}{
-		{"Copy", km.Copy.Keys()},
-		{"CopyTOTP", km.CopyTOTP.Keys()},
-		{"CopyUsername", km.CopyUsername.Keys()},
-		{"CopyNote", km.CopyNote.Keys()},
-		{"CopyCVV", km.CopyCVV.Keys()},
-		{"OpenURL", km.OpenURL.Keys()},
-		{"ScrollDown", km.ScrollDown.Keys()},
-		{"ScrollUp", km.ScrollUp.Keys()},
-		{"Sync", km.Sync.Keys()},
-		{"Lock", km.Lock.Keys()},
-		{"Help", km.Help.Keys()},
-		{"Quit", km.Quit.Keys()},
-		{"CycleTheme", km.CycleTheme.Keys()},
-		{"Generate", km.Generate.Keys()},
-		{"ToggleGrouping", km.ToggleGrouping.Keys()},
-		{"ToggleExpand", km.ToggleExpand.Keys()},
+	want := map[string][]string{
+		"Copy":           {"c"},
+		"CopyTOTP":       {"t"},
+		"CopyUsername":   {"u"},
+		"CopyNote":       {"n"},
+		"CopyCVV":        {"v"},
+		"OpenURL":        {"o"},
+		"ScrollDown":     {"J", "shift+down"},
+		"ScrollUp":       {"K", "shift+up"},
+		"Sync":           {"r"},
+		"Lock":           {"l"},
+		"Help":           {"?"},
+		"Quit":           {"q", "ctrl+c"},
+		"CycleTheme":     {"T"},
+		"Generate":       {"p"},
+		"ToggleGrouping": {"ctrl+g"},
+		"ToggleExpand":   {"enter"},
+		"DrawerGrow":     {"+"},
+		"DrawerShrink":   {"-"},
+		"DrawerReset":    {"="},
+		"DrawerToggle":   {"d"},
 	}
 
-	for _, b := range bindings {
-		if len(b.keys) == 0 {
-			t.Errorf("%s has no key bindings", b.name)
+	// Walk the struct, so that a new binding fails this test until the
+	// table lists it.
+	v := reflect.ValueOf(DefaultVaultKeyMap())
+	if v.NumField() != len(want) {
+		t.Errorf("VaultKeyMap has %d bindings, the test lists %d", v.NumField(), len(want))
+	}
+	owner := make(map[string]string)
+	for i := range v.NumField() {
+		name := v.Type().Field(i).Name
+		b, ok := v.Field(i).Interface().(key.Binding)
+		if !ok {
+			t.Errorf("%s is not a key.Binding", name)
+			continue
+		}
+		if keys, ok := want[name]; !ok {
+			t.Errorf("%s is not in the test table", name)
+		} else if !slices.Equal(b.Keys(), keys) {
+			t.Errorf("%s keys = %v, want %v", name, b.Keys(), keys)
+		}
+		if h := b.Help(); h.Key == "" || h.Desc == "" {
+			t.Errorf("%s has no help text: %+v", name, h)
+		}
+		for _, k := range b.Keys() {
+			if other, ok := owner[k]; ok {
+				t.Errorf("%s and %s both use %q", other, name, k)
+			}
+			owner[k] = name
 		}
 	}
 }

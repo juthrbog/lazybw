@@ -93,9 +93,7 @@ func Parse(raw string) (Params, error) {
 // Clear zeros the secret bytes in-place and nils the slice, preventing
 // the decoded key material from lingering in memory after use.
 func (p *Params) Clear() {
-	for i := range p.Secret {
-		p.Secret[i] = 0
-	}
+	clear(p.Secret)
 	p.Secret = nil
 }
 

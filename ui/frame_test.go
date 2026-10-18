@@ -1,18 +1,12 @@
 package ui
 
 import (
-	"os"
 	"strings"
 	"testing"
 
 	"charm.land/lipgloss/v2"
 	"github.com/charmbracelet/x/ansi"
 )
-
-func TestMain(m *testing.M) {
-	_ = os.Setenv("NO_COLOR", "1")
-	os.Exit(m.Run())
-}
 
 func TestRenderHeaderWithEmail(t *testing.T) {
 	out := RenderHeader(HeaderData{Email: "user@test.com", Width: 80})

@@ -12,6 +12,14 @@ import (
 	"github.com/juthrbog/lazybw/ui"
 )
 
+// withTheme applies the theme name for the test. It restores the theme
+// and the background afterwards.
+func withTheme(t *testing.T, name string) {
+	t.Helper()
+	keepTheme(t)
+	ui.ApplyTheme(name)
+}
+
 // keepTheme restores the theme and the background after the test.
 func keepTheme(t *testing.T) {
 	t.Helper()
@@ -63,8 +71,7 @@ func TestSetThemeWarnsOnlyAboutUnknownNames(t *testing.T) {
 }
 
 func TestThemeChangeRestylesRootSpinner(t *testing.T) {
-	keepTheme(t)
-	ui.ApplyTheme("catppuccin-mocha")
+	withTheme(t, "catppuccin-mocha")
 	m := unlockedVault(t, testItems())
 	m, _ = update(t, m, keyPress("T"))
 	// dracula is the fifth theme.

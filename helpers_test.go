@@ -4,6 +4,8 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"slices"
+	"strings"
 	"testing"
 	"time"
 
@@ -14,10 +16,11 @@ import (
 )
 
 // fakeBwScript stands in for the Bitwarden CLI in tests. It appends its
-// arguments to $FAKE_BW_LOG when that variable is set, and prints canned
-// output for the commands the root model runs.
+// arguments, and the session token when BW_SESSION is set, to $FAKE_BW_LOG
+// when that variable is set. It prints canned output for the commands the
+// root model runs.
 const fakeBwScript = `#!/bin/sh
-if [ -n "$FAKE_BW_LOG" ]; then echo "$*" >> "$FAKE_BW_LOG"; fi
+if [ -n "$FAKE_BW_LOG" ]; then echo "$*${BW_SESSION:+ session=$BW_SESSION}" >> "$FAKE_BW_LOG"; fi
 case "$1" in
 status) echo '{"status":"locked","userEmail":"u@t.com"}' ;;
 list) echo '[{"id":"1","type":1,"name":"Gmail","login":{"username":"u","password":"p"}}]' ;;
@@ -103,6 +106,48 @@ func asCmds(msg tea.Msg) ([]tea.Cmd, bool) {
 		cmds[i], _ = v.Index(i).Interface().(tea.Cmd)
 	}
 	return cmds, true
+}
+
+// waitForMsg runs cmd, and the commands in its batches and sequences, all
+// at the same time. It returns the first message of type T, or false when
+// none arrives within wait. A timer in cmd does not delay the result.
+func waitForMsg[T any](cmd tea.Cmd, wait time.Duration) (T, bool) {
+	found := make(chan T, 1)
+	var run func(tea.Cmd)
+	run = func(c tea.Cmd) {
+		if c == nil {
+			return
+		}
+		go func() {
+			msg := c()
+			if cmds, ok := asCmds(msg); ok {
+				for _, sub := range cmds {
+					run(sub)
+				}
+				return
+			}
+			if v, ok := msg.(T); ok {
+				select {
+				case found <- v:
+				default:
+				}
+			}
+		}()
+	}
+	run(cmd)
+	select {
+	case v := <-found:
+		return v, true
+	case <-time.After(wait):
+		var zero T
+		return zero, false
+	}
+}
+
+// ranBwLock reports whether the fake bw log shows a `bw lock` run with
+// the session token.
+func ranBwLock(log, token string) bool {
+	return slices.Contains(strings.Split(log, "\n"), "lock session="+token)
 }
 
 // isSequence reports whether msg comes from tea.Sequence.

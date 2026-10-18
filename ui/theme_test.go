@@ -1,14 +1,45 @@
 package ui
 
 import (
+	"fmt"
 	"image/color"
+	"os"
 	"testing"
 
 	"charm.land/lipgloss/v2"
 )
 
+func TestMain(m *testing.M) {
+	// The theme at the start, to find a test that does not restore it.
+	theme, dark, highlight := CurrentTheme, IsDark, ColorHighlight
+	code := m.Run()
+	if code == 0 && (CurrentTheme != theme || IsDark != dark || !sameColor(ColorHighlight, highlight)) {
+		fmt.Fprintf(os.Stderr, "a test left the theme at %s (dark %v): use withTheme or keepTheme\n", CurrentTheme, IsDark)
+		code = 1
+	}
+	os.Exit(code)
+}
+
+// withTheme applies the theme name for the test. It restores IsDark and
+// the theme afterwards.
+func withTheme(t *testing.T, name string) {
+	t.Helper()
+	keepTheme(t)
+	ApplyTheme(name)
+}
+
+// keepTheme restores IsDark and the theme after the test.
+func keepTheme(t *testing.T) {
+	t.Helper()
+	prevDark, prevTheme := IsDark, CurrentTheme
+	t.Cleanup(func() {
+		IsDark = prevDark
+		ApplyTheme(prevTheme)
+	})
+}
+
 func TestApplyThemeCatppuccinMocha(t *testing.T) {
-	ApplyTheme("catppuccin-mocha")
+	withTheme(t, "catppuccin-mocha")
 	if CurrentTheme != "catppuccin-mocha" {
 		t.Errorf("CurrentTheme = %q, want %q", CurrentTheme, "catppuccin-mocha")
 	}
@@ -21,7 +52,7 @@ func TestApplyThemeCatppuccinMocha(t *testing.T) {
 }
 
 func TestApplyThemeDracula(t *testing.T) {
-	ApplyTheme("dracula")
+	withTheme(t, "dracula")
 	if CurrentTheme != "dracula" {
 		t.Errorf("CurrentTheme = %q, want %q", CurrentTheme, "dracula")
 	}
@@ -31,7 +62,7 @@ func TestApplyThemeDracula(t *testing.T) {
 }
 
 func TestApplyThemeUpdatesGlyphs(t *testing.T) {
-	ApplyTheme("catppuccin-mocha")
+	withTheme(t, "catppuccin-mocha")
 	if GlyphLogin == "" {
 		t.Error("GlyphLogin should not be empty after ApplyTheme")
 	}
@@ -41,7 +72,7 @@ func TestApplyThemeUpdatesGlyphs(t *testing.T) {
 }
 
 func TestApplyThemeUnknownFallsToDefault(t *testing.T) {
-	ApplyTheme("nonexistent")
+	withTheme(t, "nonexistent")
 	if CurrentTheme != DefaultTheme {
 		t.Errorf("CurrentTheme = %q, want %q", CurrentTheme, DefaultTheme)
 	}
@@ -66,11 +97,7 @@ var (
 // afterwards.
 func withBackground(t *testing.T, dark bool) {
 	t.Helper()
-	prevDark, prevTheme := IsDark, CurrentTheme
-	t.Cleanup(func() {
-		IsDark = prevDark
-		ApplyTheme(prevTheme)
-	})
+	keepTheme(t)
 	IsDark = dark
 }
 
