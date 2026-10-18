@@ -3,7 +3,10 @@ package ui
 import (
 	"strings"
 	"testing"
+	"unicode/utf8"
 
+	"charm.land/lipgloss/v2"
+	"github.com/charmbracelet/x/ansi"
 	"github.com/juthrbog/lazybw/bwcmd"
 )
 
@@ -161,5 +164,114 @@ func TestRenderItemRowTruncation(t *testing.T) {
 	out := RenderItemRow(item, false, 30, false)
 	if !strings.Contains(out, "…") {
 		t.Error("long name should be truncated with ellipsis")
+	}
+}
+
+func TestRenderItemRowFitsWidth(t *testing.T) {
+	longLine := strings.Repeat("recovery code 1234-5678 ", 5)
+	items := map[string]bwcmd.Item{
+		"long note": {
+			Type: bwcmd.ItemTypeSecureNote, Name: "AWS Root Account Recovery Codes",
+			Notes: longLine + "\nsecond line",
+		},
+		"long username": {
+			Type: bwcmd.ItemTypeLogin, Name: "Corporate SSO",
+			Login: &bwcmd.Login{Username: "firstname.lastname.department@subsidiary.example-corporation.com"},
+		},
+		"CJK name": {
+			Type: bwcmd.ItemTypeLogin, Name: "東京都庁の職員ポータルサイトのログイン情報です",
+			Login: &bwcmd.Login{Username: "職員番号一二三四五六七八九"},
+		},
+		"accented name": {
+			Type: bwcmd.ItemTypeLogin, Name: "Crédit Agricole Île-de-France — accès épargne",
+			Login: &bwcmd.Login{Username: "élodie.françois@crédit.example"},
+		},
+		"SSH fingerprint": {
+			Type: bwcmd.ItemTypeSSHKey, Name: "Deploy key",
+			SSHKey: &bwcmd.SSHKey{KeyFingerprint: "SHA256:" + strings.Repeat("Ab3/", 11)},
+		},
+	}
+	for name, item := range items {
+		for _, width := range []int{40, 60, 80} {
+			for _, selected := range []bool{false, true} {
+				for _, indent := range []bool{false, true} {
+					row := RenderItemRow(item, selected, width, indent)
+					if w := lipgloss.Width(row); w != width {
+						t.Errorf("%s at %d (selected %v, indent %v): width = %d", name, width, selected, indent, w)
+					}
+					if !utf8.ValidString(row) {
+						t.Errorf("%s at %d: row is not valid UTF-8: %q", name, width, row)
+					}
+				}
+			}
+		}
+	}
+}
+
+func TestRenderItemRowLongNoteKeepsName(t *testing.T) {
+	item := bwcmd.Item{
+		Type:  bwcmd.ItemTypeSecureNote,
+		Name:  "AWS Root Account Recovery Codes",
+		Notes: strings.Repeat("x", 100),
+	}
+	plain := ansi.Strip(RenderItemRow(item, false, 80, false))
+	if !strings.Contains(plain, item.Name[:12]) {
+		t.Errorf("row must show at least 12 characters of the name, got %q", plain)
+	}
+}
+
+func TestRenderItemRowSelectedNameIsBold(t *testing.T) {
+	item := bwcmd.Item{
+		Type:  bwcmd.ItemTypeLogin,
+		Name:  "Gmail",
+		Login: &bwcmd.Login{Username: "user@gmail.com"},
+	}
+	cells := cellsOf(RenderItemRow(item, true, 60, false))
+	start := -1
+	for i := 0; i+len(item.Name) <= len(cells); i++ {
+		if cellsText(cells[i:i+len(item.Name)]) == item.Name {
+			start = i
+			break
+		}
+	}
+	if start < 0 {
+		t.Fatalf("row has no name: %q", cellsText(cells))
+	}
+	for _, c := range cells[start : start+len(item.Name)] {
+		if !c.bold {
+			t.Errorf("name cell %q is not bold", c.text)
+		}
+	}
+	for _, c := range cells[start+len(item.Name):] {
+		if c.bold {
+			t.Errorf("cell %q after the name is bold", c.text)
+		}
+	}
+}
+
+func TestRenderItemRowSanitizesName(t *testing.T) {
+	names := []string{
+		"Spoof\nFAKE-ROW",
+		"first\rsecond",
+		"a\tb\tc",
+		"\x1b[8mhidden\x1b[0m",
+		"\x1b]8;;https://evil.example\x07link\x1b]8;;\x07",
+	}
+	for _, name := range names {
+		item := bwcmd.Item{Type: bwcmd.ItemTypeLogin, Name: name, Login: &bwcmd.Login{Username: "u\r\nv"}}
+		for _, width := range []int{40, 80} {
+			row := RenderItemRow(item, false, width, false)
+			if w := lipgloss.Width(row); w != width {
+				t.Errorf("%q at %d: width = %d", name, width, w)
+			}
+			for _, b := range []byte(ansi.Strip(row)) {
+				if b < 0x20 || b == 0x7f {
+					t.Errorf("%q at %d: row has control byte %#x: %q", name, width, b, row)
+				}
+			}
+			if strings.Contains(row, "\x1b]") || strings.Contains(row, "\x1b[8m") {
+				t.Errorf("%q at %d: row keeps an escape sequence from the name: %q", name, width, row)
+			}
+		}
 	}
 }

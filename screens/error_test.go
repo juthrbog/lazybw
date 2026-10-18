@@ -7,6 +7,8 @@ import (
 	"testing"
 
 	tea "charm.land/bubbletea/v2"
+	"charm.land/lipgloss/v2"
+	"github.com/charmbracelet/x/ansi"
 )
 
 func TestMain(m *testing.M) {
@@ -25,7 +27,7 @@ func TestMain(m *testing.M) {
 
 func TestErrorViewContent(t *testing.T) {
 	m := NewErrorModel(errors.New("connection timed out"), false)
-	out := m.ViewContent()
+	out := m.ViewContent(80)
 	if !strings.Contains(out, "connection timed out") {
 		t.Error("should contain error message")
 	}
@@ -33,9 +35,34 @@ func TestErrorViewContent(t *testing.T) {
 
 func TestErrorViewContentNilError(t *testing.T) {
 	m := NewErrorModel(nil, false)
-	out := m.ViewContent()
+	out := m.ViewContent(80)
 	if !strings.Contains(out, "unknown error") {
 		t.Error("nil error should show 'unknown error'")
+	}
+}
+
+func TestErrorViewContentWrapsLongError(t *testing.T) {
+	words := strings.Repeat("bw failed to reach the server ", 10)
+	m := NewErrorModel(errors.New(words+"\x1b[8mhidden\r\nsecond line"), false)
+	for _, width := range []int{120, 80, 40} {
+		out := m.ViewContent(width)
+		lines := strings.Split(out, "\n")
+		if len(lines) < 2 {
+			t.Fatalf("width %d: the long error is not wrapped:\n%s", width, out)
+		}
+		limit := min(width-4, maxErrorWidth)
+		for _, l := range lines {
+			if w := lipgloss.Width(l); w > limit {
+				t.Errorf("width %d: line is %d cells wide, want at most %d: %q", width, w, limit, l)
+			}
+			if strings.ContainsAny(ansi.Strip(l), "\x1b\r") {
+				t.Errorf("width %d: line has control characters: %q", width, l)
+			}
+		}
+		plain := strings.Join(strings.Fields(ansi.Strip(out)), " ")
+		if !strings.Contains(plain, strings.TrimSpace(words)) || !strings.Contains(plain, "hidden second line") {
+			t.Errorf("width %d: the wrapped error lost text:\n%s", width, plain)
+		}
 	}
 }
 

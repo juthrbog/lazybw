@@ -91,6 +91,7 @@ type VaultModel struct {
 	currentTheme    string
 	showThemePicker bool
 	themeForm       *huh.Form
+	themeSelectH    int // height of the select in themeForm
 	selectedTheme   *string
 
 	confirmingQuit bool
@@ -119,7 +120,13 @@ func NewVaultModel(items []bwcmd.Item, sess *session.State, width, height int) V
 	ss.Spinner = ui.SpinnerLoad
 	ss.Style = ss.Style.Foreground(ui.ColorHighlight)
 
+	// Clamp the drawer as a resize does, so that a short terminal shows
+	// the footer on the first frame. A height of 0 means that the size is
+	// not known yet, and the first resize clamps the drawer.
 	drawerH := ui.DefaultDrawerHeight
+	if height > 0 {
+		drawerH = clampDrawerHeight(drawerH, height)
+	}
 	l := list.New(toListItems(items), VaultDelegate{}, width, height-drawerH)
 	l.Title = ""
 	l.SetShowTitle(false)
@@ -208,6 +215,13 @@ func (m VaultModel) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			listH = msg.Height
 		}
 		m.list.SetSize(msg.Width, listH)
+		m.help.Resize(msg.Width, msg.Height-ui.ChromeHeight)
+		// Rebuild the theme picker when the new height changes the height
+		// of its select. Form.Init asks for the window size, so a rebuild
+		// on each resize message would never stop.
+		if m.showThemePicker && themeSelectHeight(msg.Height) != m.themeSelectH {
+			return m, m.buildThemeForm()
+		}
 		return m, nil
 
 	case tea.KeyPressMsg:
@@ -262,6 +276,8 @@ func (m VaultModel) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			label = "TOTP"
 		case session.CopyFieldUsername:
 			label = "Username"
+		case session.CopyFieldNote:
+			label = "Note"
 		}
 		// The root model schedules and runs the clipboard clear.
 		m.setToast(ui.GlyphCopy + " " + label + " copied — clears in 60s")
@@ -377,6 +393,12 @@ func (m VaultModel) handleActionKeys(msg tea.KeyPressMsg) (tea.Model, tea.Cmd, b
 			}
 		}
 
+	case key.Matches(msg, m.keymap.CopyNote):
+		// Copy the stored note, not the sanitized text that the drawer shows.
+		if item := m.selectedItem(); item != nil && item.Notes != "" {
+			return m, session.CopyToClipboard(item.Notes, session.CopyFieldNote), true
+		}
+
 	case key.Matches(msg, m.keymap.OpenURL):
 		if item := m.selectedItem(); item != nil && item.Login != nil && len(item.Login.URIs) > 0 {
 			return m, openURL(item.Login.URIs[0].URI), true
@@ -395,8 +417,7 @@ func (m VaultModel) handleActionKeys(msg tea.KeyPressMsg) (tea.Model, tea.Cmd, b
 		return m, func() tea.Msg { return LockMsg{} }, true
 
 	case key.Matches(msg, m.keymap.Help):
-		contentHeight := m.height - 2 // header + footer
-		m.help.Show(m.keymap.HelpBindings(), m.width, contentHeight)
+		m.help.Show(m.keymap.HelpBindings(), m.width, m.height-ui.ChromeHeight)
 		return m, nil, true
 
 	case key.Matches(msg, m.keymap.Generate):
@@ -411,14 +432,15 @@ func (m VaultModel) handleActionKeys(msg tea.KeyPressMsg) (tea.Model, tea.Cmd, b
 		m.confirmingQuit = true
 		return m, nil, true
 
+	// Only secure notes scroll. For other items the limit is 0, so J and
+	// K do nothing. A resize or a drawer change can lower the limit, so K
+	// clamps first and then moves.
 	case key.Matches(msg, m.keymap.ScrollDown):
-		m.drawerScroll++
+		m.drawerScroll = min(m.drawerScroll+1, m.maxDrawerScroll())
 		return m, nil, true
 
 	case key.Matches(msg, m.keymap.ScrollUp):
-		if m.drawerScroll > 0 {
-			m.drawerScroll--
-		}
+		m.drawerScroll = max(0, min(m.drawerScroll, m.maxDrawerScroll())-1)
 		return m, nil, true
 
 	case key.Matches(msg, m.keymap.DrawerGrow):
@@ -437,7 +459,7 @@ func (m VaultModel) handleActionKeys(msg tea.KeyPressMsg) (tea.Model, tea.Cmd, b
 
 	case key.Matches(msg, m.keymap.DrawerReset):
 		if !m.drawerOverlay {
-			m.drawerHeight = ui.DefaultDrawerHeight
+			m.drawerHeight = m.clampDrawerHeight(ui.DefaultDrawerHeight)
 			m.resizeList()
 		}
 		return m, nil, true
@@ -639,18 +661,25 @@ func (m *VaultModel) clampCursor() {
 }
 
 func (m *VaultModel) clampDrawerHeight(h int) int {
+	return clampDrawerHeight(h, m.height)
+}
+
+// minListRows is the number of rows that the list always draws: its title
+// line, where the filter input shows, and one item. The bubbles list draws
+// them even when its height is smaller.
+const minListRows = 2
+
+// clampDrawerHeight limits a drawer height h to half of the screen height.
+// The drawer keeps at least 3 rows. On a screen that is too short for that,
+// the drawer gets the rows of the content area that the list leaves, and at
+// least 1 row.
+func clampDrawerHeight(h, height int) int {
 	const minDrawerHeight = 3
-	maxDrawerHeight := m.height / 2
-	if maxDrawerHeight < minDrawerHeight {
-		maxDrawerHeight = minDrawerHeight
-	}
-	if h < minDrawerHeight {
-		return minDrawerHeight
-	}
-	if h > maxDrawerHeight {
-		return maxDrawerHeight
-	}
-	return h
+	maxDrawerHeight := max(height/2, minDrawerHeight)
+	// A taller drawer would make the list and the drawer together taller
+	// than the content area, and the frame would cut the drawer.
+	maxDrawerHeight = min(maxDrawerHeight, height-ui.ChromeHeight-minListRows)
+	return max(1, min(max(h, minDrawerHeight), maxDrawerHeight))
 }
 
 func (m *VaultModel) resizeList() {
@@ -667,8 +696,10 @@ func (m *VaultModel) setToast(msg string) {
 	m.toastIsError = false
 }
 
+// setErrorToast shows an error in the footer. The message often holds bw
+// output, so it is sanitized to one line.
 func (m *VaultModel) setErrorToast(msg string) {
-	m.toast = ui.GlyphError + " " + msg
+	m.toast = ui.GlyphError + " " + ui.SanitizeLine(msg)
 	m.toastTime = time.Now()
 	m.toastIsError = true
 }
@@ -676,23 +707,43 @@ func (m *VaultModel) setErrorToast(msg string) {
 func (m VaultModel) openThemePicker() (tea.Model, tea.Cmd) {
 	selected := m.currentTheme
 	m.selectedTheme = &selected
+	m.showThemePicker = true
+	return m, m.buildThemeForm()
+}
+
+// buildThemeForm builds the theme picker for the current screen height and
+// returns its init command. The cursor starts on m.selectedTheme, so a
+// rebuild keeps the theme that the user moved to.
+func (m *VaultModel) buildThemeForm() tea.Cmd {
 	options := make([]huh.Option[string], len(ui.ThemeNames))
 	for i, name := range ui.ThemeNames {
 		options[i] = huh.NewOption(name, name)
 	}
+	m.themeSelectH = themeSelectHeight(m.height)
 	m.themeForm = huh.NewForm(
 		huh.NewGroup(
 			huh.NewSelect[string]().
 				Title("Choose theme").
 				Options(options...).
-				Value(m.selectedTheme),
+				Value(m.selectedTheme).
+				Height(m.themeSelectH),
 		),
 	).WithWidth(40)
 	if ui.HuhTheme != nil {
 		m.themeForm = m.themeForm.WithTheme(ui.HuhTheme)
 	}
-	m.showThemePicker = true
-	return m, m.themeForm.Init()
+	return m.themeForm.Init()
+}
+
+// themeSelectHeight returns the height of the theme select for a screen of
+// the given height: the title and one row for each theme, or fewer rows on
+// a short screen. A select with fewer rows scrolls, so that the cursor stays
+// visible. The select must fit in the overlay card with the 2 rows that the
+// form adds below it, a blank line and its help line.
+func themeSelectHeight(height int) int {
+	const formHelpRows = 2
+	rows := height - ui.ChromeHeight - ui.OverlayEdgeHeight - formHelpRows
+	return max(2, min(len(ui.ThemeNames)+1, rows))
 }
 
 func (m VaultModel) updateThemePicker(msg tea.Msg) (tea.Model, tea.Cmd) {
@@ -911,48 +962,71 @@ func (m VaultModel) renderQuitConfirm() string {
 	return b.String()
 }
 
-// renderVaultContent renders the normal vault layout (list + drawer).
-func (m VaultModel) renderVaultContent(width, contentHeight int) string {
-	if m.drawerOverlay {
-		// Constrain overlay drawer width so it doesn't span the full terminal.
-		overlayW := width * 3 / 4
-		if overlayW > 80 {
-			overlayW = 80
-		}
-		if overlayW < 40 {
-			overlayW = width - 4
-		}
-		drawer := ui.RenderDrawer(ui.DrawerProps{
-			Item:         m.selectedItem(),
-			TOTPCode:     m.totpCode,
-			TOTPSecsLeft: m.totpSecsLeft,
-			TOTPPeriod:   m.totpPeriod(),
-			TOTPInvalid:  m.totpInvalid,
-			Width:        overlayW,
-			AutoHeight:   true,
-			ScrollOffset: m.drawerScroll,
-		})
-		m.list.SetSize(width, contentHeight)
-		listView := m.list.View()
-		return ui.RenderOverlay(listView, drawer, width, contentHeight)
-	}
-
-	drawer := ui.RenderDrawer(ui.DrawerProps{
+// drawerProps returns the drawer props for a content area of the given
+// size. The view and the scroll limit both use it, so that they count the
+// same note lines.
+func (m VaultModel) drawerProps(width, contentHeight int) ui.DrawerProps {
+	props := ui.DrawerProps{
 		Item:         m.selectedItem(),
 		TOTPCode:     m.totpCode,
 		TOTPSecsLeft: m.totpSecsLeft,
 		TOTPPeriod:   m.totpPeriod(),
 		TOTPInvalid:  m.totpInvalid,
-		Width:        width,
-		Height:       m.drawerHeight,
 		ScrollOffset: m.drawerScroll,
-	})
+	}
+	if m.drawerOverlay {
+		props.Width = overlayDrawerWidth(width)
+		props.AutoHeight = true
+		// RenderOverlay cuts the card content to the rows inside the border
+		// and the padding. Size the note page to those rows, so that J can
+		// scroll to the last line. Height counts the header, and the page
+		// keeps at least one note row.
+		props.Height = max(2, min(ui.DefaultDrawerHeight, contentHeight-ui.OverlayEdgeHeight))
+	} else {
+		props.Width = width
+		props.Height = m.drawerHeight
+	}
+	return props
+}
+
+// overlayDrawerWidth returns the drawer width in overlay mode.
+func overlayDrawerWidth(width int) int {
+	// Constrain overlay drawer width so it doesn't span the full terminal.
+	w := width * 3 / 4
+	if w > 80 {
+		w = 80
+	}
+	if w < 40 {
+		// Leave room for the card border and padding.
+		w = width - ui.OverlayEdgeWidth
+	}
+	return w
+}
+
+// maxDrawerScroll returns the largest drawer scroll offset for the
+// selected item.
+func (m VaultModel) maxDrawerScroll() int {
+	return ui.MaxScrollOffset(m.drawerProps(m.width, m.height-ui.ChromeHeight))
+}
+
+// renderVaultContent renders the normal vault layout (list + drawer).
+func (m VaultModel) renderVaultContent(width, contentHeight int) string {
+	drawer := ui.RenderDrawer(m.drawerProps(width, contentHeight))
+
+	if m.drawerOverlay {
+		m.list.SetSize(width, contentHeight)
+		listView := m.list.View()
+		return ui.RenderOverlay(listView, drawer, width, contentHeight)
+	}
 
 	m.list.SetSize(width, contentHeight-m.drawerHeight)
 	listView := m.list.View()
 
 	return lipgloss.JoinVertical(lipgloss.Left, listView, drawer)
 }
+
+// maxFilterHintW is the widest filter text that the footer shows.
+const maxFilterHintW = 20
 
 // FooterContent returns hints and status for the footer bar.
 func (m VaultModel) FooterContent() ([]ui.HintBinding, string) {
@@ -979,30 +1053,54 @@ func (m VaultModel) FooterContent() ([]ui.HintBinding, string) {
 		}, ""
 	}
 	if m.help.Visible() {
+		if m.help.Filtering() {
+			return []ui.HintBinding{
+				{Key: "enter", Desc: "done"},
+				{Key: "esc", Desc: "clear"},
+			}, ""
+		}
 		return []ui.HintBinding{
 			{Key: "esc", Desc: "close"},
+			{Key: "j/k", Desc: "scroll"},
+			{Key: "/", Desc: "filter"},
 		}, ""
 	}
 
 	var hints []ui.HintBinding
-	if m.list.SettingFilter() {
+	switch {
+	case m.list.SettingFilter():
 		hints = []ui.HintBinding{
 			{Key: "esc", Desc: "clear"},
 			{Key: "enter", Desc: "confirm"},
 			{Key: "↑/↓", Desc: "navigate"},
 		}
-	} else {
+	case m.list.FilterState() == list.FilterApplied:
+		// Show that the list is filtered, and how to clear the filter. The
+		// filter text takes space, so this list is shorter than the normal
+		// one, and help and quit come right after the filter hints.
+		filter := ui.Truncate(ui.SanitizeLine(m.list.FilterValue()), maxFilterHintW)
+		hints = []ui.HintBinding{
+			{Key: "filter:", Desc: filter},
+			{Key: "esc", Desc: "clear"},
+			{Key: "?", Desc: "help"},
+			{Key: "q", Desc: "quit"},
+			{Key: "c", Desc: "pwd"},
+			{Key: "t", Desc: "totp"},
+		}
+	default:
+		// The footer drops hints from the end when they do not fit, so
+		// help and quit come right after the copy keys.
 		hints = []ui.HintBinding{
 			{Key: "j/k", Desc: "navigate"},
 			{Key: "/", Desc: "search"},
 			{Key: "c", Desc: "pwd"},
 			{Key: "t", Desc: "totp"},
+			{Key: "?", Desc: "help"},
+			{Key: "q", Desc: "quit"},
 			{Key: "ctrl+g", Desc: "group"},
 			{Key: "d", Desc: "drawer"},
 			{Key: "p", Desc: "gen"},
 			{Key: "T", Desc: "theme"},
-			{Key: "?", Desc: "help"},
-			{Key: "q", Desc: "quit"},
 		}
 	}
 

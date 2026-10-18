@@ -5,7 +5,12 @@ import (
 	"strings"
 
 	"charm.land/lipgloss/v2"
+	"github.com/charmbracelet/x/ansi"
 )
+
+// ChromeHeight is the number of rows that the frame uses around the content
+// area: the header (2 rows) and the footer (1 row).
+const ChromeHeight = 3
 
 // HeaderData holds the values needed to render the header bar.
 type HeaderData struct {
@@ -15,59 +20,91 @@ type HeaderData struct {
 	Width        int
 }
 
+// minHeaderEmailW is the narrowest email that the header shows. A narrower
+// space drops the email badge.
+const minHeaderEmailW = 6
+
 // RenderHeader renders the 2-line header: title bar + gradient separator.
+// Both lines are exactly data.Width cells wide.
 func RenderHeader(data HeaderData) string {
 	title := GradientText(" 󰊙 lazybw", GradientFrom, GradientTo)
 
 	// Build components left-to-right.
-	parts := []string{title}
+	bar := title
 	if data.Email != "" {
-		parts = append(parts, " "+StyleHeaderBadge.Render(data.Email))
+		// The badge adds 1 cell of padding on each side, and a space
+		// separates it from the title.
+		const badgeChrome = 3
+		emailW := data.Width - lipgloss.Width(title) - badgeChrome
+		if emailW >= minHeaderEmailW {
+			email := Truncate(SanitizeLine(data.Email), emailW)
+			bar += " " + StyleHeaderBadge.Render(email)
+		}
 	}
+	var extras []string
 	if data.Width >= 80 && data.ItemCount > 0 {
-		parts = append(parts, " "+StyleFaint.Render(fmt.Sprintf("%d items", data.ItemCount)))
+		extras = append(extras, " "+StyleFaint.Render(fmt.Sprintf("%d items", data.ItemCount)))
 	}
 	if data.Width >= 60 && data.SelectedType != "" {
-		parts = append(parts, " "+StyleFaint.Render(data.SelectedType))
+		extras = append(extras, " "+StyleFaint.Render(data.SelectedType))
+	}
+	// The email comes first. An extra that does not fit next to it is
+	// dropped.
+	for _, extra := range extras {
+		if lipgloss.Width(bar)+lipgloss.Width(extra) <= data.Width {
+			bar += extra
+		}
 	}
 
-	bar := strings.Join(parts, "")
-	barW := lipgloss.Width(bar)
-	if pad := data.Width - barW; pad > 0 {
-		bar += strings.Repeat(" ", pad)
-	}
-
-	return bar + "\n" + RenderGradientLine(data.Width)
+	return fitLine(bar, data.Width) + "\n" + RenderGradientLine(data.Width)
 }
 
 // RenderFooter renders the always-visible footer bar with hints and status.
+// The status comes first, but it leaves room for the first hint. The hints
+// that do not fit are dropped from the end. A status that is too long is
+// cut, so that the footer is one line of exactly width cells.
 func RenderFooter(hints []HintBinding, status string, width int) string {
-	right := status
-
-	if len(hints) == 0 && right == "" {
-		return strings.Repeat(" ", width)
+	if len(hints) == 0 && status == "" {
+		return strings.Repeat(" ", max(0, width))
 	}
 
+	// 1 cell of padding on each side.
+	inner := width - 2
+	maxRight := inner
+	if len(hints) > 0 {
+		// Leave room for the first hint and a 1-cell gap.
+		maxRight -= lipgloss.Width(RenderHints(hints[:1], inner)) + 1
+	}
+	right := Truncate(status, maxRight)
 	rightW := lipgloss.Width(right)
-	// Reserve space for right side + 1-char padding each side + minimum gap.
-	availHints := width - rightW - 3
-	if availHints < 0 {
-		availHints = 0
-	}
 
+	// Reserve space for the status and a minimum gap.
+	availHints := max(0, inner-rightW-1)
 	left := RenderHints(hints, availHints)
 	leftW := lipgloss.Width(left)
-	gap := width - leftW - rightW - 2 // 1-char padding each side
-	if gap < 1 {
-		gap = 1
-	}
+	gap := max(1, inner-leftW-rightW)
 
-	return " " + left + strings.Repeat(" ", gap) + right + " "
+	return fitLine(" "+left+strings.Repeat(" ", gap)+right+" ", width)
 }
 
-// CenterInArea centers content both vertically and horizontally
-// within the given dimensions.
+// fitLine pads a line with spaces to width cells, or cuts it when it is
+// wider.
+func fitLine(line string, width int) string {
+	width = max(0, width)
+	w := lipgloss.Width(line)
+	if w > width {
+		return ansi.Truncate(line, width, "")
+	}
+	return line + strings.Repeat(" ", width-w)
+}
+
+// CenterInArea centers content both vertically and horizontally within the
+// given dimensions. The result has exactly height lines. Content that is
+// taller than the area is cut at the bottom.
 func CenterInArea(content string, width, height int) string {
+	if height <= 0 {
+		return ""
+	}
 	lines := strings.Split(content, "\n")
 	maxLineW := 0
 	for _, l := range lines {
@@ -76,28 +113,22 @@ func CenterInArea(content string, width, height int) string {
 		}
 	}
 
-	padLeft := (width - maxLineW) / 2
-	if padLeft < 0 {
-		padLeft = 0
-	}
-	padTop := (height - len(lines)) / 2
-	if padTop < 0 {
-		padTop = 0
-	}
+	padLeft := strings.Repeat(" ", max(0, (width-maxLineW)/2))
+	padTop := max(0, (height-len(lines))/2)
 
-	var b strings.Builder
-	for i := 0; i < padTop; i++ {
-		b.WriteString("\n")
+	out := make([]string, 0, height)
+	for range padTop {
+		out = append(out, "")
 	}
 	for _, l := range lines {
-		b.WriteString(strings.Repeat(" ", padLeft))
-		b.WriteString(l)
-		b.WriteString("\n")
+		if len(out) == height {
+			break
+		}
+		out = append(out, padLeft+l)
 	}
-	// Pad bottom to fill the content area height.
-	totalLines := padTop + len(lines)
-	for i := totalLines; i < height; i++ {
-		b.WriteString("\n")
+	// Pad the bottom to fill the content area height.
+	for len(out) < height {
+		out = append(out, "")
 	}
-	return b.String()
+	return strings.Join(out, "\n")
 }
