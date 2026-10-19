@@ -62,9 +62,41 @@ lazybw shows your vault in a terminal UI that you control with the keyboard. You
 
 ## Installation
 
+### Homebrew
+
+On macOS or Linux:
+
+```sh
+brew install juthrbog/tap/lazybw
+```
+
+The formula installs the release binary. It does not install `bw`. Install `bw` with `brew install bitwarden-cli`, or see [Requirements](#requirements).
+
 ### Download a binary
 
-Download the archive for your system from the [releases page](https://github.com/juthrbog/lazybw/releases/latest). Releases have binaries for Linux and macOS, on amd64 and arm64. Extract the archive, and put `lazybw` in a directory on your `$PATH`, for example `/usr/local/bin`. Each release has a `checksums.txt` file with the SHA-256 checksum of each archive.
+Download the archive for your system from the [releases page](https://github.com/juthrbog/lazybw/releases/latest). Releases have binaries for Linux, macOS and Windows, on amd64 and arm64. The Windows archives are zip files, and the others are tar.gz files. Extract the archive, and put `lazybw` (`lazybw.exe` on Windows) in a directory on your `$PATH`, for example `/usr/local/bin`.
+
+Each release also has these files:
+
+- `checksums.txt`: the SHA-256 checksum of each archive and each SBOM.
+- `checksums.txt.sigstore.json`: a cosign signature of `checksums.txt`.
+- One SBOM for each archive, in SPDX JSON. An SBOM (software bill of materials) lists the Go modules in the binary.
+
+To make sure that an archive comes from the release workflow of this repository, use one of these commands:
+
+```sh
+# A build provenance attestation of GitHub.
+gh attestation verify lazybw_0.3.0_linux_amd64.tar.gz --repo juthrbog/lazybw
+
+# The cosign signature. Then compare the checksum of the archive.
+cosign verify-blob checksums.txt \
+  --bundle checksums.txt.sigstore.json \
+  --certificate-identity-regexp '^https://github\.com/juthrbog/lazybw/\.github/workflows/release\.yml@refs/tags/v' \
+  --certificate-oidc-issuer https://token.actions.githubusercontent.com
+sha256sum --ignore-missing -c checksums.txt
+```
+
+Replace `0.3.0` and `linux_amd64` with the version and the platform of your archive.
 
 ### From source
 

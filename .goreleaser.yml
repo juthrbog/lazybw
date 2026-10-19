@@ -8,9 +8,12 @@ builds:
     goos:
       - linux
       - darwin
+      - windows
     goarch:
       - amd64
       - arm64
+    # Reproducible builds: the binary holds no local paths, and the file
+    # times come from the commit.
     flags:
       - -trimpath
     ldflags:
@@ -20,15 +23,50 @@ builds:
 archives:
   - formats:
       - tar.gz
+    format_overrides:
+      - goos: windows
+        formats:
+          - zip
     name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+    # The same commit gives the same archives: each file gets the commit
+    # time and a fixed owner, not the time and the user of the checkout.
+    builds_info: &file_info
+      owner: root
+      group: root
+      mtime: "{{ .CommitDate }}"
+    files:
+      - src: README.md
+        info: *file_info
+      - src: LICENSE
+        info: *file_info
 
 checksum:
   name_template: checksums.txt
 
+# syft writes an SBOM (a list of the modules in the binary) for each archive.
+sboms:
+  - artifacts: archive
+
+# cosign signs checksums.txt without a key: the signature holds the identity
+# of the release workflow. The checksums cover the archives and the SBOMs.
+signs:
+  - cmd: cosign
+    signature: "${artifact}.sigstore.json"
+    args:
+      - sign-blob
+      - "--bundle=${signature}"
+      - "${artifact}"
+      - "--yes"
+    artifacts: checksum
+
+# GitHub writes the release notes from the merged pull requests.
+# .github/release.yml sorts them into sections.
 changelog:
-  sort: asc
-  filters:
-    exclude:
-      - "^docs:"
-      - "^test:"
-      - "^ci:"
+  use: github-native
+
+release:
+  github:
+    owner: juthrbog
+    name: lazybw
+  # A tag such as v0.3.0-rc.1 makes a prerelease.
+  prerelease: auto

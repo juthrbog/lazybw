@@ -1026,8 +1026,13 @@ lazybw/
 │   └── zero.go           # Drop the secrets of vault items
 ├── totp/
 │   └── totp.go           # RFC 6238 TOTP and Steam Guard codes
+├── scripts/
+│   └── formula.sh        # Homebrew formula for a release
+├── .goreleaser.yml       # Release archives, SBOMs and signature
 └── go.mod
 ```
+
+[RELEASING.md](RELEASING.md) describes the release workflow.
 
 ---
 
