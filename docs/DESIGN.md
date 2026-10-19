@@ -585,6 +585,13 @@ each overlay and of the unlock screen. These are the vault keys:
 | `q` | Ask to quit, then lock and quit on `y` |
 | `ctrl+c` | Lock and quit at once |
 
+`ui/keymap.go` holds each key label in one place. `VaultKeyMap`,
+`GeneratorKeyMap` and `ConfirmKeyMap` give each binding its keys and its
+help text. `VaultKeyMap.categorized` puts each vault binding next to its
+help category. The help overlay, the footer hints and the drawer hints all
+take the key label from the help of the binding. The footer has its own
+short descriptions, because it has little room.
+
 ---
 
 ## Footer and Toasts
@@ -996,7 +1003,7 @@ lazybw/
 ├── ui/
 │   ├── theme.go          # Themes, palette, styles, glyphs, huh theme
 │   ├── contrast.go       # WCAG contrast and the header badge text color
-│   ├── keymap.go         # VaultKeyMap and the help bindings
+│   ├── keymap.go         # Vault, generator and confirm key maps, help categories
 │   ├── drawer.go         # Drawer renderer
 │   ├── itemrow.go        # Item row and group header row
 │   ├── frame.go          # Header, footer and centering

@@ -409,7 +409,7 @@ func (m VaultModel) handleActionKeys(msg tea.KeyPressMsg) (tea.Model, tea.Cmd, b
 		m.overlay = overlayGenerator
 		return m, cmd, true
 
-	case key.Matches(msg, m.keymap.CycleTheme):
+	case key.Matches(msg, m.keymap.ThemePicker):
 		var cmd tea.Cmd
 		m.picker, cmd = NewThemePickerModel(m.currentTheme, m.height)
 		m.overlay = overlayThemePicker
@@ -511,12 +511,16 @@ func (m VaultModel) FooterContent() ([]ui.HintBinding, string) {
 		return quitHints(), ""
 	}
 
+	// The key labels come from the bindings. The footer has little room,
+	// so it has its own short descriptions.
+	k, lk := m.keymap, m.list.KeyMap
 	var hints []ui.HintBinding
 	switch {
 	case m.list.SettingFilter():
+		// updateListKey moves the cursor on up and down.
 		hints = []ui.HintBinding{
-			{Key: "esc", Desc: "clear"},
-			{Key: "enter", Desc: "confirm"},
+			ui.Hint(lk.CancelWhileFiltering, "clear"),
+			ui.Hint(lk.AcceptWhileFiltering, "confirm"),
 			{Key: "↑/↓", Desc: "navigate"},
 		}
 	case m.list.FilterState() == list.FilterApplied:
@@ -526,26 +530,26 @@ func (m VaultModel) FooterContent() ([]ui.HintBinding, string) {
 		filter := ui.Truncate(ui.SanitizeLine(m.list.FilterValue()), maxFilterHintW)
 		hints = []ui.HintBinding{
 			{Key: "filter:", Desc: filter},
-			{Key: "esc", Desc: "clear"},
-			{Key: "?", Desc: "help"},
-			{Key: "q", Desc: "quit"},
-			{Key: "c", Desc: "pwd"},
-			{Key: "t", Desc: "totp"},
+			ui.Hint(lk.ClearFilter, "clear"),
+			ui.Hint(k.Help, "help"),
+			ui.Hint(k.Quit, "quit"),
+			ui.Hint(k.Copy, "pwd"),
+			ui.Hint(k.CopyTOTP, "totp"),
 		}
 	default:
 		// The footer drops hints from the end when they do not fit, so
 		// help and quit come right after the copy keys.
 		hints = []ui.HintBinding{
-			{Key: "j/k", Desc: "navigate"},
-			{Key: "/", Desc: "search"},
-			{Key: "c", Desc: "pwd"},
-			{Key: "t", Desc: "totp"},
-			{Key: "?", Desc: "help"},
-			{Key: "q", Desc: "quit"},
-			{Key: "ctrl+g", Desc: "group"},
-			{Key: "d", Desc: "drawer"},
-			{Key: "p", Desc: "gen"},
-			{Key: "T", Desc: "theme"},
+			ui.Hint(k.Navigate, "navigate"),
+			ui.Hint(k.Filter, "search"),
+			ui.Hint(k.Copy, "pwd"),
+			ui.Hint(k.CopyTOTP, "totp"),
+			ui.Hint(k.Help, "help"),
+			ui.Hint(k.Quit, "quit"),
+			ui.Hint(k.ToggleGrouping, "group"),
+			ui.Hint(k.DrawerToggle, "drawer"),
+			ui.Hint(k.Generate, "gen"),
+			ui.Hint(k.ThemePicker, "theme"),
 		}
 	}
 

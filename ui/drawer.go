@@ -5,6 +5,7 @@ import (
 	"image/color"
 	"strings"
 
+	"charm.land/bubbles/v2/key"
 	"charm.land/lipgloss/v2"
 	"github.com/charmbracelet/x/ansi"
 	"github.com/juthrbog/lazybw/bwcmd"
@@ -125,8 +126,22 @@ func RenderDrawer(props DrawerProps) string {
 	return sep + "\n" + strings.Join(fields, "\n")
 }
 
+// drawerKeys are the vault keys that the drawer hints name.
+var drawerKeys = DefaultVaultKeyMap()
+
+// keyHint returns the drawer hint for the key of b, for example "[o] open".
+func keyHint(b key.Binding, action string) string {
+	return "[" + b.Help().Key + "] " + action
+}
+
+// copyHint returns the drawer hint for the key of b, which copies a field,
+// for example "[c] copy".
+func copyHint(b key.Binding) string {
+	return keyHint(b, "copy")
+}
+
 // noteCopyHint is the drawer hint for the key that copies the notes.
-const noteCopyHint = "[n] copy"
+var noteCopyHint = copyHint(drawerKeys.CopyNote)
 
 // bodyRows returns the number of drawer rows below the header card. In
 // inline mode, the gradient line and the header card use 2 of the Height
@@ -279,25 +294,25 @@ func renderLoginFields(props DrawerProps) []string {
 	if username == "" {
 		fields = append(fields, renderedFieldRow("Username", StyleFaint.Render("(none)"), "", w))
 	} else {
-		fields = append(fields, fieldRow("Username", username, "[u] copy", w))
+		fields = append(fields, fieldRow("Username", username, copyHint(drawerKeys.CopyUsername), w))
 	}
 
 	if password == "" {
 		fields = append(fields, renderedFieldRow("Password", StyleFaint.Render("(none)"), "", w))
 	} else {
-		fields = append(fields, fieldRow("Password", "••••••••••", "[c] copy", w))
+		fields = append(fields, fieldRow("Password", "••••••••••", copyHint(drawerKeys.Copy), w))
 	}
 
 	if item.Login != nil && item.Login.Totp != "" {
 		if secretsHidden(props) && !props.TOTPInvalid {
-			fields = append(fields, renderedFieldRow("TOTP", StyleFaint.Render(hiddenValue), "[t] copy", w))
+			fields = append(fields, renderedFieldRow("TOTP", StyleFaint.Render(hiddenValue), copyHint(drawerKeys.CopyTOTP), w))
 		} else {
 			fields = append(fields, totpRow(props, w))
 		}
 	}
 
 	if item.Login != nil && len(item.Login.URIs) > 0 {
-		fields = append(fields, fieldRow("URL", item.Login.URIs[0].URI, "[o] open", w))
+		fields = append(fields, fieldRow("URL", item.Login.URIs[0].URI, keyHint(drawerKeys.OpenURL, "open"), w))
 	}
 
 	switch {
@@ -329,7 +344,7 @@ func renderCardFields(item *bwcmd.Item, width int) []string {
 	if len(c.Number) >= 4 {
 		numDisplay = "•••• •••• •••• " + c.Number[len(c.Number)-4:]
 	}
-	fields = append(fields, fieldRow("Number", numDisplay, "[c] copy", width))
+	fields = append(fields, fieldRow("Number", numDisplay, copyHint(drawerKeys.Copy), width))
 
 	expiry := ""
 	if c.ExpMonth != "" && c.ExpYear != "" {
@@ -339,7 +354,7 @@ func renderCardFields(item *bwcmd.Item, width int) []string {
 	if c.Code == "" {
 		fields = append(fields, renderedFieldRow("CVV", StyleFaint.Render("(none)"), "", width))
 	} else {
-		fields = append(fields, fieldRow("CVV", "•••", "[v] copy", width))
+		fields = append(fields, fieldRow("CVV", "•••", copyHint(drawerKeys.CopyCVV), width))
 	}
 
 	return fields
@@ -392,7 +407,7 @@ func renderIdentityFields(item *bwcmd.Item, width int) []string {
 	}
 
 	if id.Email != "" {
-		fields = append(fields, fieldRow("Email", id.Email, "[u] copy", width))
+		fields = append(fields, fieldRow("Email", id.Email, copyHint(drawerKeys.CopyUsername), width))
 	}
 	if id.Phone != "" {
 		fields = append(fields, fieldRow("Phone", id.Phone, "", width))
@@ -403,7 +418,7 @@ func renderIdentityFields(item *bwcmd.Item, width int) []string {
 
 	// Sensitive fields — masked.
 	if id.SSN != "" {
-		fields = append(fields, fieldRow("SSN", "•••••••••", "[c] copy", width))
+		fields = append(fields, fieldRow("SSN", "•••••••••", copyHint(drawerKeys.Copy), width))
 	}
 	if id.PassportNumber != "" {
 		fields = append(fields, fieldRow("Passport", "•••••••••", "", width))
@@ -466,10 +481,10 @@ func renderSSHKeyFields(item *bwcmd.Item, width int) []string {
 
 	if k.PublicKey != "" {
 		// fieldRow handles truncation, so pass the full key.
-		fields = append(fields, fieldRow("Public Key", k.PublicKey, "[u] copy", width))
+		fields = append(fields, fieldRow("Public Key", k.PublicKey, copyHint(drawerKeys.CopyUsername), width))
 	}
 
-	fields = append(fields, fieldRow("Private Key", "••••••••••", "[c] copy", width))
+	fields = append(fields, fieldRow("Private Key", "••••••••••", copyHint(drawerKeys.Copy), width))
 
 	if len(fields) == 0 {
 		fields = []string{"  " + GlyphSSHKey + " " + StyleFaint.Render("(empty SSH key)")}
@@ -539,7 +554,7 @@ func joinFieldRow(label, value, hint string, width int) string {
 // the bar cuts the value. The check uses the widest seconds text of the
 // period, so that the row does not change as the seconds tick.
 func totpRow(props DrawerProps, width int) string {
-	const copyHint = "[t] copy"
+	copyText := copyHint(drawerKeys.CopyTOTP)
 	period := props.TOTPPeriod
 	if period <= 0 {
 		period = 30
@@ -549,8 +564,8 @@ func totpRow(props DrawerProps, width int) string {
 
 	hint, showSecs := "", true
 	switch {
-	case widest <= valueW-fieldHintGap-lipgloss.Width(copyHint):
-		hint = copyHint
+	case widest <= valueW-fieldHintGap-lipgloss.Width(copyText):
+		hint = copyText
 	case widest > valueW:
 		showSecs = false
 	}
