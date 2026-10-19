@@ -1,0 +1,10 @@
+# Sections of the release notes that GitHub writes from the merged pull
+# requests. A pull request goes into the first section that matches it.
+changelog:
+  categories:
+    - title: Dependencies
+      labels:
+        - dependencies
+    - title: Changes
+      labels:
+        - "*"

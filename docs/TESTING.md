@@ -88,7 +88,7 @@ The workflows are in `.github/workflows`. Each workflow pins its actions by comm
 
 `ci.yml` runs on a push to `main` and on a pull request to `main`. It has two jobs:
 
-- `ci` runs on `ubuntu-latest`. It runs `go build ./...`, `go vet ./...` and `go test -race ./...`. Then it runs golangci-lint v2.14.0 through `golangci-lint-action`, with the linters and the gofmt formatter from `.golangci.yml`.
+- `ci` runs on `ubuntu-latest`. It runs `go build ./...`, `go vet ./...`, `go vet` with `GOOS=darwin` and with `GOOS=windows`, and `go test -race ./...`. Then it runs golangci-lint v2.14.0 through `golangci-lint-action`, with the linters and the gofmt formatter from `.golangci.yml`.
 - `macos` runs on `macos-latest`. It runs `go build ./...` and `go test ./...`, without the race detector.
 
 `security.yml` runs on a push to `main`, on each pull request, each Monday at 06:00 UTC, and when you start it by hand (`workflow_dispatch`). It has three jobs:
@@ -99,7 +99,7 @@ The workflows are in `.github/workflows`. Each workflow pins its actions by comm
 
 golangci-lint, with gosec, runs only in `ci.yml`.
 
-`release.yml` runs when you push a tag that starts with `v`. Its `test` job runs `go test -race ./...` with the Go cache turned off. The `release` job starts only after the `test` job passes, so a failed test stops the release. The `release` job runs goreleaser and then adds a build provenance attestation.
+`release.yml` runs when you push a tag that starts with `v`. Its `test` job runs `go vet`, `go test -race -shuffle=on` and govulncheck, with the Go cache turned off. The `release` job starts only after the `test` job passes, so a failed check stops the release. A pull request that changes the release setup runs the `snapshot` and `verify` jobs instead. They build every archive, check the Homebrew formula and run `lazybw --version` on Linux, macOS and Windows. They publish nothing. [RELEASING.md](RELEASING.md) has the details.
 
 No workflow measures coverage or runs the fuzzer.
 
