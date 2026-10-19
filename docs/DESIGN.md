@@ -306,7 +306,7 @@ The vault is one state with modes, not a set of separate screens:
 - Normal mode: the list and the drawer show. `j` and `k` move the cursor, and the drawer follows at once.
 - Filter mode: `/` opens a filter input in the first list row (see [Filter](#filter)).
 - Grouped mode: `ctrl+g` groups items with similar names under headers (see [Grouping](#grouping)).
-- Overlays: the help (`?`), the password generator (`p`), the theme picker (`T`), the quit confirmation (`q`) and the master password prompt. Each overlay is a card over the dimmed vault. It gets all keys except `ctrl+c` until it closes.
+- Overlays: the help (`?`), the password generator (`p`), the theme picker (`T`), the quit confirmation (`q`) and the master password prompt. Each overlay is a card over the dimmed vault. It gets all keys except `ctrl+c` until it closes. The `overlay` field of `VaultModel` names the card that shows, so at most one card shows. `Update`, `ViewContent` and `FooterContent` each switch on that field.
 
 There is no separate detail screen. The drawer takes its place.
 
@@ -938,7 +938,13 @@ lazybw/
 ├── model.go              # RootModel: state machine, lock, quit, idle lock, clipboard timer
 ├── screens/
 │   ├── locked.go         # Unlock, login and two-step forms (huh)
-│   ├── vault.go          # List, drawer, filter, toasts, generator, theme picker, quit card
+│   ├── vault.go          # VaultModel: keys, messages and the overlay card that shows
+│   ├── vault_list.go     # List rows, selection and filter
+│   ├── vault_drawer.go   # Drawer size, drawer keys and TOTP state
+│   ├── toast.go          # Toasts and the footer status
+│   ├── generator.go      # GeneratorModel: the password generator card
+│   ├── themepicker.go    # ThemePickerModel: the theme picker card
+│   ├── quitconfirm.go    # Quit confirmation card
 │   ├── grouping.go       # Group keys and the grouping algorithm
 │   ├── reprompt.go       # Master password re-prompt
 │   ├── openurl.go        # Allowed URLs and the opener for each system

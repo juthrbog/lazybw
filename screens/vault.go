@@ -2,17 +2,12 @@ package screens
 
 import (
 	"fmt"
-	"io"
-	"strings"
 	"time"
 
 	"charm.land/bubbles/v2/key"
 	"charm.land/bubbles/v2/list"
 	"charm.land/bubbles/v2/spinner"
 	tea "charm.land/bubbletea/v2"
-	"charm.land/huh/v2"
-	"charm.land/lipgloss/v2"
-	"github.com/charmbracelet/x/ansi"
 	"github.com/juthrbog/lazybw/bwcmd"
 	"github.com/juthrbog/lazybw/secutil"
 	"github.com/juthrbog/lazybw/session"
@@ -29,45 +24,29 @@ type QuitMsg struct{}
 // TOTPTickMsg fires every second to update the TOTP countdown.
 type TOTPTickMsg struct{}
 
-// VaultItem wraps bwcmd.Item to implement list.Item.
-type VaultItem struct {
-	bwcmd.Item
-	Indent bool // true when displayed as child of an expanded group
-}
+// ThemeChangedMsg tells the screens that the theme or the background
+// changed. Each screen restyles the parts that copied a color when they
+// were built, such as a spinner. The vault screen sends it to the root
+// model after a theme change in the picker.
+type ThemeChangedMsg struct{}
 
-// FilterValue returns the string used for fuzzy filtering.
-func (v VaultItem) FilterValue() string { return v.Name + " " + v.Description() }
+// overlay names the card that shows over the vault list. At most one card
+// shows, and it gets the keys.
+type overlay int
 
-// VaultDelegate renders vault items using the existing row renderer.
-type VaultDelegate struct{}
-
-func (d VaultDelegate) Render(w io.Writer, m list.Model, index int, item list.Item) {
-	selected := index == m.Index()
-	switch v := item.(type) {
-	case GroupHeaderItem:
-		_, _ = fmt.Fprint(w, ui.RenderGroupRow(v.Name, v.Count, v.Expanded, selected, m.Width()))
-	case VaultItem:
-		_, _ = fmt.Fprint(w, ui.RenderItemRow(v.Item, selected, m.Width(), v.Indent))
-	}
-}
-
-func (d VaultDelegate) Height() int                               { return 1 }
-func (d VaultDelegate) Spacing() int                              { return 0 }
-func (d VaultDelegate) Update(msg tea.Msg, m *list.Model) tea.Cmd { return nil }
-
-func toListItems(items []bwcmd.Item) []list.Item {
-	li := make([]list.Item, len(items))
-	for i, item := range items {
-		li[i] = VaultItem{Item: item}
-	}
-	return li
-}
+const (
+	overlayNone        overlay = iota
+	overlayReprompt            // the master password re-prompt
+	overlayGenerator           // the password generator
+	overlayThemePicker         // the theme picker
+	overlayHelp                // the key help
+	overlayQuit                // the quit dialog
+)
 
 // VaultModel is the main vault browsing screen.
 type VaultModel struct {
 	list   list.Model
 	keymap ui.VaultKeyMap
-	help   ui.HelpOverlay
 	sess   *session.State
 
 	rawItems []bwcmd.Item
@@ -96,13 +75,14 @@ type VaultModel struct {
 	drawerHeight  int  // current drawer height (resizable)
 	drawerOverlay bool // true = overlay mode, false = inline mode
 
-	currentTheme    string
-	showThemePicker bool
-	themeForm       *huh.Form
-	themeSelectH    int // height of the select in themeForm
-	selectedTheme   *string
+	// overlay is the card that shows, and the fields below hold the state
+	// of each card.
+	overlay overlay
+	help    ui.HelpOverlay
+	gen     GeneratorModel
+	picker  ThemePickerModel
 
-	confirmingQuit bool
+	currentTheme string
 
 	// Master password re-prompt. verifiedID is the ID of the selected item
 	// after the user entered the master password for it. checking is true
@@ -111,21 +91,6 @@ type VaultModel struct {
 	verifiedID string
 	checking   bool
 	checkSeq   uint64
-
-	showGenerator bool
-	genMode       string // "password" or "passphrase"
-	genPassword   string // current generated output
-	genErr        string // the error of the latest generate request
-	genSeq        uint64 // sequence number of the latest generate request
-	genLength     int
-	genUppercase  bool
-	genLowercase  bool
-	genNumbers    bool
-	genSpecial    bool
-	genWords      int
-	genSeparator  string
-	genCapitalize bool
-	genIncludeNum bool
 
 	width  int
 	height int
@@ -189,12 +154,6 @@ func NewVaultModel(items []bwcmd.Item, sess *session.State, width, height int) V
 	return m
 }
 
-// ThemeChangedMsg tells the screens that the theme or the background
-// changed. Each screen restyles the parts that copied a color when they
-// were built, such as a spinner. The vault screen sends it to the root
-// model after a theme change in the picker.
-type ThemeChangedMsg struct{}
-
 // restyle applies the current theme to the parts of the vault screen that
 // keep a copy of a style: the sync spinner and the list.
 func (m *VaultModel) restyle() {
@@ -221,7 +180,7 @@ func (m *VaultModel) Clear() {
 		m.totpParams = nil
 	}
 	m.totpCode = ""
-	m.genPassword = ""
+	m.gen.Clear()
 	m.closeReprompt()
 	m.verifiedID = ""
 }
@@ -254,94 +213,43 @@ func (m VaultModel) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.drawerHeight = m.clampDrawerHeight(m.drawerHeight)
 		m.resizeList()
 		m.help.Resize(msg.Width, msg.Height-ui.ChromeHeight)
-		// The password form keeps the width of the card, so that the
-		// card does not cut the cursor off.
-		if m.reprompt.open {
+		switch m.overlay {
+		case overlayReprompt:
+			// The password form keeps the width of the card, so that the
+			// card does not cut the cursor off.
 			m.reprompt.form = m.reprompt.form.WithWidth(repromptFormWidth(msg.Width))
-		}
-		// Rebuild the theme picker when the new height changes the height
-		// of its select. Form.Init asks for the window size, so a rebuild
-		// on each resize message would never stop.
-		if m.showThemePicker && themeSelectHeight(msg.Height) != m.themeSelectH {
-			return m, m.buildThemeForm()
+		case overlayThemePicker:
+			var cmd tea.Cmd
+			m.picker, cmd = m.picker.Resize(msg.Height)
+			return m, cmd
 		}
 		return m, nil
 
 	case tea.KeyPressMsg:
-		if m.reprompt.open {
+		switch m.overlay {
+		case overlayReprompt:
 			return m.updateReprompt(msg)
-		}
-		if m.showGenerator {
+		case overlayGenerator:
 			return m.updateGenerator(msg)
-		}
-		if m.showThemePicker {
+		case overlayThemePicker:
 			return m.updateThemePicker(msg)
-		}
-		if m.help.Visible() {
+		case overlayHelp:
 			var cmd tea.Cmd
 			m.help, cmd = m.help.Update(msg)
+			if !m.help.Visible() {
+				m.overlay = overlayNone
+			}
 			return m, cmd
+		case overlayQuit:
+			return m.updateQuitConfirm(msg)
 		}
-		if m.confirmingQuit {
-			switch msg.String() {
-			case "y":
-				m.confirmingQuit = false
-				return m, func() tea.Msg { return QuitMsg{} }
-			case "n", "esc":
-				m.confirmingQuit = false
-				return m, nil
-			}
-			return m, nil
-		}
-		if m.list.SettingFilter() {
-			// Up and down move the cursor in the matches, and the filter
-			// input stays open. The list sends all other keys to the input.
-			switch msg.String() {
-			case "up":
-				m.list.CursorUp()
-				return m, nil
-			case "down":
-				m.list.CursorDown()
-				return m, nil
-			}
-		} else if model, cmd, handled := m.handleActionKeys(msg); handled {
+		if !m.list.SettingFilter() {
 			// When not filtering, intercept our action keys before the list.
-			return model, cmd
-		}
-		// Forward to list for navigation, filtering, etc.
-		prevKey := m.selectedKey()
-		prevFilter := m.list.FilterState()
-		prevText := m.list.FilterValue()
-		var cmd tea.Cmd
-		m.list, cmd = m.list.Update(msg)
-		cmds = append(cmds, cmd)
-		fs := m.list.FilterState()
-		if fs == list.Filtering && m.list.FilterValue() != prevText {
-			// The filter text changed. The list sends the new matches in a
-			// later message, best match first. Move the cursor to the first
-			// row now, so that it is on the best match when they arrive.
-			m.list.Select(0)
-		}
-		if fs != prevFilter {
-			// The filter input changes the height of the list title. The
-			// list does not count its pages again for this, so the next
-			// frame would draw one row too many.
-			m.resizeList()
-			if prevFilter == list.Unfiltered {
-				m.filterFrom = prevKey
-			}
-			// Flatten groups while filtering, restore on filter clear.
-			if m.groups.enabled && (prevFilter == list.Unfiltered || fs == list.Unfiltered) {
-				cmds = append(cmds, m.rebuildListItems())
-			}
-			// The list keeps the cursor index when it clears a filter, but
-			// the full list often has another item at that index. So
-			// select the item again. See clearedFilterKey.
-			if fs == list.Unfiltered && !m.selectKey(m.clearedFilterKey(prevKey, prevText)) {
-				m.clampCursor()
+			if model, cmd, handled := m.handleActionKeys(msg); handled {
+				return model, cmd
 			}
 		}
-		return m, tea.Batch(cmds...)
+		return m.updateListKey(msg)
 
 	case list.FilterMatchesMsg:
 		m.applyFilterMatches(msg)
@@ -349,9 +257,10 @@ func (m VaultModel) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case ThemeChangedMsg:
 		m.restyle()
-		// The select of the picker copies some styles when it is built.
-		if m.showThemePicker {
-			return m, m.buildThemeForm()
+		if m.overlay == overlayThemePicker {
+			var cmd tea.Cmd
+			m.picker, cmd = m.picker.Restyle()
+			return m, cmd
 		}
 		return m, nil
 
@@ -406,12 +315,7 @@ func (m VaultModel) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case bwcmd.GenerateResult:
-		if msg.Seq != m.genSeq {
-			return m, nil // a newer request is in flight
-		}
-		// The error goes in its own field, so that c cannot copy it.
-		m.genPassword = msg.Password
-		m.genErr = userError(msg.Err, actionOther)
+		m.gen, _ = m.gen.Update(msg)
 		return m, nil
 
 	case spinner.TickMsg:
@@ -423,16 +327,16 @@ func (m VaultModel) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	}
 
 	// The forms complete over internal messages, so they get the other
-	// messages too. The list gets them as well, also while the password
-	// prompt shows.
-	if m.reprompt.open {
+	// messages too. The list gets them as well while the password prompt
+	// shows, but not while the theme picker shows.
+	switch m.overlay {
+	case overlayReprompt:
 		updated, cmd := m.updateReprompt(msg)
 		if vm, ok := updated.(VaultModel); ok {
 			m = vm
 		}
 		cmds = append(cmds, cmd)
-	}
-	if m.showThemePicker && m.themeForm != nil {
+	case overlayThemePicker:
 		return m.updateThemePicker(msg)
 	}
 
@@ -496,59 +400,24 @@ func (m VaultModel) handleActionKeys(msg tea.KeyPressMsg) (tea.Model, tea.Cmd, b
 
 	case key.Matches(msg, m.keymap.Help):
 		m.help.Show(m.keymap.HelpBindings(), m.width, m.height-ui.ChromeHeight)
+		m.overlay = overlayHelp
 		return m, nil, true
 
 	case key.Matches(msg, m.keymap.Generate):
-		model, cmd := m.openGenerator()
-		return model, cmd, true
+		var cmd tea.Cmd
+		m.gen, cmd = m.gen.Open()
+		m.overlay = overlayGenerator
+		return m, cmd, true
 
 	case key.Matches(msg, m.keymap.CycleTheme):
-		model, cmd := m.openThemePicker()
-		return model, cmd, true
+		var cmd tea.Cmd
+		m.picker, cmd = NewThemePickerModel(m.currentTheme, m.height)
+		m.overlay = overlayThemePicker
+		return m, cmd, true
 
 	case key.Matches(msg, m.keymap.Quit):
-		m.confirmingQuit = true
+		m.overlay = overlayQuit
 		return m, nil, true
-
-	// Only secure notes scroll. For other items the limit is 0, so J and
-	// K do nothing. A resize or a drawer change can lower the limit, so K
-	// clamps first and then moves.
-	case key.Matches(msg, m.keymap.ScrollDown):
-		m.drawerScroll = min(m.drawerScroll+1, m.maxDrawerScroll())
-		return m, nil, true
-
-	case key.Matches(msg, m.keymap.ScrollUp):
-		m.drawerScroll = max(0, min(m.drawerScroll, m.maxDrawerScroll())-1)
-		return m, nil, true
-
-	case key.Matches(msg, m.keymap.DrawerGrow):
-		if !m.drawerOverlay {
-			m.drawerHeight = m.clampDrawerHeight(m.drawerHeight + 1)
-			m.resizeList()
-		}
-		return m, nil, true
-
-	case key.Matches(msg, m.keymap.DrawerShrink):
-		if !m.drawerOverlay {
-			m.drawerHeight = m.clampDrawerHeight(m.drawerHeight - 1)
-			m.resizeList()
-		}
-		return m, nil, true
-
-	case key.Matches(msg, m.keymap.DrawerReset):
-		if !m.drawerOverlay {
-			m.drawerHeight = m.clampDrawerHeight(ui.DefaultDrawerHeight)
-			m.resizeList()
-		}
-		return m, nil, true
-
-	case key.Matches(msg, m.keymap.DrawerToggle):
-		m.drawerOverlay = !m.drawerOverlay
-		m.resizeList()
-		if m.drawerOverlay {
-			return m, m.setToast("Drawer: overlay"), true
-		}
-		return m, m.setToast("Drawer: inline"), true
 
 	case key.Matches(msg, m.keymap.ToggleGrouping):
 		k := m.selectedKey()
@@ -563,7 +432,7 @@ func (m VaultModel) handleActionKeys(msg tea.KeyPressMsg) (tea.Model, tea.Cmd, b
 		}
 	}
 
-	return m, nil, false
+	return m.handleDrawerKey(msg)
 }
 
 // syncSelection reloads the TOTP state when the selected item is not the
@@ -585,166 +454,10 @@ func (m *VaultModel) syncSelection() {
 func (m *VaultModel) onCursorChange() {
 	m.drawerScroll = 0
 	m.verifiedID = ""
-	if m.reprompt.open {
+	if m.overlay == overlayReprompt {
 		m.closeReprompt()
 	}
 	m.loadTOTP()
-}
-
-// loadTOTP parses the TOTP key of the selected item and computes its code.
-// It scrubs the params of the previous item.
-func (m *VaultModel) loadTOTP() {
-	if m.totpParams != nil {
-		m.totpParams.Clear()
-		m.totpParams = nil
-	}
-	m.totpCode = ""
-	m.totpInvalid = false
-	m.totpItemID = ""
-
-	item := m.selectedItem()
-	if item != nil {
-		m.totpItemID = item.ID
-	}
-	if item != nil && item.Login != nil && item.Login.Totp != "" {
-		p, err := totp.Parse(item.Login.Totp)
-		if err == nil {
-			m.totpParams = &p
-		} else {
-			m.totpInvalid = true
-		}
-	}
-	m.computeTOTP()
-}
-
-func (m *VaultModel) selectedItem() *bwcmd.Item {
-	item := m.list.SelectedItem()
-	if item == nil {
-		return nil
-	}
-	switch v := item.(type) {
-	case VaultItem:
-		return &v.Item
-	case GroupHeaderItem:
-		return nil
-	default:
-		return nil
-	}
-}
-
-// rowKey names a row of the list, so that the selection can stay on it
-// when the rows change: an item by its ID, or a group header by its key.
-type rowKey struct {
-	id    string // the item ID, or "" for a group header
-	group string // the group key of a group header
-}
-
-// selectedKey returns the key of the selected row, or the zero rowKey when
-// no row is selected.
-func (m *VaultModel) selectedKey() rowKey {
-	switch v := m.list.SelectedItem().(type) {
-	case VaultItem:
-		return rowKey{id: v.ID}
-	case GroupHeaderItem:
-		return rowKey{group: v.BaseKey}
-	}
-	return rowKey{}
-}
-
-// selectKey moves the cursor to the visible row of k. When the list does
-// not show that row, it selects the row that holds it: the header of the
-// group of an item, or the first item of a group when the list shows no
-// groups. It reports false when no visible row matches, and the cursor then
-// stays where it is.
-func (m *VaultModel) selectKey(k rowKey) bool {
-	i := -1
-	switch {
-	case k.id != "":
-		if i = m.rowOfItem(k.id); i < 0 && m.showsGroups() {
-			i = m.rowOfGroup(m.itemGroups().keyOf[k.id])
-		}
-	case k.group != "":
-		if i = m.rowOfGroup(k.group); i < 0 && !m.showsGroups() {
-			i = m.rowOfItem(m.itemGroups().firstID(k.group))
-		}
-	}
-	if i < 0 {
-		return false
-	}
-	m.list.Select(i)
-	return true
-}
-
-// clearedFilterKey returns the row to select after a key cleared the
-// filter. selected is the row that was selected before the key, and text
-// is the filter text before the key. The selected match stays selected.
-// When the filter had no text or no match was selected, the row that was
-// selected before the filter input opened gets the selection back.
-func (m *VaultModel) clearedFilterKey(selected rowKey, text string) rowKey {
-	k := selected
-	if text == "" || k == (rowKey{}) {
-		k = m.filterFrom
-	}
-	m.filterFrom = rowKey{}
-	return k
-}
-
-// rowOfItem returns the index of the visible row of the item with the
-// given ID, or -1 when no visible row has that ID.
-func (m *VaultModel) rowOfItem(id string) int {
-	if id == "" {
-		return -1
-	}
-	for i, li := range m.list.VisibleItems() {
-		if v, ok := li.(VaultItem); ok && v.ID == id {
-			return i
-		}
-	}
-	return -1
-}
-
-// rowOfGroup returns the index of the visible header of the group with the
-// given key, or -1 when no visible header has that key.
-func (m *VaultModel) rowOfGroup(key string) int {
-	if key == "" {
-		return -1
-	}
-	for i, li := range m.list.VisibleItems() {
-		if v, ok := li.(GroupHeaderItem); ok && v.BaseKey == key {
-			return i
-		}
-	}
-	return -1
-}
-
-// itemGroups returns the groups of the vault items. It groups the items
-// on the first call after the items change.
-func (m *VaultModel) itemGroups() *groupCache {
-	if m.grouped == nil {
-		m.grouped = newGroupCache(m.rawItems)
-	}
-	return m.grouped
-}
-
-// computeTOTP recomputes the TOTP code and countdown from the cached
-// params. It is a no-op when no TOTP params are available.
-func (m *VaultModel) computeTOTP() {
-	if m.totpParams == nil {
-		m.totpCode = ""
-		m.totpSecsLeft = 0
-		return
-	}
-	m.totpCode = totp.Code(*m.totpParams)
-	m.totpSecsLeft = totp.SecsLeft(m.totpParams.Period)
-}
-
-// totpPeriod returns the TOTP period of the selected item, or 0 when it
-// has no TOTP.
-func (m VaultModel) totpPeriod() int {
-	if m.totpParams == nil {
-		return 0
-	}
-	return m.totpParams.Period
 }
 
 // HeaderInfo returns the item count and selected item type name for the
@@ -758,593 +471,26 @@ func (m VaultModel) HeaderInfo() (int, string) {
 	return count, ""
 }
 
-// showsGroups reports whether the list rows are grouped: grouping is on
-// and no filter is active. While a filter is active, the rows stay flat,
-// so that the filter also finds the items of collapsed groups.
-func (m *VaultModel) showsGroups() bool {
-	return m.groups.enabled && m.list.FilterState() == list.Unfiltered
-}
-
-// rebuildListItems sets the list rows for the grouping and filter state.
-// See showsGroups.
-func (m *VaultModel) rebuildListItems() tea.Cmd {
-	if !m.showsGroups() {
-		return m.setListItems(toListItems(m.rawItems))
-	}
-	return m.setListItems(flattenGroups(m.itemGroups().groups, m.groups))
-}
-
-// regroup rebuilds the list rows and selects the row of k again: the same
-// item or group, or the row that holds it. See selectKey.
-func (m *VaultModel) regroup(k rowKey) tea.Cmd {
-	cmd := m.rebuildListItems()
-	if !m.selectKey(k) {
-		m.clampCursor()
-	}
-	return cmd
-}
-
-// setListItems replaces the list rows. With a filter active, SetItems
-// clears the visible rows and returns a command that filters again. The
-// result is applied at once, so that the selection never points into an
-// empty list in between. Otherwise the drawer would reset for an item
-// that stays selected.
-func (m *VaultModel) setListItems(items []list.Item) tea.Cmd {
-	cmd := m.list.SetItems(items)
-	if cmd == nil || m.list.FilterState() == list.Unfiltered {
-		return cmd
-	}
-	msg := cmd()
-	if fm, ok := msg.(list.FilterMatchesMsg); ok {
-		m.applyFilterMatches(fm)
-		return nil
-	}
-	return func() tea.Msg { return msg }
-}
-
-// applyFilterMatches gives the list the matches of its filter. The list
-// stores the matches, but it does not count their pages or keep the cursor
-// in them. Then PgDn, G and j can stop at the last page of the old matches,
-// the cursor can point past the last match, and the view of the list
-// panics on a page past the last match. So the list counts its pages again
-// here, and a cursor past the last match moves to the last match.
-func (m *VaultModel) applyFilterMatches(fm list.FilterMatchesMsg) {
-	m.list, _ = m.list.Update(fm)
-	// SetSize with the same size makes the list count its pages again.
-	m.list.SetSize(m.list.Width(), m.list.Height())
-	m.clampCursor()
-}
-
-// replaceItems swaps in a fresh item list after a sync. It keeps the
-// cursor on the same item or group when it still exists, refreshes the
-// cached TOTP params, and scrubs the old items.
-func (m *VaultModel) replaceItems(items []bwcmd.Item) tea.Cmd {
-	k := m.selectedKey()
-	old := m.rawItems
-	m.rawItems = items
-	m.grouped = nil
-	cmd := m.regroup(k)
-	// The TOTP key of the same item can change in a sync, so reload it.
-	// A different item also gets a fresh drawer.
-	if item := m.selectedItem(); item != nil && k.id != "" && item.ID == k.id {
-		m.loadTOTP()
-	} else {
-		m.onCursorChange()
-	}
-	secutil.ZeroItems(old)
-	// The sync is complete. Drop its toast, so that the footer shows the
-	// time of the last sync again.
-	if strings.HasSuffix(m.toast, " Vault synced") {
-		m.clearToast()
-	}
-	return cmd
-}
-
-// clampCursor moves the cursor to the last visible row when the list got
-// shorter than the cursor index.
-func (m *VaultModel) clampCursor() {
-	if n := len(m.list.VisibleItems()); n > 0 && m.list.Index() >= n {
-		m.list.Select(n - 1)
-	}
-}
-
-func (m *VaultModel) clampDrawerHeight(h int) int {
-	return clampDrawerHeight(h, m.height)
-}
-
-// minListRows is the number of rows that the list always draws: its title
-// line, where the filter input shows, and one item. The bubbles list draws
-// them even when its height is smaller.
-const minListRows = 2
-
-// clampDrawerHeight limits a drawer height h to half of the screen height.
-// The drawer keeps at least 3 rows. On a screen that is too short for that,
-// the drawer gets the rows of the content area that the list leaves, and at
-// least 1 row.
-func clampDrawerHeight(h, height int) int {
-	const minDrawerHeight = 3
-	maxDrawerHeight := max(height/2, minDrawerHeight)
-	// A taller drawer would make the list and the drawer together taller
-	// than the content area, and the frame would cut the drawer.
-	maxDrawerHeight = min(maxDrawerHeight, height-ui.ChromeHeight-minListRows)
-	return max(1, min(max(h, minDrawerHeight), maxDrawerHeight))
-}
-
-// resizeList sizes the list to the rows that it gets in the content area:
-// all of them in overlay mode, and the rows above the drawer in inline
-// mode. The list pages by the size that it has, so this size must be the
-// size that the view draws. Otherwise PgDn skips items.
-func (m *VaultModel) resizeList() {
-	listH := m.height - ui.ChromeHeight
-	if !m.drawerOverlay {
-		listH -= m.drawerHeight
-	}
-	m.list.SetSize(m.width, max(0, listH))
-}
-
-// How long a toast shows. A copy toast stays until the clipboard clear.
-// Tests shorten them.
-var (
-	toastDuration      = 4 * time.Second
-	errorToastDuration = 8 * time.Second
-)
-
-// toastExpiredMsg ends toast number gen. Each toast gets a higher number,
-// so the timer of an older toast does not end a newer one.
-type toastExpiredMsg struct{ gen uint64 }
-
-// setToast shows msg in the footer. It returns the command that ends the
-// toast after toastDuration.
-func (m *VaultModel) setToast(msg string) tea.Cmd {
-	m.showToast(msg, false, false)
-	return m.expireToast(toastDuration)
-}
-
-// setErrorToast shows an error in the footer. The message often holds bw
-// output, so it is sanitized to one line. It returns the command that ends
-// the toast after errorToastDuration.
-func (m *VaultModel) setErrorToast(msg string) tea.Cmd {
-	m.showToast(ui.GlyphError+" "+ui.SanitizeLine(msg), true, false)
-	return m.expireToast(errorToastDuration)
-}
-
-// setCopyToast shows a copy toast. The root model clears the clipboard
-// after session.ClipboardClearDelay, and the toast ends then.
-func (m *VaultModel) setCopyToast(msg string) {
-	m.showToast(msg, false, true)
-}
-
-// clearToast removes the toast, so that the footer shows the sync age.
-func (m *VaultModel) clearToast() {
-	m.showToast("", false, false)
-}
-
-func (m *VaultModel) showToast(msg string, isError, isCopy bool) {
-	m.toastGen++
-	m.toast = msg
-	m.toastIsError = isError
-	m.toastIsCopy = isCopy
-}
-
-// expireToast returns the command that ends the current toast after d.
-func (m *VaultModel) expireToast(d time.Duration) tea.Cmd {
-	gen := m.toastGen
-	return tea.Tick(d, func(time.Time) tea.Msg { return toastExpiredMsg{gen: gen} })
-}
-
-// copyLabel returns the name of the field f for the copy toast.
-func copyLabel(f session.CopyField) string {
-	switch f {
-	case session.CopyFieldTOTP:
-		return "TOTP"
-	case session.CopyFieldUsername:
-		return "Username"
-	case session.CopyFieldNote:
-		return "Note"
-	case session.CopyFieldCardNumber:
-		return "Card number"
-	case session.CopyFieldCVV:
-		return "Security code"
-	case session.CopyFieldSSN:
-		return "SSN"
-	case session.CopyFieldPrivateKey:
-		return "SSH private key"
-	case session.CopyFieldPublicKey:
-		return "Public key"
-	case session.CopyFieldEmail:
-		return "Email"
-	}
-	return "Password"
-}
-
-func (m VaultModel) openThemePicker() (tea.Model, tea.Cmd) {
-	selected := m.currentTheme
-	m.selectedTheme = &selected
-	m.showThemePicker = true
-	return m, m.buildThemeForm()
-}
-
-// buildThemeForm builds the theme picker for the current screen height and
-// returns its init command. The cursor starts on m.selectedTheme, so a
-// rebuild keeps the theme that the user moved to. The form shows no help,
-// because the footer shows the keys.
-func (m *VaultModel) buildThemeForm() tea.Cmd {
-	options := make([]huh.Option[string], len(ui.ThemeNames))
-	for i, name := range ui.ThemeNames {
-		options[i] = huh.NewOption(name, name)
-	}
-	m.themeSelectH = themeSelectHeight(m.height)
-	m.themeForm = huh.NewForm(
-		huh.NewGroup(
-			huh.NewSelect[string]().
-				Title("Choose theme").
-				Options(options...).
-				Value(m.selectedTheme).
-				Height(m.themeSelectH),
-		),
-	).WithWidth(40).WithShowHelp(false)
-	if ui.HuhTheme != nil {
-		m.themeForm = m.themeForm.WithTheme(ui.HuhTheme)
-	}
-	return m.themeForm.Init()
-}
-
-// themeSelectHeight returns the height of the theme select for a screen of
-// the given height: the title and one row for each theme, or fewer rows on
-// a short screen. A select with fewer rows scrolls, so that the cursor stays
-// visible. The select must fit in the overlay card. The form has no help
-// line, so it adds no rows below the select.
-func themeSelectHeight(height int) int {
-	rows := height - ui.ChromeHeight - ui.OverlayEdgeHeight
-	return max(2, min(len(ui.ThemeNames)+1, rows))
-}
-
-func (m VaultModel) updateThemePicker(msg tea.Msg) (tea.Model, tea.Cmd) {
-	if key, ok := msg.(tea.KeyPressMsg); ok && key.String() == "esc" {
-		m.showThemePicker = false
-		return m, nil
-	}
-
-	form, cmd := m.themeForm.Update(msg)
-	if f, ok := form.(*huh.Form); ok {
-		m.themeForm = f
-	}
-
-	switch m.themeForm.State {
-	case huh.StateCompleted:
-		m.showThemePicker = false
-		ui.ApplyTheme(*m.selectedTheme)
-		m.currentTheme = ui.CurrentTheme
-		m.restyle()
-		// The root model restyles its own spinner on ThemeChangedMsg.
-		changed := func() tea.Msg { return ThemeChangedMsg{} }
-		return m, tea.Batch(m.setToast("Theme: "+ui.CurrentTheme), changed)
-	case huh.StateAborted:
-		m.showThemePicker = false
-		return m, nil
-	}
-
-	return m, cmd
-}
-
-func (m VaultModel) openGenerator() (tea.Model, tea.Cmd) {
-	m.showGenerator = true
-	m.genMode = "password"
-	m.genLength = 20
-	m.genUppercase = true
-	m.genLowercase = true
-	m.genNumbers = true
-	m.genSpecial = true
-	m.genWords = 4
-	m.genSeparator = "-"
-	m.genCapitalize = true
-	m.genIncludeNum = true
-	return m, m.generate()
-}
-
-func (m VaultModel) updateGenerator(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
-	switch msg.String() {
-	case "esc":
-		m.showGenerator = false
-		return m, nil
-	case "enter", "r":
-		return m, m.generate()
-	case "c":
-		if m.genErr == "" && m.genPassword != "" && m.genPassword != genPlaceholder {
-			return m, session.CopyToClipboard(m.genPassword, session.CopyFieldPassword)
-		}
-	case "m", "tab":
-		if m.genMode == "password" {
-			m.genMode = "passphrase"
-		} else {
-			m.genMode = "password"
-		}
-		return m, m.generate()
-	case "+", "=":
-		if m.genMode == "password" {
-			if m.genLength < 128 {
-				m.genLength++
-			}
-		} else {
-			if m.genWords < 20 {
-				m.genWords++
-			}
-		}
-		return m, m.generate()
-	case "-":
-		if m.genMode == "password" {
-			if m.genLength > 5 {
-				m.genLength--
-			}
-		} else {
-			if m.genWords > genMinWords {
-				m.genWords--
-			}
-		}
-		return m, m.generate()
-	case "1", "2", "3", "4":
-		if m.genMode == "passphrase" {
-			return m.togglePassphraseOption(msg.String())
-		}
-		switch msg.String() {
-		case "1":
-			m.genUppercase = !m.genUppercase
-		case "2":
-			m.genLowercase = !m.genLowercase
-		case "3":
-			m.genNumbers = !m.genNumbers
-		case "4":
-			m.genSpecial = !m.genSpecial
-		}
-		return m, m.generate()
-	}
-	return m, nil
-}
-
-// genSeparators are the word separators that key 3 cycles through in
-// passphrase mode.
-var genSeparators = []string{"-", "_", ".", " "}
-
-// togglePassphraseOption changes the passphrase option of key k: 1 toggles
-// the capitals, 2 toggles the number, and 3 moves to the next separator.
-// Key 4 has no passphrase option.
-func (m VaultModel) togglePassphraseOption(k string) (tea.Model, tea.Cmd) {
-	switch k {
-	case "1":
-		m.genCapitalize = !m.genCapitalize
-	case "2":
-		m.genIncludeNum = !m.genIncludeNum
-	case "3":
-		next := 0
-		for i, sep := range genSeparators {
-			if sep == m.genSeparator {
-				next = (i + 1) % len(genSeparators)
-			}
-		}
-		m.genSeparator = genSeparators[next]
-	default:
-		return m, nil
-	}
-	return m, m.generate()
-}
-
-// separatorName returns the separator as the generator card shows it.
-func separatorName(sep string) string {
-	if sep == " " {
-		return "space"
-	}
-	return sep
-}
-
-// genPlaceholder is the generator output while bw generate runs.
-const genPlaceholder = "Generating…"
-
-// generate starts a new `bw generate` request. Each request gets a new
-// sequence number, so that a slow, older result cannot replace a newer one.
-func (m *VaultModel) generate() tea.Cmd {
-	m.genSeq++
-	m.genPassword = genPlaceholder
-	m.genErr = ""
-	return bwcmd.Generate(m.genSeq, m.genArgs()...)
-}
-
-func (m *VaultModel) genArgs() []string {
-	if m.genMode == "passphrase" {
-		// bw reads the word "space" as a space separator.
-		args := []string{"--passphrase", "--words", fmt.Sprintf("%d", m.genWords), "--separator", separatorName(m.genSeparator)}
-		if m.genCapitalize {
-			args = append(args, "--capitalize")
-		}
-		if m.genIncludeNum {
-			args = append(args, "--includeNumber")
-		}
-		return args
-	}
-	args := []string{"--length", fmt.Sprintf("%d", m.genLength)}
-	if m.genUppercase {
-		args = append(args, "--uppercase")
-	}
-	if m.genLowercase {
-		args = append(args, "--lowercase")
-	}
-	if m.genNumbers {
-		args = append(args, "--number")
-	}
-	if m.genSpecial {
-		args = append(args, "--special")
-	}
-	return args
-}
-
-// genMaxWidth is the widest that a line of the generated value gets.
-const genMaxWidth = 72
-
-// genMinWords is the smallest word count for a passphrase. bw generate
-// raises a smaller count to 3, so the card would show the wrong count.
-const genMinWords = 3
-
-// renderGeneratorCard renders the generator card for a content area of the
-// given width. The generated value wraps to fit inside the card.
-func (m VaultModel) renderGeneratorCard(width int) string {
-	var b strings.Builder
-
-	b.WriteString(ui.StyleTitle.Render("Password Generator"))
-	b.WriteString("\n\n")
-
-	// Mode indicator.
-	if m.genMode == "password" {
-		b.WriteString("Mode        ")
-		b.WriteString(ui.StyleTitle.Render("[Password]"))
-		b.WriteString("  ")
-		b.WriteString(ui.StyleFaint.Render("Passphrase"))
-		b.WriteString("\n")
-	} else {
-		b.WriteString("Mode        ")
-		b.WriteString(ui.StyleFaint.Render("Password"))
-		b.WriteString("  ")
-		b.WriteString(ui.StyleTitle.Render("[Passphrase]"))
-		b.WriteString("\n")
-	}
-
-	// Options.
-	if m.genMode == "password" {
-		fmt.Fprintf(&b, "Length      %d\n", m.genLength)
-		fmt.Fprintf(&b, "Uppercase   %s   Lowercase  %s   Numbers  %s   Special  %s\n",
-			checkMark(m.genUppercase), checkMark(m.genLowercase),
-			checkMark(m.genNumbers), checkMark(m.genSpecial))
-	} else {
-		// The options show in the order of their keys 1 to 3, on rows
-		// that stay narrow.
-		fmt.Fprintf(&b, "Words       %d\n", m.genWords)
-		fmt.Fprintf(&b, "Capitalize  %s   Include #  %s\n",
-			checkMark(m.genCapitalize), checkMark(m.genIncludeNum))
-		fmt.Fprintf(&b, "Separator   %s\n", separatorName(m.genSeparator))
-	}
-
-	b.WriteString("\n")
-
-	// Generated output. A long password or passphrase wraps, so that all
-	// of it shows inside the card border.
-	contentW := max(1, min(width-ui.OverlayEdgeWidth, genMaxWidth))
-	if m.genErr != "" {
-		// errorBlock keeps a 2-cell margin on each side.
-		b.WriteString(errorBlock(m.genErr, contentW+4, contentW))
-	} else {
-		b.WriteString(ui.StyleTitle.Render(ansi.Hardwrap(ui.SanitizeLine(m.genPassword), contentW, true)))
-	}
-
-	return b.String()
-}
-
-func checkMark(v bool) string {
-	if v {
-		return ui.StyleToast.Render("✓")
-	}
-	return ui.StyleFaint.Render("·")
-}
-
 // ViewContent renders the vault content for the root frame.
 func (m VaultModel) ViewContent(width, contentHeight int) string {
 	bg := m.renderVaultContent(width, contentHeight)
 
-	if m.reprompt.open {
-		return ui.RenderOverlay(bg, m.renderReprompt(width, contentHeight), width, contentHeight)
+	var card string
+	switch m.overlay {
+	case overlayReprompt:
+		card = m.renderReprompt(width, contentHeight)
+	case overlayGenerator:
+		card = m.gen.View(width)
+	case overlayThemePicker:
+		card = m.picker.View()
+	case overlayHelp:
+		card = m.help.View()
+	case overlayQuit:
+		card = renderQuitConfirm()
+	default:
+		return bg
 	}
-	if m.showGenerator {
-		return ui.RenderOverlay(bg, m.renderGeneratorCard(width), width, contentHeight)
-	}
-	if m.showThemePicker && m.themeForm != nil {
-		return ui.RenderOverlay(bg, m.themeForm.View(), width, contentHeight)
-	}
-	if m.help.Visible() {
-		return ui.RenderOverlay(bg, m.help.View(), width, contentHeight)
-	}
-	if m.confirmingQuit {
-		return ui.RenderOverlay(bg, m.renderQuitConfirm(), width, contentHeight)
-	}
-
-	return bg
-}
-
-func (m VaultModel) renderQuitConfirm() string {
-	keyStyle := lipgloss.NewStyle().Foreground(ui.ColorHighlight).Bold(true)
-
-	var b strings.Builder
-	b.WriteString(ui.StyleTitle.Render("Quit lazybw?"))
-	b.WriteString("\n\n")
-	b.WriteString("This will lock your vault and exit.")
-	b.WriteString("\n\n")
-	b.WriteString(keyStyle.Render("y"))
-	b.WriteString(ui.StyleFaint.Render(" yes"))
-	b.WriteString(ui.StyleFaint.Render(" · "))
-	b.WriteString(keyStyle.Render("n"))
-	b.WriteString(ui.StyleFaint.Render(" no"))
-	return b.String()
-}
-
-// drawerProps returns the drawer props for a content area of the given
-// size. The view and the scroll limit both use it, so that they count the
-// same note lines.
-func (m VaultModel) drawerProps(width, contentHeight int) ui.DrawerProps {
-	props := ui.DrawerProps{
-		Item:         m.selectedItem(),
-		TOTPCode:     m.totpCode,
-		TOTPSecsLeft: m.totpSecsLeft,
-		TOTPPeriod:   m.totpPeriod(),
-		TOTPInvalid:  m.totpInvalid,
-		ScrollOffset: m.drawerScroll,
-	}
-	props.RepromptVerified = m.repromptVerified(props.Item)
-	if gh, ok := m.list.SelectedItem().(GroupHeaderItem); ok {
-		props.Group = &ui.GroupSummary{Name: gh.Name, Count: gh.Count, Expanded: gh.Expanded}
-	}
-	if m.drawerOverlay {
-		props.Width = overlayDrawerWidth(width)
-		props.AutoHeight = true
-		// RenderOverlay cuts the card content to the rows inside the border
-		// and the padding. Size the note page to those rows, so that J can
-		// scroll to the last line. Height counts the header, and the page
-		// keeps at least one note row.
-		props.Height = max(2, min(ui.DefaultDrawerHeight, contentHeight-ui.OverlayEdgeHeight))
-	} else {
-		props.Width = width
-		props.Height = m.drawerHeight
-	}
-	return props
-}
-
-// overlayDrawerWidth returns the drawer width in overlay mode.
-func overlayDrawerWidth(width int) int {
-	// Constrain overlay drawer width so it doesn't span the full terminal.
-	w := width * 3 / 4
-	if w > 80 {
-		w = 80
-	}
-	if w < 40 {
-		// Leave room for the card border and padding.
-		w = width - ui.OverlayEdgeWidth
-	}
-	return w
-}
-
-// maxDrawerScroll returns the largest drawer scroll offset for the
-// selected item.
-func (m VaultModel) maxDrawerScroll() int {
-	return ui.MaxScrollOffset(m.drawerProps(m.width, m.height-ui.ChromeHeight))
-}
-
-// renderVaultContent renders the normal vault layout (list + drawer). The
-// list keeps the size that resizeList gave it, so that the view shows the
-// page that the list moves by.
-func (m VaultModel) renderVaultContent(width, contentHeight int) string {
-	drawer := ui.RenderDrawer(m.drawerProps(width, contentHeight))
-	listView := m.list.View()
-
-	if m.drawerOverlay {
-		return ui.RenderOverlay(listView, drawer, width, contentHeight)
-	}
-
-	return lipgloss.JoinVertical(lipgloss.Left, listView, drawer)
+	return ui.RenderOverlay(bg, card, width, contentHeight)
 }
 
 // maxFilterHintW is the widest filter text that the footer shows.
@@ -1352,56 +498,17 @@ const maxFilterHintW = 20
 
 // FooterContent returns hints and status for the footer bar.
 func (m VaultModel) FooterContent() ([]ui.HintBinding, string) {
-	if m.reprompt.open {
+	switch m.overlay {
+	case overlayReprompt:
 		return m.repromptHints(), ""
-	}
-	if m.confirmingQuit {
-		return []ui.HintBinding{
-			{Key: "y", Desc: "yes"},
-			{Key: "n", Desc: "no"},
-		}, ""
-	}
-	if m.showGenerator {
-		if m.genMode == "passphrase" {
-			return []ui.HintBinding{
-				{Key: "enter", Desc: "regen"},
-				{Key: "+/-", Desc: "words"},
-				{Key: "m", Desc: "mode"},
-				{Key: "1-3", Desc: "options"},
-				{Key: "c", Desc: "copy"},
-				{Key: "esc", Desc: "close"},
-			}, ""
-		}
-		return []ui.HintBinding{
-			{Key: "enter", Desc: "regen"},
-			{Key: "+/-", Desc: "length"},
-			{Key: "m", Desc: "mode"},
-			{Key: "1-4", Desc: "toggles"},
-			{Key: "c", Desc: "copy"},
-			{Key: "esc", Desc: "close"},
-		}, ""
-	}
-	if m.showThemePicker {
-		// The picker form shows no help, so the footer shows its keys.
-		return []ui.HintBinding{
-			{Key: "enter", Desc: "select"},
-			{Key: "esc", Desc: "cancel"},
-			{Key: "↑/↓", Desc: "navigate"},
-			{Key: "/", Desc: "filter"},
-		}, ""
-	}
-	if m.help.Visible() {
-		if m.help.Filtering() {
-			return []ui.HintBinding{
-				{Key: "enter", Desc: "done"},
-				{Key: "esc", Desc: "clear"},
-			}, ""
-		}
-		return []ui.HintBinding{
-			{Key: "esc", Desc: "close"},
-			{Key: "j/k", Desc: "scroll"},
-			{Key: "/", Desc: "filter"},
-		}, ""
+	case overlayGenerator:
+		return m.gen.FooterHints(), ""
+	case overlayThemePicker:
+		return m.picker.FooterHints(), ""
+	case overlayHelp:
+		return m.help.FooterHints(), ""
+	case overlayQuit:
+		return quitHints(), ""
 	}
 
 	var hints []ui.HintBinding
@@ -1442,44 +549,12 @@ func (m VaultModel) FooterContent() ([]ui.HintBinding, string) {
 		}
 	}
 
-	var status string
-	toast := m.toast
-	if m.syncing {
-		if toast == "" {
-			toast = "Syncing…"
-		}
-		toast = m.syncSpinner.View() + " " + toast
-	}
-	if toast != "" {
-		if m.toastIsError {
-			status = ui.StyleError.Render(toast)
-		} else {
-			status = ui.StyleToast.Render(toast)
-		}
-	} else {
-		status = ui.StyleFaint.Render(formatLastSync(m.sess.LastSync))
-	}
-	return hints, status
+	return hints, m.footerStatus()
 }
 
 // View implements tea.Model (kept for interface compliance).
 func (m VaultModel) View() tea.View {
 	return tea.NewView(m.ViewContent(m.width, m.height))
-}
-
-func formatLastSync(t time.Time) string {
-	if t.IsZero() {
-		return ""
-	}
-	d := time.Since(t)
-	switch {
-	case d < time.Minute:
-		return "synced just now"
-	case d < time.Hour:
-		return fmt.Sprintf("synced %dm ago", int(d.Minutes()))
-	default:
-		return fmt.Sprintf("synced %dh ago", int(d.Hours()))
-	}
 }
 
 func tickTOTP() tea.Cmd {

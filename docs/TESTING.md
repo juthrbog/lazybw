@@ -144,6 +144,7 @@ Follow these rules in a new test:
 | `screens` | `vault_test.go` | The vault screen: footer, quit dialog, copy keys, overlays, drawer, toasts and filter. |
 | `screens` | `filter_paging_test.go`, `selection_test.go` | The filter, paging, and the selection after a filter, a regroup or a refresh. |
 | `screens` | `grouping_test.go`, `grouping_view_test.go`, `grouping_bench_test.go` | The grouping of items with the same base name. |
+| `screens` | `vault_overlay_test.go` | Each overlay card owns the view, the footer and the keys until Esc closes it. |
 | `screens` | `generator_test.go` | The password generator. |
 | `screens` | `reprompt_test.go` | The master password re-prompt. |
 | `screens` | `toast_test.go` | The lifetime of the toasts. |
@@ -217,6 +218,8 @@ Use `waitForMsg` when the commands hold a timer or a slow command. `collectMsgs`
 | `keyMsg(s)` | `vault_test.go` | Returns the `tea.KeyPressMsg` for the printable key `s`. |
 | `press(t, m, key)` | `totp_cache_test.go` | Sends `key` to `m`. Then it sends back the `list.FilterMatchesMsg` that the list computes in a command. |
 | `typeKeys(t, m, s)` | `totp_cache_test.go` | Calls `press` for each character of `s`. |
+| `sendKey(m, key)` | `vault_overlay_test.go` | Sends `key` to `m`, and does not run the command. Use it for a key that can start `bw`. |
+| `openGenerator(m)`, `openedGenerator(width, height)` | `generator_test.go` | Press `p`, and do not run the `bw generate` command. |
 | `runMsgs(cmd)` | `totp_cache_test.go` | Runs `cmd` and returns its messages. It opens each `tea.Batch`. It skips a command that does not return in 50 ms. |
 | `hasMsgOfType[T](msgs)` | `theme_test.go` | Reports whether `msgs` has a message of type `T`. |
 | `clipboardWrites(t, cmd, candidates...)` | `vault_test.go` | Returns the candidates that `cmd` writes to the clipboard, and the fields of its `session.CopiedMsg` values. |

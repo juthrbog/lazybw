@@ -43,20 +43,20 @@ func pickTheme(t *testing.T, m VaultModel, name string) (VaultModel, []tea.Msg) 
 	t.Helper()
 	m = press(t, m, keyMsg("T"))
 	for range len(ui.ThemeNames) {
-		if *m.selectedTheme == name {
+		if *m.picker.selected == name {
 			break
 		}
 		m = press(t, m, tea.KeyPressMsg{Code: tea.KeyDown})
 	}
-	if *m.selectedTheme != name {
-		t.Fatalf("picker cursor on %q, want %q", *m.selectedTheme, name)
+	if *m.picker.selected != name {
+		t.Fatalf("picker cursor on %q, want %q", *m.picker.selected, name)
 	}
 	updated, cmd := m.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
 	m = updated.(VaultModel)
 	msgs := runMsgs(cmd)
 	// huh completes the form with an internal message. Feed the messages
 	// back until the picker closes.
-	for i := 0; m.showThemePicker && i < 5; i++ {
+	for i := 0; m.overlay == overlayThemePicker && i < 5; i++ {
 		var next []tea.Msg
 		for _, msg := range msgs {
 			updated, cmd = m.Update(msg)
@@ -65,7 +65,7 @@ func pickTheme(t *testing.T, m VaultModel, name string) (VaultModel, []tea.Msg) 
 		}
 		msgs = next
 	}
-	if m.showThemePicker {
+	if m.overlay == overlayThemePicker {
 		t.Fatal("the picker must close after enter")
 	}
 	return m, msgs

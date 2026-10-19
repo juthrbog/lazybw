@@ -62,7 +62,7 @@ The unlock screen shows `SpinnerUnlock` while `bw unlock` or `bw login` runs. Th
 | `GlyphError` | ✗ | U+2717 | none (Unicode) | `ColorRed` | Error toasts, the error screen, and the errors of the unlock screen, the re-prompt prompt and the generator |
 | `GlyphCopy` | 󰆏 | U+F018F | `nf-md-content_copy` | `ColorGreen` | The copy toast |
 
-### Generator options (`screens/vault.go`)
+### Generator options (`screens/generator.go`)
 
 | Glyph | Code point | Use |
 | --- | --- | --- |

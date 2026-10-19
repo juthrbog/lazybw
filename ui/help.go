@@ -82,6 +82,21 @@ func (h HelpOverlay) Filtering() bool {
 	return h.filtering
 }
 
+// FooterHints returns the footer hints for the keys of the overlay.
+func (h HelpOverlay) FooterHints() []HintBinding {
+	if h.filtering {
+		return []HintBinding{
+			{Key: "enter", Desc: "done"},
+			{Key: "esc", Desc: "clear"},
+		}
+	}
+	return []HintBinding{
+		{Key: "esc", Desc: "close"},
+		{Key: "j/k", Desc: "scroll"},
+		{Key: "/", Desc: "filter"},
+	}
+}
+
 // Update handles input when the help overlay is visible.
 func (h HelpOverlay) Update(msg tea.Msg) (HelpOverlay, tea.Cmd) {
 	if !h.visible {

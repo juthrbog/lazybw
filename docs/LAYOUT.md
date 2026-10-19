@@ -371,6 +371,12 @@ In `View`, the root model gives `m.width` and `m.height - ui.ChromeHeight` to `V
 | `ui/itemrow.go` | `RenderItemRow` and `RenderGroupRow`: the list rows |
 | `ui/help.go` | `HelpOverlay`: the content of the help card |
 | `screens/locked.go` | `LockedModel.ViewContent` and `FooterContent`: the unlock, login and two-step screens |
-| `screens/vault.go` | `VaultModel.ViewContent` and `FooterContent`: the vault, the toasts, the generator card and the quit confirmation |
+| `screens/vault.go` | `VaultModel.ViewContent` and `FooterContent`: the vault, and the overlay card that shows |
+| `screens/vault_list.go` | The list rows and the selection |
+| `screens/vault_drawer.go` | The drawer size, the drawer props and the list above the drawer |
+| `screens/toast.go` | The toasts and the status on the right of the footer |
+| `screens/generator.go` | `GeneratorModel`: the generator card and its hints |
+| `screens/themepicker.go` | `ThemePickerModel`: the theme picker card and its hints |
+| `screens/quitconfirm.go` | The quit confirmation card and its hints |
 | `screens/reprompt.go` | The master password re-prompt card and its hints |
 | `screens/error.go` | `ErrorModel.ViewContent` and `FooterHints`: the error screen |
