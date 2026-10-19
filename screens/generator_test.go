@@ -8,6 +8,7 @@ import (
 	tea "charm.land/bubbletea/v2"
 	"github.com/charmbracelet/x/ansi"
 	"github.com/juthrbog/lazybw/bwcmd"
+	"github.com/juthrbog/lazybw/session"
 	"github.com/juthrbog/lazybw/ui"
 )
 
@@ -73,6 +74,19 @@ func TestGeneratorReopenDropsLateResult(t *testing.T) {
 	m = updated.(VaultModel)
 	if m.gen.password != genPlaceholder {
 		t.Errorf("password = %q, want %q until the new result", m.gen.password, genPlaceholder)
+	}
+}
+
+// TestGeneratorCopyKeyCopiesValue checks that the Copy key of the
+// generator copies the generated value as a password.
+func TestGeneratorCopyKeyCopiesValue(t *testing.T) {
+	m := openedGenerator(80, 24)
+	updated, _ := m.Update(bwcmd.GenerateResult{Password: "Gen-Pass-1", Seq: m.gen.seq})
+	m = updated.(VaultModel)
+	_, cmd := m.Update(keyMsg("c"))
+	values, fields := clipboardWrites(t, cmd, "Gen-Pass-1")
+	if len(values) != 1 || len(fields) != 1 || fields[0] != session.CopyFieldPassword {
+		t.Errorf("c wrote %q with the fields %v, want the generated value as a password", values, fields)
 	}
 }
 

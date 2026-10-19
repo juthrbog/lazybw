@@ -157,7 +157,7 @@ Follow these rules in a new test:
 | `ui` | `itemrow_test.go`, `itemrow_note_test.go` | The rows of the item list and the group rows. |
 | `ui` | `frame_test.go`, `hints_test.go`, `gradient_test.go` | The header, the footer, the footer hints and the gradient line. |
 | `ui` | `help_test.go`, `keymap_test.go` | The help overlay and the key map. |
-| `ui` | `keybindings_doc_test.go` | `docs/KEYBINDINGS.md` lists each key of `DefaultVaultKeyMap`. |
+| `ui` | `keybindings_doc_test.go` | `docs/KEYBINDINGS.md` lists each key of `DefaultVaultKeyMap`, `DefaultGeneratorKeyMap` and `DefaultConfirmKeyMap`. |
 | `ui` | `overlay_test.go`, `text_test.go` | Overlays, and the text helpers `SanitizeLine`, `Truncate` and `NoteLines`. |
 | `ui` | `theme_test.go` | The themes and their contrast. It holds the `TestMain`. |
 | `ui` | `cells_test.go` | No tests. The `cellsOf` helper. |
@@ -417,7 +417,7 @@ These tests cover the clipboard messages:
 
 When you add a feature, add tests in these places:
 
-- For a new key binding, add it to the table in `TestDefaultVaultKeyMap` (`ui/keymap_test.go`). The test walks each field of `VaultKeyMap` with `reflect`. It fails for a field that is not in the table, a binding with no help text, and a key that two bindings use. Also add the key to `docs/KEYBINDINGS.md` as inline code. `TestKeybindingsDocListsVaultKeys` (`ui/keybindings_doc_test.go`) fails until the doc lists it.
+- For a new key binding, add it to the table in `TestDefaultVaultKeyMap`, `TestDefaultGeneratorKeyMap` or `TestDefaultConfirmKeyMap` (`ui/keymap_test.go`). Each test walks each field of its key map with `reflect`. It fails for a field that is not in the table, a binding with no help text, and a key that two bindings use. For a vault binding, also add it to `categorized` in `ui/keymap.go`. `TestHelpOverlayShowsEachVaultBinding` fails until the help overlay shows it. Then add the key to `docs/KEYBINDINGS.md` as inline code. `TestKeybindingsDocListsKeys` (`ui/keybindings_doc_test.go`) fails until the doc lists it.
 - For a new bw command, add a test with `fakeBw` in `bwcmd`. Add the command to `TestEveryCommandSetsNoInteraction`.
 - For a new item type, add cases to `TestItemDescription` (`bwcmd/types_test.go`). Add drawer and row tests such as `TestRenderDrawerIdentity` (`ui/drawer_test.go`) and `TestRenderItemRowIdentity` (`ui/itemrow_test.go`).
 - For a new overlay or screen state, test its size with `assertArea` at small terminal sizes, as `TestOverlaysFitSmallTerminals` does.

@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"strings"
 
+	"charm.land/bubbles/v2/key"
 	tea "charm.land/bubbletea/v2"
 	"github.com/charmbracelet/x/ansi"
 	"github.com/juthrbog/lazybw/bwcmd"
@@ -41,6 +42,7 @@ type GeneratorModel struct {
 	// over each Open, so that a late result of an earlier card is dropped.
 	seq    uint64
 	closed bool
+	keys   ui.GeneratorKeyMap
 
 	length    int
 	uppercase bool
@@ -59,6 +61,7 @@ func (g GeneratorModel) Open() (GeneratorModel, tea.Cmd) {
 	g = GeneratorModel{
 		mode:       genModePassword,
 		seq:        g.seq,
+		keys:       ui.DefaultGeneratorKeyMap(),
 		length:     20,
 		uppercase:  true,
 		lowercase:  true,
@@ -110,24 +113,25 @@ func (g GeneratorModel) Update(msg tea.Msg) (GeneratorModel, tea.Cmd) {
 }
 
 func (g GeneratorModel) updateKey(msg tea.KeyPressMsg) (GeneratorModel, tea.Cmd) {
-	switch msg.String() {
-	case "esc":
+	k := g.keys
+	switch {
+	case key.Matches(msg, k.Close):
 		g.closed = true
 		return g, nil
-	case "enter", "r":
+	case key.Matches(msg, k.Regenerate):
 		return g, g.generate()
-	case "c":
+	case key.Matches(msg, k.Copy):
 		if g.err == "" && g.password != "" && g.password != genPlaceholder {
 			return g, session.CopyToClipboard(g.password, session.CopyFieldPassword)
 		}
-	case "m", "tab":
+	case key.Matches(msg, k.Mode):
 		if g.mode == genModePassword {
 			g.mode = genModePassphrase
 		} else {
 			g.mode = genModePassword
 		}
 		return g, g.generate()
-	case "+", "=":
+	case key.Matches(msg, k.Longer):
 		if g.mode == genModePassword {
 			if g.length < 128 {
 				g.length++
@@ -138,7 +142,7 @@ func (g GeneratorModel) updateKey(msg tea.KeyPressMsg) (GeneratorModel, tea.Cmd)
 			}
 		}
 		return g, g.generate()
-	case "-":
+	case key.Matches(msg, k.Shorter):
 		if g.mode == genModePassword {
 			if g.length > 5 {
 				g.length--
@@ -149,18 +153,18 @@ func (g GeneratorModel) updateKey(msg tea.KeyPressMsg) (GeneratorModel, tea.Cmd)
 			}
 		}
 		return g, g.generate()
-	case "1", "2", "3", "4":
+	case key.Matches(msg, k.Option1, k.Option2, k.Option3, k.Option4):
 		if g.mode == genModePassphrase {
-			return g.togglePassphraseOption(msg.String())
+			return g.togglePassphraseOption(msg)
 		}
-		switch msg.String() {
-		case "1":
+		switch {
+		case key.Matches(msg, k.Option1):
 			g.uppercase = !g.uppercase
-		case "2":
+		case key.Matches(msg, k.Option2):
 			g.lowercase = !g.lowercase
-		case "3":
+		case key.Matches(msg, k.Option3):
 			g.numbers = !g.numbers
-		case "4":
+		case key.Matches(msg, k.Option4):
 			g.special = !g.special
 		}
 		return g, g.generate()
@@ -168,16 +172,16 @@ func (g GeneratorModel) updateKey(msg tea.KeyPressMsg) (GeneratorModel, tea.Cmd)
 	return g, nil
 }
 
-// togglePassphraseOption changes the passphrase option of key k: 1 toggles
-// the capitals, 2 toggles the number, and 3 moves to the next separator.
-// Key 4 has no passphrase option.
-func (g GeneratorModel) togglePassphraseOption(k string) (GeneratorModel, tea.Cmd) {
-	switch k {
-	case "1":
+// togglePassphraseOption changes the passphrase option of the key msg:
+// Option1 toggles the capitals, Option2 toggles the number, and Option3
+// moves to the next separator. Option4 has no passphrase option.
+func (g GeneratorModel) togglePassphraseOption(msg tea.KeyPressMsg) (GeneratorModel, tea.Cmd) {
+	switch {
+	case key.Matches(msg, g.keys.Option1):
 		g.capitalize = !g.capitalize
-	case "2":
+	case key.Matches(msg, g.keys.Option2):
 		g.includeNum = !g.includeNum
-	case "3":
+	case key.Matches(msg, g.keys.Option3):
 		next := 0
 		for i, sep := range genSeparators {
 			if sep == g.separator {
@@ -299,22 +303,20 @@ func checkMark(v bool) string {
 
 // FooterHints returns the footer hints for the mode of the card.
 func (g GeneratorModel) FooterHints() []ui.HintBinding {
+	k := g.keys
+	size := ui.HintPair(k.Longer, k.Shorter, "/", "length")
+	options := ui.HintPair(k.Option1, k.Option4, "-", "toggles")
 	if g.mode == genModePassphrase {
-		return []ui.HintBinding{
-			{Key: "enter", Desc: "regen"},
-			{Key: "+/-", Desc: "words"},
-			{Key: "m", Desc: "mode"},
-			{Key: "1-3", Desc: "options"},
-			{Key: "c", Desc: "copy"},
-			{Key: "esc", Desc: "close"},
-		}
+		// Option4 has no passphrase option.
+		size = ui.HintPair(k.Longer, k.Shorter, "/", "words")
+		options = ui.HintPair(k.Option1, k.Option3, "-", "options")
 	}
 	return []ui.HintBinding{
-		{Key: "enter", Desc: "regen"},
-		{Key: "+/-", Desc: "length"},
-		{Key: "m", Desc: "mode"},
-		{Key: "1-4", Desc: "toggles"},
-		{Key: "c", Desc: "copy"},
-		{Key: "esc", Desc: "close"},
+		ui.Hint(k.Regenerate, "regen"),
+		size,
+		ui.Hint(k.Mode, "mode"),
+		options,
+		ui.Hint(k.Copy, "copy"),
+		ui.Hint(k.Close, "close"),
 	}
 }

@@ -3,6 +3,7 @@ package ui
 import (
 	"strings"
 
+	"charm.land/bubbles/v2/key"
 	"charm.land/lipgloss/v2"
 )
 
@@ -11,6 +12,19 @@ import (
 type HintBinding struct {
 	Key  string
 	Desc string
+}
+
+// Hint returns the footer hint for b: the key label of the help of b, and
+// desc. desc is a short text, because the footer has little room.
+func Hint(b key.Binding, desc string) HintBinding {
+	return HintBinding{Key: b.Help().Key, Desc: desc}
+}
+
+// HintPair returns one footer hint for two bindings, such as "+/-" for a
+// pair of opposite keys or "1-4" for a range. sep goes between the two key
+// labels.
+func HintPair(a, b key.Binding, sep, desc string) HintBinding {
+	return HintBinding{Key: a.Help().Key + sep + b.Help().Key, Desc: desc}
 }
 
 // RenderHints renders hint bindings with styled keys and descriptions,

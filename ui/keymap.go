@@ -2,76 +2,91 @@ package ui
 
 import "charm.land/bubbles/v2/key"
 
-// VaultKeyMap defines app-specific keybindings for the main vault screen.
-// Navigation (j/k, g/G, /, pgup/pgdn) is handled by the embedded bubbles/list.
+// Help categories, in the order of the help overlay.
+const (
+	CategoryCopy       = "Copy"
+	CategoryNavigation = "Navigation"
+	CategoryVault      = "Vault"
+	CategoryUI         = "UI"
+)
+
+// VaultKeyMap defines the keys of the vault screen. The help of each
+// binding gives the key label and the description that the help overlay
+// shows. The footer and the drawer take the key label from the help too.
 type VaultKeyMap struct {
-	Copy           key.Binding
-	CopyTOTP       key.Binding
-	CopyUsername   key.Binding
-	CopyNote       key.Binding
-	CopyCVV        key.Binding
-	OpenURL        key.Binding
+	Copy         key.Binding
+	CopyTOTP     key.Binding
+	CopyUsername key.Binding
+	CopyNote     key.Binding
+	CopyCVV      key.Binding
+	OpenURL      key.Binding
+	// The bubbles list handles the keys of Navigate, Jump and Filter.
+	// They are in this map for the help overlay and the footer.
+	Navigate       key.Binding
+	Jump           key.Binding
+	Filter         key.Binding
 	ScrollDown     key.Binding
 	ScrollUp       key.Binding
-	Sync           key.Binding
-	Lock           key.Binding
-	Help           key.Binding
-	Quit           key.Binding
-	CycleTheme     key.Binding
-	Generate       key.Binding
-	ToggleGrouping key.Binding
-	ToggleExpand   key.Binding
 	DrawerGrow     key.Binding
 	DrawerShrink   key.Binding
 	DrawerReset    key.Binding
 	DrawerToggle   key.Binding
+	Generate       key.Binding
+	Sync           key.Binding
+	Lock           key.Binding
+	ToggleGrouping key.Binding
+	ToggleExpand   key.Binding
+	Help           key.Binding
+	ThemePicker    key.Binding
+	Quit           key.Binding
 }
 
-// ShortHelp implements help.KeyMap.
-func (k VaultKeyMap) ShortHelp() []key.Binding {
-	return []key.Binding{k.Copy, k.CopyTOTP, k.CopyUsername, k.ToggleGrouping, k.Help, k.Quit}
+// categorizedBinding is a binding and its help category.
+type categorizedBinding struct {
+	binding  key.Binding
+	category string
 }
 
-// FullHelp implements help.KeyMap.
-func (k VaultKeyMap) FullHelp() [][]key.Binding {
-	return [][]key.Binding{
-		{k.Copy, k.CopyTOTP, k.CopyUsername, k.CopyNote, k.CopyCVV, k.OpenURL},
-		{k.Generate, k.Sync, k.Lock},
-		{k.ScrollDown, k.ScrollUp, k.DrawerGrow, k.DrawerShrink, k.DrawerReset, k.DrawerToggle},
-		{k.ToggleGrouping, k.ToggleExpand},
-		{k.Help, k.CycleTheme, k.Quit},
+// categorized returns each binding of k next to its help category, in the
+// order of the help overlay.
+func (k VaultKeyMap) categorized() []categorizedBinding {
+	return []categorizedBinding{
+		{k.Copy, CategoryCopy},
+		{k.CopyTOTP, CategoryCopy},
+		{k.CopyUsername, CategoryCopy},
+		{k.CopyNote, CategoryCopy},
+		{k.CopyCVV, CategoryCopy},
+		{k.OpenURL, CategoryCopy},
+		{k.Navigate, CategoryNavigation},
+		{k.Jump, CategoryNavigation},
+		{k.Filter, CategoryNavigation},
+		{k.ScrollDown, CategoryNavigation},
+		{k.ScrollUp, CategoryNavigation},
+		{k.DrawerGrow, CategoryNavigation},
+		{k.DrawerShrink, CategoryNavigation},
+		{k.DrawerReset, CategoryNavigation},
+		{k.DrawerToggle, CategoryNavigation},
+		{k.Generate, CategoryVault},
+		{k.Sync, CategoryVault},
+		{k.Lock, CategoryVault},
+		{k.ToggleGrouping, CategoryVault},
+		{k.ToggleExpand, CategoryVault},
+		{k.Help, CategoryUI},
+		{k.ThemePicker, CategoryUI},
+		{k.Quit, CategoryUI},
 	}
 }
 
-// HelpBindings returns categorized bindings for the help overlay.
+// HelpBindings returns the entries of the help overlay: the key label and
+// the description of the help of each binding, with its category.
 func (k VaultKeyMap) HelpBindings() []HelpBinding {
-	return []HelpBinding{
-		// Copy
-		{Key: "c", Desc: "copy password", Category: "Copy"},
-		{Key: "t", Desc: "copy TOTP", Category: "Copy"},
-		{Key: "u", Desc: "copy username", Category: "Copy"},
-		{Key: "n", Desc: "copy note", Category: "Copy"},
-		{Key: "v", Desc: "copy card security code", Category: "Copy"},
-		{Key: "o", Desc: "open URL", Category: "Copy"},
-		// Navigation
-		{Key: "j/k", Desc: "move up/down", Category: "Navigation"},
-		{Key: "g/G", Desc: "jump to top/bottom", Category: "Navigation"},
-		{Key: "/", Desc: "filter", Category: "Navigation"},
-		{Key: "J/K", Desc: "scroll drawer", Category: "Navigation"},
-		{Key: "+/-", Desc: "resize drawer", Category: "Navigation"},
-		{Key: "=", Desc: "reset drawer height", Category: "Navigation"},
-		{Key: "d", Desc: "toggle drawer overlay", Category: "Navigation"},
-		// Vault
-		{Key: "p", Desc: "generate password", Category: "Vault"},
-		{Key: "r", Desc: "sync", Category: "Vault"},
-		{Key: "l", Desc: "lock", Category: "Vault"},
-		{Key: "ctrl+g", Desc: "toggle grouping", Category: "Vault"},
-		{Key: "enter", Desc: "expand/collapse", Category: "Vault"},
-		// UI
-		{Key: "?", Desc: "help", Category: "UI"},
-		{Key: "T", Desc: "theme picker", Category: "UI"},
-		{Key: "q", Desc: "quit", Category: "UI"},
+	cb := k.categorized()
+	out := make([]HelpBinding, len(cb))
+	for i, c := range cb {
+		h := c.binding.Help()
+		out[i] = HelpBinding{Key: h.Key, Desc: h.Desc, Category: c.category}
 	}
+	return out
 }
 
 // DefaultVaultKeyMap returns the standard bindings for the vault screen.
@@ -79,15 +94,15 @@ func DefaultVaultKeyMap() VaultKeyMap {
 	return VaultKeyMap{
 		Copy: key.NewBinding(
 			key.WithKeys("c"),
-			key.WithHelp("c", "copy pwd"),
+			key.WithHelp("c", "copy password"),
 		),
 		CopyTOTP: key.NewBinding(
 			key.WithKeys("t"),
-			key.WithHelp("t", "copy totp"),
+			key.WithHelp("t", "copy TOTP"),
 		),
 		CopyUsername: key.NewBinding(
 			key.WithKeys("u"),
-			key.WithHelp("u", "copy user"),
+			key.WithHelp("u", "copy username"),
 		),
 		CopyNote: key.NewBinding(
 			key.WithKeys("n"),
@@ -95,51 +110,31 @@ func DefaultVaultKeyMap() VaultKeyMap {
 		),
 		CopyCVV: key.NewBinding(
 			key.WithKeys("v"),
-			key.WithHelp("v", "copy cvv"),
+			key.WithHelp("v", "copy card security code"),
 		),
 		OpenURL: key.NewBinding(
 			key.WithKeys("o"),
-			key.WithHelp("o", "open url"),
+			key.WithHelp("o", "open URL"),
+		),
+		Navigate: key.NewBinding(
+			key.WithKeys("j", "k", "down", "up"),
+			key.WithHelp("j/k", "move up/down"),
+		),
+		Jump: key.NewBinding(
+			key.WithKeys("g", "G", "home", "end"),
+			key.WithHelp("g/G", "jump to top/bottom"),
+		),
+		Filter: key.NewBinding(
+			key.WithKeys("/"),
+			key.WithHelp("/", "filter"),
 		),
 		ScrollDown: key.NewBinding(
 			key.WithKeys("J", "shift+down"),
-			key.WithHelp("J", "scroll drawer ↓"),
+			key.WithHelp("J", "scroll drawer down"),
 		),
 		ScrollUp: key.NewBinding(
 			key.WithKeys("K", "shift+up"),
-			key.WithHelp("K", "scroll drawer ↑"),
-		),
-		Sync: key.NewBinding(
-			key.WithKeys("r"),
-			key.WithHelp("r", "sync"),
-		),
-		Lock: key.NewBinding(
-			key.WithKeys("l"),
-			key.WithHelp("l", "lock"),
-		),
-		Help: key.NewBinding(
-			key.WithKeys("?"),
-			key.WithHelp("?", "help"),
-		),
-		Quit: key.NewBinding(
-			key.WithKeys("q", "ctrl+c"),
-			key.WithHelp("q", "quit"),
-		),
-		CycleTheme: key.NewBinding(
-			key.WithKeys("T"),
-			key.WithHelp("T", "theme"),
-		),
-		Generate: key.NewBinding(
-			key.WithKeys("p"),
-			key.WithHelp("p", "generate"),
-		),
-		ToggleGrouping: key.NewBinding(
-			key.WithKeys("ctrl+g"),
-			key.WithHelp("ctrl+g", "group"),
-		),
-		ToggleExpand: key.NewBinding(
-			key.WithKeys("enter"),
-			key.WithHelp("enter", "expand/collapse"),
+			key.WithHelp("K", "scroll drawer up"),
 		),
 		DrawerGrow: key.NewBinding(
 			key.WithKeys("+"),
@@ -151,11 +146,130 @@ func DefaultVaultKeyMap() VaultKeyMap {
 		),
 		DrawerReset: key.NewBinding(
 			key.WithKeys("="),
-			key.WithHelp("=", "reset drawer"),
+			key.WithHelp("=", "reset drawer height"),
 		),
 		DrawerToggle: key.NewBinding(
 			key.WithKeys("d"),
-			key.WithHelp("d", "toggle overlay"),
+			key.WithHelp("d", "toggle drawer overlay"),
+		),
+		Generate: key.NewBinding(
+			key.WithKeys("p"),
+			key.WithHelp("p", "generate password"),
+		),
+		Sync: key.NewBinding(
+			key.WithKeys("r"),
+			key.WithHelp("r", "sync"),
+		),
+		Lock: key.NewBinding(
+			key.WithKeys("l"),
+			key.WithHelp("l", "lock"),
+		),
+		ToggleGrouping: key.NewBinding(
+			key.WithKeys("ctrl+g"),
+			key.WithHelp("ctrl+g", "toggle grouping"),
+		),
+		ToggleExpand: key.NewBinding(
+			key.WithKeys("enter"),
+			key.WithHelp("enter", "expand/collapse"),
+		),
+		Help: key.NewBinding(
+			key.WithKeys("?"),
+			key.WithHelp("?", "help"),
+		),
+		ThemePicker: key.NewBinding(
+			key.WithKeys("T"),
+			key.WithHelp("T", "theme picker"),
+		),
+		// ctrl+c is not here. RootModel quits on it before any screen gets
+		// the key.
+		Quit: key.NewBinding(
+			key.WithKeys("q"),
+			key.WithHelp("q", "quit"),
+		),
+	}
+}
+
+// ConfirmKeyMap defines the keys of a yes or no dialog, such as the quit
+// confirmation.
+type ConfirmKeyMap struct {
+	Yes key.Binding
+	No  key.Binding
+}
+
+// DefaultConfirmKeyMap returns the standard bindings for a yes or no
+// dialog.
+func DefaultConfirmKeyMap() ConfirmKeyMap {
+	return ConfirmKeyMap{
+		Yes: key.NewBinding(
+			key.WithKeys("y"),
+			key.WithHelp("y", "yes"),
+		),
+		No: key.NewBinding(
+			key.WithKeys("n", "esc"),
+			key.WithHelp("n", "no"),
+		),
+	}
+}
+
+// GeneratorKeyMap defines the keys of the password generator card.
+type GeneratorKeyMap struct {
+	Regenerate key.Binding
+	Mode       key.Binding
+	Longer     key.Binding
+	Shorter    key.Binding
+	// Option1 to Option4 toggle the options of the mode. In passphrase
+	// mode, Option3 moves to the next separator, and Option4 does nothing.
+	Option1 key.Binding
+	Option2 key.Binding
+	Option3 key.Binding
+	Option4 key.Binding
+	Copy    key.Binding
+	Close   key.Binding
+}
+
+// DefaultGeneratorKeyMap returns the standard bindings for the password
+// generator.
+func DefaultGeneratorKeyMap() GeneratorKeyMap {
+	return GeneratorKeyMap{
+		Regenerate: key.NewBinding(
+			key.WithKeys("enter", "r"),
+			key.WithHelp("enter", "regen"),
+		),
+		Mode: key.NewBinding(
+			key.WithKeys("m", "tab"),
+			key.WithHelp("m", "mode"),
+		),
+		Longer: key.NewBinding(
+			key.WithKeys("+", "="),
+			key.WithHelp("+", "longer"),
+		),
+		Shorter: key.NewBinding(
+			key.WithKeys("-"),
+			key.WithHelp("-", "shorter"),
+		),
+		Option1: key.NewBinding(
+			key.WithKeys("1"),
+			key.WithHelp("1", "option 1"),
+		),
+		Option2: key.NewBinding(
+			key.WithKeys("2"),
+			key.WithHelp("2", "option 2"),
+		),
+		Option3: key.NewBinding(
+			key.WithKeys("3"),
+			key.WithHelp("3", "option 3"),
+		),
+		Option4: key.NewBinding(
+			key.WithKeys("4"),
+			key.WithHelp("4", "option 4"),
+		),
+		Copy: key.NewBinding(
+			key.WithKeys("c"),
+			key.WithHelp("c", "copy"),
+		),
+		Close: key.NewBinding(
+			key.WithKeys("esc"),
+			key.WithHelp("esc", "close"),
 		),
 	}
 }

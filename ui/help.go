@@ -17,7 +17,7 @@ type HelpBinding struct {
 }
 
 // categoryOrder defines the display order for help binding categories.
-var categoryOrder = []string{"Copy", "Navigation", "Vault", "UI"}
+var categoryOrder = []string{CategoryCopy, CategoryNavigation, CategoryVault, CategoryUI}
 
 // HelpOverlay is a scrollable, filterable overlay that displays keybindings
 // grouped by category. The scroll keys work until the user presses "/".

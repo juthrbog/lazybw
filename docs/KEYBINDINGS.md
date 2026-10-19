@@ -2,7 +2,7 @@
 
 This page lists the keys of each lazybw screen. The key names are the names that Bubble Tea gives the keys, for example `enter`, `shift+down` or `pgdown`.
 
-A test in `ui/keybindings_doc_test.go` reads this file. It fails when a key of `DefaultVaultKeyMap` (`ui/keymap.go`) is not on this page as inline code.
+A test in `ui/keybindings_doc_test.go` reads this file. It fails when a key of `DefaultVaultKeyMap`, `DefaultGeneratorKeyMap` or `DefaultConfirmKeyMap` (`ui/keymap.go`) is not on this page as inline code.
 
 ## All screens
 
@@ -33,7 +33,7 @@ The page keys work only when the list has more than one page.
 
 ### Actions
 
-These are the bindings of `DefaultVaultKeyMap` in `ui/keymap.go`.
+These are the action bindings of `DefaultVaultKeyMap` in `ui/keymap.go`. The help overlay, the footer and the drawer hints take their key labels from these bindings. `DefaultVaultKeyMap` also has the bindings `Navigate`, `Jump` and `Filter` for the list keys above, so that the help overlay and the footer can name them. The list handles those keys.
 
 | Key | Action |
 |---|---|
@@ -57,7 +57,8 @@ These are the bindings of `DefaultVaultKeyMap` in `ui/keymap.go`.
 | `T` | Open the theme picker |
 | `?` | Open the help overlay |
 | `q` | Ask for confirmation, and then lock the vault and quit. See [Quit confirmation](#quit-confirmation). |
-| `ctrl+c` | Lock the vault and quit at once, with no confirmation |
+
+`ctrl+c` is not in `DefaultVaultKeyMap`. The root model quits on it before a screen gets the key. See [All screens](#all-screens).
 
 A copy key copies nothing when the selected item does not have that field. When the username of a login is empty, `u` shows the toast "No username to copy".
 
@@ -88,7 +89,7 @@ While a filter is active, the list shows no groups. So the filter also finds the
 
 ## Quit confirmation
 
-The dialog opens after `q` on the vault screen.
+The dialog opens after `q` on the vault screen. These are the bindings of `DefaultConfirmKeyMap` in `ui/keymap.go`.
 
 | Key | Action |
 |---|---|
@@ -136,7 +137,7 @@ The theme picker opens after `T`. It is a select form of huh.
 
 ## Password generator
 
-The generator opens after `p`. It opens in password mode, with a length of 20 and all four character sets on. Each change of an option makes a new value at once.
+The generator opens after `p`. It opens in password mode, with a length of 20 and all four character sets on. Each change of an option makes a new value at once. The keys are the bindings of `DefaultGeneratorKeyMap` in `ui/keymap.go`, and the footer of the generator takes its key labels from them.
 
 Both modes:
 
