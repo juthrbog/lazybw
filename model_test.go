@@ -8,6 +8,7 @@ import (
 	"io"
 	"log"
 	"os"
+	"reflect"
 	"regexp"
 	"strconv"
 	"strings"
@@ -54,6 +55,22 @@ func TestNewRootModel(t *testing.T) {
 	if m.sess.IdleTimeout != 15*time.Minute {
 		t.Errorf("IdleTimeout = %v, want 15m", m.sess.IdleTimeout)
 	}
+}
+
+// TestInitRequestsBackgroundColor checks that Init gives the batch the
+// tea.RequestBackgroundColor command itself, with no wrapper around it.
+func TestInitRequestsBackgroundColor(t *testing.T) {
+	batch, ok := NewRootModel(time.Minute).Init()().(tea.BatchMsg)
+	if !ok {
+		t.Fatal("Init must return a batch")
+	}
+	want := reflect.ValueOf(tea.RequestBackgroundColor).Pointer()
+	for _, cmd := range batch {
+		if cmd != nil && reflect.ValueOf(cmd).Pointer() == want {
+			return
+		}
+	}
+	t.Error("the batch of Init has no tea.RequestBackgroundColor command")
 }
 
 func TestRootStatusResultLocked(t *testing.T) {

@@ -152,15 +152,20 @@ func isStripped(kv string) bool {
 	return false
 }
 
-// execBw runs bw with args and returns its stdout. The token and the
-// password go to bw in its environment, not in args, which ps and
-// /proc/PID/cmdline show to other users. bw is killed after timeout.
-func execBw(timeout time.Duration, token, password string, args ...string) ([]byte, error) {
-	ctx, cancel := context.WithTimeout(context.Background(), timeout)
-	defer cancel()
+// Runner runs one bw command and returns what it wrote to stdout and to
+// stderr. env is the whole environment of the bw process. The command must
+// stop when ctx ends. err is nil when bw exits with status 0.
+type Runner func(ctx context.Context, env []string, args ...string) (stdout, stderr []byte, err error)
 
+// Run runs each bw command of this package. The default starts the bw
+// program from PATH. A test can replace it to script the output of bw.
+var Run Runner = execRun
+
+// execRun is the default Runner. It starts the bw program from PATH, and it
+// kills bw and the processes that bw started when ctx ends.
+func execRun(ctx context.Context, env []string, args ...string) ([]byte, []byte, error) {
 	cmd := exec.CommandContext(ctx, "bw", args...) //nolint:gosec // G204: the program is always bw and no shell runs; user text goes only after "--" or in "--code="
-	cmd.Env = childEnv(token, password)
+	cmd.Env = env
 	cmd.WaitDelay = waitDelay
 	killTreeOnCancel(cmd)
 
@@ -169,16 +174,28 @@ func execBw(timeout time.Duration, token, password string, args ...string) ([]by
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr
 
-	if err := cmd.Run(); err != nil {
-		clear(stdout.Bytes())
+	err := cmd.Run()
+	return stdout.Bytes(), stderr.Bytes(), err
+}
+
+// execBw runs bw with args through Run and returns its stdout. The token
+// and the password go to bw in its environment, not in args, which ps and
+// /proc/PID/cmdline show to other users. bw is stopped after timeout.
+func execBw(timeout time.Duration, token, password string, args ...string) ([]byte, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), timeout)
+	defer cancel()
+
+	stdout, stderr, err := Run(ctx, childEnv(token, password), args...)
+	if err != nil {
+		clear(stdout)
 		log.Printf("bw %s failed: %v\nstderr:\n%s", subcommand(args), err,
-			redact(stderr.String(), privateValues(token, password, args)))
+			redact(string(stderr), privateValues(token, password, args)))
 		if errors.Is(ctx.Err(), context.DeadlineExceeded) {
 			return nil, fmt.Errorf("bw %s timed out after %s: %w", subcommand(args), timeout, ctx.Err())
 		}
-		return nil, newError(err, stderr.Bytes())
+		return nil, newError(err, stderr)
 	}
-	return stdout.Bytes(), nil
+	return stdout, nil
 }
 
 // secretBuffer collects the stdout of bw, which can hold the whole

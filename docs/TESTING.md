@@ -111,7 +111,7 @@ A test must never run the real Bitwarden CLI (`bw`). A real `bw` uses the vault 
 |---|---|
 | root (`main`) | `TestMain` in `model_test.go` calls `installFakeBw` from `helpers_test.go`. It writes `fakeBwScript` as `bw` to a new temporary directory. Then it makes that directory the only `PATH` entry for the whole run. `TestMain` also sends the log output to `io.Discard`, as `main` does without `--debug`. |
 | `screens` | `TestMain` in `screens/error_test.go` sets `PATH` to an empty temporary directory. A bwcmd command in a screens test fails with `exec.ErrNotFound`. A test that needs a bw result replaces a command variable (see [Package variables that tests replace](#package-variables-that-tests-replace)). |
-| `bwcmd` | The package has no `TestMain`. Each test that runs `bw` calls `fakeBw(t, script)` first. `fakeBw` writes the script as `bw` to `t.TempDir()` and sets `PATH` to that directory with `t.Setenv`. `TestMissingBw` sets `PATH` to an empty directory. |
+| `bwcmd` | The package has no `TestMain`. Each test that runs `bw` calls `fakeBw(t, script)` or `useRunner(t, r)` first. `fakeBw` writes the script as `bw` to `t.TempDir()` and sets `PATH` to that directory with `t.Setenv`. `useRunner` replaces `Run`, so that no process starts. `TestMissingBw` sets `PATH` to an empty directory. |
 | `session`, `totp`, `ui`, `secutil` | The tests start no process. |
 
 The fake `bw` programs are shell scripts. On Windows, `fakeBw` and `fakeOpener` skip the test. `bwcmd/kill_unix_test.go` builds only on Unix (`//go:build unix`).
@@ -122,7 +122,7 @@ Follow these rules in a new test:
 
 1. In the root package, use the fake `bw`. Call `fakeBwLog(t)` to see what the fake got.
 2. In `screens`, replace `unlockCmd`, `loginCmd` or `repromptUnlockCmd` with a stub. Do not change `PATH`.
-3. In `bwcmd`, call `fakeBw(t, script)` before the first call to `bw`.
+3. In `bwcmd`, call `useRunner(t, r)` before the first call to `bw`, so that `r` gives the output of `bw`. To test how `execRun` starts the process, for example its environment or the kill after a timeout, call `fakeBw(t, script)` instead.
 
 ## Test files
 
@@ -251,6 +251,8 @@ A table test can send each key of a dialog in turn. `TestQuitConfirmationKeys` i
 
 | Helper | File | What it does |
 |---|---|---|
+| `useRunner(t, r)` | `exec_test.go` | Makes `Run` call the `Runner` `r` for one test. `r` gets the context, the environment and the arguments of each `bw` command, and it returns the stdout, the stderr and the error. No process starts, so the test also runs on Windows. |
+| `envValue(env, name)` | `exec_test.go` | Returns the value of the variable `name` in an environment list, and whether the list sets it. |
 | `fakeBw(t, script)` | `exec_test.go` | Writes `#!/bin/sh`, `PATH=/usr/bin:/bin` and `script` as `bw` to `t.TempDir()`. The `PATH` line lets the script run tools such as `env` and `sleep`. Makes that directory the only `PATH` entry for the test. |
 | `logFile(t)` | `exec_test.go` | Returns the path of a new file in `t.TempDir()` and sets `FAKE_BW_LOG` to it. |
 | `readFile(t, path)` | `exec_test.go` | Returns the content of the file. |
@@ -262,13 +264,16 @@ This test in package `bwcmd` makes sure that `Lock` runs `bw lock`:
 
 ```go
 func TestLockArgs(t *testing.T) {
-	fakeBw(t, `echo "$*" > "$FAKE_BW_LOG"`)
-	path := logFile(t)
+	var got []string
+	useRunner(t, func(_ context.Context, _ []string, args ...string) ([]byte, []byte, error) {
+		got = args
+		return []byte("Your vault is locked."), nil, nil
+	})
 	if err := Lock("tok", 1)().(LockResult).Err; err != nil {
 		t.Fatal(err)
 	}
-	if got := readFile(t, path); got != "lock\n" {
-		t.Errorf("bw got %q, want %q", got, "lock\n")
+	if want := []string{"lock"}; !reflect.DeepEqual(got, want) {
+		t.Errorf("bw got %q, want %q", got, want)
 	}
 }
 ```
@@ -319,6 +324,7 @@ Some code reads a package variable, so that a test can replace a command, a time
 | Variable | Package | Real value | Replaced in |
 |---|---|---|---|
 | `shortTimeout`, `longTimeout`, `waitDelay` | `bwcmd` | 15 s, 2 min, 2 s | `setTimeouts` in `exec_test.go` |
+| `Run` | `bwcmd` | `execRun`, which starts `bw` from `PATH` | `useRunner` in `exec_test.go` |
 | `unlockCmd`, `loginCmd` | `screens` | `bwcmd.Unlock`, `bwcmd.LoginUser` | `stubUnlock`, `stubLogin` in `twostep_test.go` |
 | `repromptUnlockCmd` | `screens` | `bwcmd.Unlock` | `stubReprompt` in `reprompt_test.go` |
 | `openerCommand` | `screens` | `systemOpener` | `fakeOpener` and `TestOpenURLReportsOpenerFailure` in `openurl_test.go` |
