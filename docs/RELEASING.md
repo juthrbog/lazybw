@@ -12,7 +12,7 @@ A tag that starts with `v` publishes a release. `.github/workflows/release.yml` 
    task release -- v0.3.0
    ```
 
-   The task stops if the version does not look like `v1.2.3` or `v1.2.3-rc.1`, if the branch is not `main`, if the tree has changes, or if `main` is not the same as `origin/main`. Then it pushes the tag.
+   The task stops if the version does not look like `v1.2.3` or `v1.2.3-rc.1`, if the branch is not `main`, if a tracked file has changes, or if `main` is not the same as `origin/main`. Untracked files do not stop it, because the release builds a clean checkout of the tagged commit. Then the task pushes the tag.
 4. Watch the Release workflow on the Actions tab of the repository.
 
 A version with a hyphen, such as `v0.3.0-rc.1`, makes a prerelease. A prerelease does not change the Homebrew formula.
