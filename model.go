@@ -100,7 +100,7 @@ func NewRootModel(idleTimeout time.Duration) RootModel {
 }
 
 func (m RootModel) Init() tea.Cmd {
-	return tea.Batch(bwcmd.CheckStatus(), tickIdleCheck(), m.spinner.Tick, func() tea.Msg { return tea.RequestBackgroundColor() })
+	return tea.Batch(bwcmd.CheckStatus(), tickIdleCheck(), m.spinner.Tick, tea.RequestBackgroundColor)
 }
 
 // Update handles msg and records the exit cleanup of the new model in

@@ -33,6 +33,120 @@ func fakeBw(t *testing.T, script string) {
 	t.Setenv("PATH", dir)
 }
 
+// useRunner makes Run call r for one test.
+func useRunner(t *testing.T, r Runner) {
+	t.Helper()
+	old := Run
+	t.Cleanup(func() { Run = old })
+	Run = r
+}
+
+// bwCall is one call of a Runner that a test installed.
+type bwCall struct {
+	args        []string
+	env         []string
+	hasDeadline bool
+}
+
+// envValue returns the value of the variable name in env, and whether env
+// sets it.
+func envValue(env []string, name string) (string, bool) {
+	for _, kv := range env {
+		if n, v, ok := strings.Cut(kv, "="); ok && n == name {
+			return v, true
+		}
+	}
+	return "", false
+}
+
+// TestRunnerScriptsOutput replaces Run, so that the commands get scripted
+// bw output. PATH does not change, and no bw program runs.
+func TestRunnerScriptsOutput(t *testing.T) {
+	var calls []bwCall
+	useRunner(t, func(ctx context.Context, env []string, args ...string) ([]byte, []byte, error) {
+		_, hasDeadline := ctx.Deadline()
+		calls = append(calls, bwCall{args: args, env: env, hasDeadline: hasDeadline})
+		switch args[0] {
+		case "status":
+			return []byte(`{"status":"locked","userEmail":"u@t.com"}`), nil, nil
+		case "unlock":
+			return []byte("session-token\n"), nil, nil
+		case "list":
+			return []byte(`[{"id":"1","type":1,"name":"Gmail","login":{"username":"u","password":"p"}}]`), nil, nil
+		case "sync":
+			return nil, []byte("Syncing failed.\nYou are not logged in.\n"), errors.New("exit status 1")
+		}
+		t.Errorf("unexpected bw %q", args)
+		return nil, nil, errors.New("unexpected command")
+	})
+
+	status := CheckStatus()().(StatusResult)
+	if status.Err != nil || status.Status.Status != "locked" || status.Status.UserEmail != "u@t.com" {
+		t.Errorf("CheckStatus = %+v, want the scripted status", status)
+	}
+	unlock := Unlock("hunter2")().(UnlockResult)
+	if unlock.Err != nil || unlock.Token != "session-token" {
+		t.Errorf("Unlock = %+v, want the scripted token", unlock)
+	}
+	items := FetchItems("session-token", 3)().(ItemsResult)
+	if items.Err != nil || len(items.Items) != 1 || items.Items[0].Name != "Gmail" || items.Epoch != 3 {
+		t.Errorf("FetchItems = %+v, want the scripted item and epoch 3", items)
+	}
+	sync := Sync("session-token", 3)().(SyncResult)
+	var bwErr *Error
+	if !errors.As(sync.Err, &bwErr) || bwErr.Msg != "You are not logged in." || !errors.Is(sync.Err, ErrNotLoggedIn) {
+		t.Errorf("Sync err = %#v, want an *Error for the last stderr line", sync.Err)
+	}
+
+	if len(calls) != 4 {
+		t.Fatalf("Run got %d calls, want 4", len(calls))
+	}
+	for _, c := range calls {
+		if !c.hasDeadline {
+			t.Errorf("bw %q: the context has no deadline", c.args)
+		}
+		if v, _ := envValue(c.env, "BW_NOINTERACTION"); v != "true" {
+			t.Errorf("bw %q: BW_NOINTERACTION = %q, want true", c.args, v)
+		}
+	}
+	unlockCall := calls[1]
+	if want := []string{"unlock", "--passwordenv", "BW_PASSWORD", "--raw"}; !reflect.DeepEqual(unlockCall.args, want) {
+		t.Errorf("unlock args = %q, want %q", unlockCall.args, want)
+	}
+	if v, _ := envValue(unlockCall.env, "BW_PASSWORD"); v != "hunter2" {
+		t.Errorf("unlock BW_PASSWORD = %q, want the password", v)
+	}
+	if v, _ := envValue(calls[2].env, "BW_SESSION"); v != "session-token" {
+		t.Errorf("list BW_SESSION = %q, want the token", v)
+	}
+	if _, ok := envValue(calls[0].env, "BW_SESSION"); ok {
+		t.Error("status got BW_SESSION, want none")
+	}
+}
+
+// TestRunnerTimeout checks that a Runner that waits until its context ends
+// gives the timeout error, and that the partial stdout is zeroed.
+func TestRunnerTimeout(t *testing.T) {
+	setTimeouts(t, 20*time.Millisecond, 20*time.Millisecond)
+	partial := []byte("partial output")
+	useRunner(t, func(ctx context.Context, _ []string, _ ...string) ([]byte, []byte, error) {
+		<-ctx.Done()
+		return partial, nil, ctx.Err()
+	})
+	captureLog(t)
+
+	err := Lock("tok", 1)().(LockResult).Err
+	if !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("err = %v, want context.DeadlineExceeded", err)
+	}
+	if !strings.Contains(err.Error(), "bw lock timed out after 20ms") {
+		t.Errorf("err = %q, want a timed out text", err)
+	}
+	if !bytes.Equal(partial, make([]byte, len(partial))) {
+		t.Errorf("stdout = %q, want zeros", partial)
+	}
+}
+
 // logFile returns the path of a new file in the temp directory of t, and
 // sets FAKE_BW_LOG to it for the fake bw.
 func logFile(t *testing.T) string {
