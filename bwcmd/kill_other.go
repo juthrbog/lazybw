@@ -6,5 +6,5 @@ import "os/exec"
 
 // killTreeOnCancel keeps the default cancel of exec.CommandContext, which
 // kills only the program that lazybw started. waitDelay limits how long
-// execBw waits for the processes that this program started.
+// execRun waits for the processes that this program started.
 func killTreeOnCancel(*exec.Cmd) {}

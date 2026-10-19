@@ -619,8 +619,11 @@ lazybw.
 
 ## bw CLI Integration
 
-lazybw runs every bw command with `exec.CommandContext` and an argument
-list. No shell runs. User text goes only after `--` or in `--code=`.
+lazybw runs every bw command through the package variable `bwcmd.Run`, a
+`bwcmd.Runner`. The default, `execRun`, starts `bw` with
+`exec.CommandContext` and an argument list. No shell runs. User text goes
+only after `--` or in `--code=`. A test can replace `bwcmd.Run` to script
+the output of bw.
 
 ### Commands
 
@@ -641,6 +644,46 @@ session key counts as a failure: `bw did not return a session key`.
 keys and card numbers are all in that output, so lazybw needs no command
 for each field. lazybw zeros the output of `bw list items`, `bw unlock`
 and `bw login` after it reads it.
+
+### Item fields
+
+`ParseItems` in `bwcmd/parser.go` decodes the output of `bw list items`
+into `bwcmd.Item` values (`bwcmd/types.go`). `encoding/json` drops each
+field that `bwcmd.Item` does not name, so those fields never get a Go
+value. The output of `bw list items` still holds them until `itemsResult`
+zeros it.
+
+lazybw reads these fields:
+
+| Field | Use |
+|---|---|
+| `id` | Keeps the selection, the group and the TOTP state on the same item after a sync |
+| `type` | The item type: 1 login, 2 secure note, 3 card, 4 identity, 5 SSH key |
+| `name` | The list row, the filter and the grouping |
+| `notes` | The drawer and `n` |
+| `reprompt` | The master password re-prompt |
+| `login.username`, `login.password`, `login.totp`, `login.uris[].uri` | The drawer, `c`, `u`, `t` and `o` |
+| `card.cardholderName`, `card.number`, `card.expMonth`, `card.expYear`, `card.code` | The drawer, `c` and `v` |
+| `identity.title`, `identity.firstName`, `identity.middleName`, `identity.lastName`, `identity.company`, `identity.email`, `identity.phone`, `identity.ssn`, `identity.passportNumber`, `identity.licenseNumber`, `identity.address1`, `identity.address2`, `identity.address3`, `identity.city`, `identity.state`, `identity.postalCode`, `identity.country` | The drawer, `c` and `u` |
+| `sshKey.privateKey`, `sshKey.publicKey`, `sshKey.keyFingerprint` | The drawer, `c` and `u` |
+
+`bwcmd.Item` also has `organizationId`, `folderId`, `secureNote.type`,
+`login.uris[].match` and `identity.username`. lazybw parses them, but no
+screen uses them.
+
+lazybw skips these fields on purpose:
+
+| Field | Why lazybw skips it |
+|---|---|
+| `fields` | Custom fields. A hidden field is a secret, and the drawer has no masked row for it. |
+| `passwordHistory` | Old passwords. lazybw shows no history, and each entry is one more secret in memory. |
+| `login.fido2Credentials` | Passkeys. lazybw cannot use them, and each one holds a private key. |
+| `favorite` | lazybw has no favorites view. |
+| `attachments` | lazybw cannot download an attachment. |
+| `collectionIds`, `revisionDate`, `creationDate`, `deletedDate`, `login.passwordRevisionDate`, `card.brand` | No screen shows them. |
+
+To show a new field, add it to `bwcmd.Item`. If the field is a secret,
+also zero it in `secutil.ZeroItem`.
 
 ### Environment of the bw process
 
