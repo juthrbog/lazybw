@@ -149,7 +149,7 @@ func copied(_ VaultModel, seen []tea.Msg) bool {
 
 // promptError reports whether the password prompt shows an error.
 func promptError(m VaultModel, _ []tea.Msg) bool {
-	return m.reprompt.open && m.reprompt.errText != ""
+	return m.overlay == overlayReprompt && m.reprompt.errText != ""
 }
 
 // typeVault types s into m, one key press per character.
@@ -165,7 +165,7 @@ func typeVault(m VaultModel, s string) VaultModel {
 // drives m until done returns true.
 func submitPassword(t *testing.T, m VaultModel, password string, done func(VaultModel, []tea.Msg) bool) (VaultModel, []tea.Msg) {
 	t.Helper()
-	if !m.reprompt.open {
+	if m.overlay != overlayReprompt {
 		t.Fatal("the password prompt is not open")
 	}
 	m = typeVault(m, password)
@@ -196,7 +196,7 @@ func TestRepromptCorrectPasswordRunsCopy(t *testing.T) {
 	if len(*calls) != 1 || (*calls)[0] != rightPassword {
 		t.Errorf("password checks = %q, want one with the typed password", *calls)
 	}
-	if m.reprompt.open {
+	if m.overlay == overlayReprompt {
 		t.Error("the prompt must close after the check passes")
 	}
 	if m.sess.Token != newToken || m.sess.Epoch != epoch {
@@ -236,7 +236,7 @@ func TestRepromptWrongPasswordCopiesNothing(t *testing.T) {
 	if !hasClipboardWrite(seen, "bank-pw") {
 		t.Error("a second try with the correct password must copy")
 	}
-	if m.reprompt.open {
+	if m.overlay == overlayReprompt {
 		t.Error("the prompt must close after the check passes")
 	}
 }
@@ -248,7 +248,7 @@ func TestRepromptEscCancels(t *testing.T) {
 	m = typeVault(m, "partial")
 	updated, cmd := m.Update(tea.KeyPressMsg{Code: tea.KeyEscape})
 	m = updated.(VaultModel)
-	if m.reprompt.open {
+	if m.overlay == overlayReprompt {
 		t.Error("esc must close the password prompt")
 	}
 	if cmd != nil || len(*calls) != 0 {
@@ -277,7 +277,7 @@ func TestRepromptProtectsEveryField(t *testing.T) {
 		if values, fields := clipboardWrites(t, cmd, secrets...); len(values) != 0 || len(fields) != 0 {
 			t.Errorf("%s: copied %q before the password check", name, values)
 		}
-		if !m.reprompt.open {
+		if m.overlay != overlayReprompt {
 			t.Errorf("%s: the password prompt must open", name)
 		}
 	}
@@ -289,7 +289,7 @@ func TestRepromptLeavesOtherFieldsAlone(t *testing.T) {
 		m := selectItem(repromptVault(repromptItems()), i)
 		updated, cmd := m.Update(keyMsg("u"))
 		m = updated.(VaultModel)
-		if values, _ := clipboardWrites(t, cmd, want); len(values) != 1 || m.reprompt.open {
+		if values, _ := clipboardWrites(t, cmd, want); len(values) != 1 || m.overlay == overlayReprompt {
 			t.Errorf("u on %s must copy %q with no prompt", m.selectedItem().Name, want)
 		}
 	}
@@ -317,7 +317,7 @@ func TestRepromptEndsOnSelectionChange(t *testing.T) {
 	}
 	updated, cmd := m.Update(keyMsg("c"))
 	m = updated.(VaultModel)
-	if values, _ := clipboardWrites(t, cmd, "bank-pw"); len(values) != 0 || !m.reprompt.open {
+	if values, _ := clipboardWrites(t, cmd, "bank-pw"); len(values) != 0 || m.overlay != overlayReprompt {
 		t.Error("after a selection change, c must ask for the password again")
 	}
 	if len(*calls) != 1 {
@@ -411,7 +411,7 @@ func TestRepromptResultAfterLockIsDropped(t *testing.T) {
 
 // busyPrompt reports whether the password prompt waits for a check.
 func busyPrompt(m VaultModel, _ []tea.Msg) bool {
-	return m.reprompt.open && m.reprompt.busy()
+	return m.overlay == overlayReprompt && m.reprompt.busy()
 }
 
 // submitWhileFirstCheckRuns starts a check, closes its prompt, and submits
@@ -456,8 +456,8 @@ func TestRepromptOneCheckAtATime(t *testing.T) {
 	if !hasClipboardWrite(seen, "bank-pw") {
 		t.Errorf("the second check must copy the password, saw %v", seen)
 	}
-	if m.reprompt.open || m.reprompt.errText != "" {
-		t.Errorf("the prompt must close with no error, open = %v, error = %q", m.reprompt.open, m.reprompt.errText)
+	if m.overlay == overlayReprompt || m.reprompt.errText != "" {
+		t.Errorf("the prompt must close with no error, open = %v, error = %q", m.overlay == overlayReprompt, m.reprompt.errText)
 	}
 }
 
@@ -478,7 +478,7 @@ func TestRepromptEscDropsWaitingPassword(t *testing.T) {
 	calls := stubReprompt(t)
 	m, first := submitWhileFirstCheckRuns(t, repromptVault(repromptItems()), rightPassword)
 	m = press(t, m, tea.KeyPressMsg{Code: tea.KeyEscape})
-	if m.reprompt.open {
+	if m.overlay == overlayReprompt {
 		t.Fatal("esc must close the prompt")
 	}
 	// A new prompt starts with no waiting password.

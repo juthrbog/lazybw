@@ -5,6 +5,7 @@ import (
 	"strings"
 	"testing"
 
+	tea "charm.land/bubbletea/v2"
 	"github.com/charmbracelet/x/ansi"
 	"github.com/juthrbog/lazybw/bwcmd"
 	"github.com/juthrbog/lazybw/ui"
@@ -13,8 +14,13 @@ import (
 // openedGenerator returns a vault screen of the given size with the
 // generator open. The bw generate command is not run.
 func openedGenerator(width, height int) VaultModel {
-	m := vaultAt(testItems(), width, height)
-	updated, _ := m.openGenerator()
+	return openGenerator(vaultAt(testItems(), width, height))
+}
+
+// openGenerator presses p on m. It does not run the command, which would
+// start bw generate.
+func openGenerator(m VaultModel) VaultModel {
+	updated, _ := m.Update(keyMsg("p"))
 	return updated.(VaultModel)
 }
 
@@ -49,12 +55,33 @@ func cardText(out string) string {
 	return b.String()
 }
 
+// TestGeneratorReopenDropsLateResult closes the generator while bw generate
+// runs and opens it again. The result of the first card must not show in
+// the second card.
+func TestGeneratorReopenDropsLateResult(t *testing.T) {
+	m := openedGenerator(80, 24)
+	first := m.gen.seq
+	m = sendKey(m, tea.KeyPressMsg{Code: tea.KeyEscape})
+	if m.overlay != overlayNone {
+		t.Fatalf("after esc, overlay = %d, want none", m.overlay)
+	}
+	m = openGenerator(m)
+	if m.gen.seq <= first {
+		t.Fatalf("seq = %d after the reopen, want more than %d", m.gen.seq, first)
+	}
+	updated, _ := m.Update(bwcmd.GenerateResult{Password: "late", Seq: first})
+	m = updated.(VaultModel)
+	if m.gen.password != genPlaceholder {
+		t.Errorf("password = %q, want %q until the new result", m.gen.password, genPlaceholder)
+	}
+}
+
 func TestGeneratorShowsAllOfLongPassword(t *testing.T) {
 	pw := strings.Repeat("0123456789", 10)
 	for _, size := range [][2]int{{80, 24}, {120, 30}} {
 		width, height := size[0], size[1]
 		m := openedGenerator(width, height)
-		updated, _ := m.Update(bwcmd.GenerateResult{Password: pw, Seq: m.genSeq})
+		updated, _ := m.Update(bwcmd.GenerateResult{Password: pw, Seq: m.gen.seq})
 		m = updated.(VaultModel)
 		out := m.ViewContent(width, height-ui.ChromeHeight)
 		assertArea(t, out, width, height-ui.ChromeHeight)
@@ -72,10 +99,10 @@ func TestGeneratorShowsAllOfLongPassword(t *testing.T) {
 func TestGeneratorPassphraseKeysChangeOptions(t *testing.T) {
 	m := openedGenerator(80, 24)
 	m = genKey(m, "m")
-	if m.genMode != "passphrase" {
-		t.Fatalf("mode = %q, want passphrase", m.genMode)
+	if m.gen.mode != "passphrase" {
+		t.Fatalf("mode = %q, want passphrase", m.gen.mode)
 	}
-	args := func() []string { return m.genArgs() }
+	args := func() []string { return m.gen.args() }
 	separator := func() string {
 		a := args()
 		i := slices.Index(a, "--separator")
@@ -109,12 +136,12 @@ func TestGeneratorPassphraseKeysChangeOptions(t *testing.T) {
 		t.Errorf("a second 1 must turn --capitalize on again, args = %q", args())
 	}
 	// The password options did not change.
-	if !m.genUppercase || !m.genLowercase || !m.genNumbers || !m.genSpecial {
+	if !m.gen.uppercase || !m.gen.lowercase || !m.gen.numbers || !m.gen.special {
 		t.Error("passphrase keys must not change the password options")
 	}
 	// 4 has no passphrase option.
-	before := m.genSeq
-	if m = genKey(m, "4"); m.genSeq != before {
+	before := m.gen.seq
+	if m = genKey(m, "4"); m.gen.seq != before {
 		t.Error("4 in passphrase mode must not start bw generate")
 	}
 }
@@ -124,10 +151,10 @@ func TestGeneratorPassphraseWordsStopAtMinimum(t *testing.T) {
 	for range 5 {
 		m = genKey(m, "-")
 	}
-	if m.genWords != genMinWords {
-		t.Errorf("genWords = %d, want %d", m.genWords, genMinWords)
+	if m.gen.words != genMinWords {
+		t.Errorf("genWords = %d, want %d", m.gen.words, genMinWords)
 	}
-	args := m.genArgs()
+	args := m.gen.args()
 	if i := slices.Index(args, "--words"); i < 0 || i+1 >= len(args) || args[i+1] != "3" {
 		t.Errorf("args = %q, want --words 3", args)
 	}
@@ -139,7 +166,7 @@ func TestGeneratorPassphraseCardShowsSeparator(t *testing.T) {
 	for range 3 {
 		m = genKey(m, "3") // to the space separator
 	}
-	if plain := ansi.Strip(m.renderGeneratorCard(80)); !strings.Contains(plain, "Separator   space") {
+	if plain := ansi.Strip(m.gen.View(80)); !strings.Contains(plain, "Separator   space") {
 		t.Errorf("the card must name the space separator:\n%s", plain)
 	}
 }

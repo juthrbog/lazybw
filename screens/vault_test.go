@@ -158,7 +158,7 @@ func TestToggleGroupingRebuilds(t *testing.T) {
 
 func TestQuitConfirmationShowsHints(t *testing.T) {
 	m := newTestVault(testItems())
-	m.confirmingQuit = true
+	m.overlay = overlayQuit
 	hints, _ := m.FooterContent()
 	if !hasHintKey(hints, "y") || !hasHintDesc(hints, "yes") {
 		t.Errorf("confirmation hints should contain 'y yes', got %v", hints)
@@ -181,13 +181,13 @@ func TestQuitConfirmationKeys(t *testing.T) {
 			m := newTestVault(testItems())
 			updated, _ := m.Update(keyMsg("q"))
 			m = updated.(VaultModel)
-			if !m.confirmingQuit {
+			if m.overlay != overlayQuit {
 				t.Fatal("q must open the quit dialog")
 			}
 			updated, cmd := m.Update(tc.key)
 			m = updated.(VaultModel)
-			if m.confirmingQuit != tc.wantOpen {
-				t.Errorf("confirmingQuit = %v, want %v", m.confirmingQuit, tc.wantOpen)
+			if open := m.overlay == overlayQuit; open != tc.wantOpen {
+				t.Errorf("quit dialog open = %v, want %v", open, tc.wantOpen)
 			}
 			if got := hasMsgOfType[QuitMsg](runMsgs(cmd)); got != tc.wantQuit {
 				t.Errorf("QuitMsg sent = %v, want %v", got, tc.wantQuit)
@@ -197,15 +197,16 @@ func TestQuitConfirmationKeys(t *testing.T) {
 }
 
 func TestGenArgsPassword(t *testing.T) {
-	m := newTestVault(testItems())
-	m.genMode = "password"
-	m.genLength = 24
-	m.genUppercase = true
-	m.genLowercase = true
-	m.genNumbers = true
-	m.genSpecial = false
+	g := GeneratorModel{
+		mode:      genModePassword,
+		length:    24,
+		uppercase: true,
+		lowercase: true,
+		numbers:   true,
+		special:   false,
+	}
 
-	args := m.genArgs()
+	args := g.args()
 	if args[0] != "--length" || args[1] != "24" {
 		t.Errorf("expected --length 24, got %v", args[:2])
 	}
@@ -221,14 +222,15 @@ func TestGenArgsPassword(t *testing.T) {
 }
 
 func TestGenArgsPassphrase(t *testing.T) {
-	m := newTestVault(testItems())
-	m.genMode = "passphrase"
-	m.genWords = 5
-	m.genSeparator = "."
-	m.genCapitalize = true
-	m.genIncludeNum = false
+	g := GeneratorModel{
+		mode:       genModePassphrase,
+		words:      5,
+		separator:  ".",
+		capitalize: true,
+		includeNum: false,
+	}
 
-	args := m.genArgs()
+	args := g.args()
 	if args[0] != "--passphrase" {
 		t.Errorf("first arg should be --passphrase, got %q", args[0])
 	}
@@ -289,20 +291,18 @@ func TestCopiedMsgLeavesClearToRoot(t *testing.T) {
 }
 
 func TestGenerateResultOutOfOrderIsDropped(t *testing.T) {
-	m := newTestVault(testItems())
-	updated, _ := m.openGenerator()
+	m := openGenerator(newTestVault(testItems()))
+	first := m.gen.seq
+	updated, _ := m.updateGenerator(tea.KeyPressMsg{Code: '+', Text: "+"})
 	m = updated.(VaultModel)
-	first := m.genSeq
-	updated, _ = m.updateGenerator(tea.KeyPressMsg{Code: '+', Text: "+"})
-	m = updated.(VaultModel)
-	latest := m.genSeq
+	latest := m.gen.seq
 
 	updated, _ = m.Update(bwcmd.GenerateResult{Password: "new", Seq: latest})
 	m = updated.(VaultModel)
 	updated, _ = m.Update(bwcmd.GenerateResult{Password: "old", Seq: first})
 	m = updated.(VaultModel)
-	if m.genPassword != "new" {
-		t.Errorf("genPassword = %q, want the result of the latest request", m.genPassword)
+	if m.gen.password != "new" {
+		t.Errorf("genPassword = %q, want the result of the latest request", m.gen.password)
 	}
 }
 
@@ -725,8 +725,8 @@ func TestThemePickerCursorVisibleOnShortTerminal(t *testing.T) {
 			m = updated.(VaultModel)
 		}
 		last := ui.ThemeNames[len(ui.ThemeNames)-1]
-		if *m.selectedTheme != last {
-			t.Fatalf("%dx%d: cursor on %q, want %q", width, height, *m.selectedTheme, last)
+		if *m.picker.selected != last {
+			t.Fatalf("%dx%d: cursor on %q, want %q", width, height, *m.picker.selected, last)
 		}
 		out := m.ViewContent(width, height-ui.ChromeHeight)
 		assertArea(t, out, width, height-ui.ChromeHeight)
@@ -751,7 +751,7 @@ func TestThemePickerFitsAfterResize(t *testing.T) {
 		updated, _ := m.Update(tea.KeyPressMsg{Code: tea.KeyDown})
 		m = updated.(VaultModel)
 	}
-	want := *m.selectedTheme
+	want := *m.picker.selected
 	updated, cmd := m.Update(tea.WindowSizeMsg{Width: 40, Height: 12})
 	m = updated.(VaultModel)
 	if cmd == nil {
@@ -909,10 +909,8 @@ func TestToastExpiresAndFooterShowsSyncAge(t *testing.T) {
 }
 
 func TestGeneratorErrorIsNotCopied(t *testing.T) {
-	m := newTestVault(testItems())
-	updated, _ := m.openGenerator()
-	m = updated.(VaultModel)
-	updated, _ = m.Update(bwcmd.GenerateResult{Err: errors.New("boom"), Seq: m.genSeq})
+	m := openGenerator(newTestVault(testItems()))
+	updated, _ := m.Update(bwcmd.GenerateResult{Err: errors.New("boom"), Seq: m.gen.seq})
 	m = updated.(VaultModel)
 
 	_, cmd := m.Update(keyMsg("c"))
@@ -931,7 +929,7 @@ func TestGeneratorErrorIsNotCopied(t *testing.T) {
 	}
 	// The card shows the error in the error style. The overlay writes the
 	// styles again, so the check uses the card itself.
-	card := m.renderGeneratorCard(80)
+	card := m.gen.View(80)
 	if !strings.Contains(card, ui.StyleError.Render("boom")) {
 		t.Errorf("the generator card must show the error in the error style:\n%s", ansi.Strip(card))
 	}
@@ -951,7 +949,7 @@ func TestRepromptCopyOpensPasswordPrompt(t *testing.T) {
 			t.Fatalf("c on a re-prompt item sent %#v before the password check", msg)
 		}
 	}
-	if !m.reprompt.open {
+	if m.overlay != overlayReprompt {
 		t.Fatal("c on a re-prompt item must open the password prompt")
 	}
 	plain := ansi.Strip(m.ViewContent(80, 24-ui.ChromeHeight))

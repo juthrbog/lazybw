@@ -32,9 +32,9 @@ const (
 	secretNote                     // n: the note
 )
 
-// repromptState is the master password prompt of the vault screen.
+// repromptState is the master password prompt of the vault screen. The
+// prompt shows while the overlay of the vault is overlayReprompt.
 type repromptState struct {
-	open     bool
 	itemID   string       // the item that the prompt is for
 	action   secretAction // the copy to run after the check passes
 	form     *huh.Form
@@ -172,12 +172,12 @@ func (m VaultModel) needsReprompt() bool {
 // the copy to run after the check passes.
 func (m *VaultModel) openReprompt(act secretAction) tea.Cmd {
 	m.reprompt = repromptState{
-		open:     true,
 		itemID:   m.selectedItem().ID,
 		action:   act,
 		password: new(string),
 	}
 	m.reprompt.form = buildRepromptForm(m.reprompt.password, m.width)
+	m.overlay = overlayReprompt
 	return m.reprompt.form.Init()
 }
 
@@ -189,6 +189,9 @@ func (m *VaultModel) closeReprompt() {
 		*m.reprompt.password = ""
 	}
 	m.reprompt = repromptState{}
+	if m.overlay == overlayReprompt {
+		m.overlay = overlayNone
+	}
 }
 
 // updateReprompt handles a message while the password prompt shows. Esc
@@ -265,10 +268,10 @@ func (m VaultModel) handleRepromptResult(msg repromptResultMsg) (tea.Model, tea.
 		// the next bw command works.
 		m.sess.ReplaceToken(msg.res.Token)
 	}
-	if !m.reprompt.open || m.reprompt.seq != msg.seq {
+	if m.overlay != overlayReprompt || m.reprompt.seq != msg.seq {
 		// The user closed the prompt of this check. A password that the
 		// user submitted in a new prompt waited for this check to end.
-		if m.reprompt.open && m.reprompt.queued != "" {
+		if m.overlay == overlayReprompt && m.reprompt.queued != "" {
 			pw := m.reprompt.queued
 			m.reprompt.queued = ""
 			return m, m.startCheck(pw)
