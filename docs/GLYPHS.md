@@ -17,6 +17,15 @@ The names and the code points on this page come from the font files of Nerd Font
 3. Follow the Charm apps. huh and bubbles use plain Unicode, such as `✓`, `•` and `→`. lazybw does the same for each glyph that is not an icon.
 4. Use a Nerd Font Mono font, not a Propo font. A Mono font draws each icon in one cell.
 
+## Glyph sets
+
+`ui/glyphs.go` holds each glyph in a `GlyphSet`. `ui.Glyphs` is the active set. There are two sets:
+
+- The Unicode set, the default. It uses the glyphs on this page.
+- The ASCII set, for `--ascii` or `LAZYBW_ASCII=1`. It uses only printable ASCII. See [ASCII mode](#ascii-mode).
+
+`main` calls `ui.UseASCII` before it applies the theme, because the theme colors the glyphs and the screens copy the spinners when they are built.
+
 ## Current glyphs
 
 ### Item type icons (`ui/theme.go`)
@@ -33,9 +42,9 @@ The names and the code points on this page come from the font files of Nerd Font
 
 ### Header logo (`ui/frame.go`)
 
-| Constant | Glyph | Code point | Nerd Font name | Use |
+| Field | Glyph | Code point | Nerd Font name | Use |
 | --- | --- | --- | --- | --- |
-| `GlyphLogo` | 󰦝 | U+F099D | `nf-md-shield_lock` | The icon before "lazybw" in the header |
+| `Glyphs.Logo` | 󰦝 | U+F099D | `nf-md-shield_lock` | The icon before "lazybw" in the header |
 
 The logo is part of the title text, so it gets the color gradient of the title. Nerd Fonts has no Bitwarden glyph.
 
@@ -108,6 +117,30 @@ The group glyphs are not the cursor glyph. So a selected collapsed group does no
 | ╭ ╮ ╰ ╯ ─ │ | U+256D, U+256E, U+2570, U+256F, U+2500, U+2502 | `ui/overlay.go` | The rounded border of the overlay cards (`lipgloss.RoundedBorder`) |
 
 The huh forms draw their own glyphs, for example the field border ┃ (U+2503). The huh theme sets them. The huh forms are the unlock, login and two-step forms, the re-prompt prompt and the theme picker.
+
+## ASCII mode
+
+With `--ascii` or `LAZYBW_ASCII=1`, lazybw draws each glyph of the table below in its ASCII form. Every terminal draws these characters 1 cell wide, and they need no Nerd Font. Vault text, such as item names, stays as it is.
+
+| Glyph in the Unicode set | ASCII form | Use |
+| --- | --- | --- |
+| 󰦝 | `#` | The header logo |
+| Item icons 󰌾 󰿯 󰎞 󰀄 󰣀 | `L` `C` `N` `I` `K` | Login, card, note, identity and SSH key, in their theme colors |
+| 󰆏 ✓ ✗ | `*` `+` `!` | The copy toast, success and error |
+| ▶ | `>` | The cursor of the selected row |
+| ▸ ▾ | `+` `-` | A collapsed and an expanded group |
+| • | `*` | A mask |
+| … | `...` | The end of a cut text and of a busy text |
+| · between hints | ` \| ` | The footer separator |
+| · in a text | ` - ` | For example in the copy toast |
+| ✓ · in the generator | `x` `-` | An option that is on or off |
+| ↑ ↓ | `^` `v` | The arrow keys and the scroll cues |
+| — | `-` | The dash in the text of an empty drawer |
+| ▄ | `-` | The line under the header and above the drawer |
+| █ ▉ to ▏ ░ | `#`, `=` or `-`, `.` | The TOTP bar: a full cell, a partial cell, and the track |
+| Spinners | `spinner.Line` (`\|` `/` `-` `\`) | Loading, locking and unlocking |
+| ╭ ─ ╮ │ ╰ ╯ | `+` `-` `\|` | The border of an overlay card (`lipgloss.ASCIIBorder`) |
+| ┃ | `\|` | The left border of a focused form field |
 
 ## Rules for a new glyph
 
@@ -199,7 +232,7 @@ The 4-cell bar replaced the indicator with 5 circle steps. It has 32 steps, so i
 
 - Emoji (U+1F000 and higher). Their width is not the same in all terminals, and they break the alignment of the rows.
 - CJK characters. The Unicode standard makes them 2 cells wide, so they break the columns.
-- The em dash (U+2014). Unicode gives it an ambiguous width, so its width is not the same in all terminals. One text still uses it: the drawer text when no item is selected.
+- Characters with the East Asian Width "Ambiguous" (A), if the alignment depends on them. A terminal with a CJK locale, or with the setting that draws these characters wide, draws them 2 cells wide. lipgloss counts them as 1 cell. Many glyphs on this page are ambiguous: ▶ ▸ ▾ • … · ↑ ↓ — ▄ █ ░, the box drawing characters of the borders, and the Nerd Font icons in the Private Use Area. lazybw keeps them in the Unicode set, and the ASCII set replaces each one. A new glyph needs an ASCII form too.
 - The nf-weather- set. Its glyphs are large, and their cell width is not the same in all fonts.
 - Nerd Font glyphs with many paths. They can go past the cell in a font that is not a Mono font.
 - Mixed icon sets. Use nf-md- icons. Do not use nf-fa- icons and nf-md- icons for one meaning.
@@ -208,7 +241,7 @@ The 4-cell bar replaced the indicator with 5 circle steps. It has 32 steps, so i
 
 1. Find an nf-md- icon in the [Nerd Fonts cheat sheet](https://www.nerdfonts.com/cheat-sheet).
 2. Use the rules above to pick an icon or a plain Unicode glyph.
-3. Add a `Glyph*` variable in `ui/theme.go`, and set it in `initStyles()` with its theme color.
+3. Add a field to `GlyphSet` in `ui/glyphs.go`. Give it a value in `unicodeGlyphs` and a printable ASCII value in `asciiGlyphs`. Draw it through `ui.Glyphs`. For a glyph with a theme color, also add a `Glyph*` variable in `ui/theme.go`, and set it in `initStyles()` from `Glyphs`.
 4. If the glyph is an item glyph or the header glyph, add its rune to `TestGlyphRunes` in `ui/theme_test.go`. That test fails when the rune of an item glyph or of the header glyph changes.
-5. Make sure that the glyph shows correctly in at least two terminals, for example kitty, WezTerm or Ghostty.
+5. Make sure that the glyph shows correctly in at least two terminals, for example kitty, WezTerm or Ghostty. `TestASCIIModeDrawsOnlyASCII` in `ascii_test.go` fails when the ASCII mode draws a character that is not ASCII.
 6. Add the glyph to this page.

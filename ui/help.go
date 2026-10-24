@@ -171,12 +171,13 @@ func (h HelpOverlay) View() string {
 		header += "  " + StyleFaint.Render("/ to filter")
 	}
 
-	footer := "?/esc close · ↑/↓ scroll"
+	g := Glyphs
+	footer := "?/esc close" + g.Dot + g.UpDown() + " scroll"
 	if h.filtering {
-		footer = "enter done · esc clear"
+		footer = "enter done" + g.Dot + "esc clear"
 	}
 	if !h.viewport.AtBottom() {
-		footer += " · ↓ more"
+		footer += g.Dot + g.Down + " more"
 	}
 
 	// Cut the header and the footer, so that the box does not wrap them

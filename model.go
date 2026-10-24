@@ -587,7 +587,7 @@ func (m RootModel) View() tea.View {
 
 	switch m.state {
 	case stateLoading:
-		content = ui.CenterInArea(m.spinner.View()+" Loading vault…", m.width, contentHeight)
+		content = ui.CenterInArea(m.spinner.View()+" Loading vault"+ui.Glyphs.Ellipsis, m.width, contentHeight)
 	case stateLogin, stateLocked:
 		content = m.locked.ViewContent(m.width, contentHeight)
 		hints, status = m.locked.FooterContent()
@@ -598,7 +598,7 @@ func (m RootModel) View() tea.View {
 		content = ui.CenterInArea(m.err.ViewContent(m.width), m.width, contentHeight)
 		hints = m.err.FooterHints()
 	case stateQuitting:
-		content = ui.CenterInArea(m.spinner.View()+" Locking vault…", m.width, contentHeight)
+		content = ui.CenterInArea(m.spinner.View()+" Locking vault"+ui.Glyphs.Ellipsis, m.width, contentHeight)
 	}
 
 	footer := ui.RenderFooter(hints, status, m.width)

@@ -133,9 +133,14 @@ Bitwarden can also ask for a new-device code. It does this when an account witho
 | `--idle-timeout` | `15m` | Lock the vault after this time with no key press. The value is a Go duration, for example `10m` or `1h30m`. The minimum is `30s`. For a smaller value, lazybw prints a warning and uses `30s`. |
 | `--theme` | `catppuccin-mocha` | The color theme. See [Themes](#themes). |
 | `--debug` | `false` | Write a debug log. See [Debug log](#debug-log). |
+| `--ascii` | `false` | Draw only ASCII characters. See [ASCII mode](#ascii-mode). |
 | `--version` | | Print the version and exit. |
 
 You can also set the theme with the `LAZYBW_THEME` environment variable. The `--theme` flag overrides it. For a name that is not a theme, lazybw prints a warning with the list of themes and uses `catppuccin-mocha`.
+
+### ASCII mode
+
+Some terminals draw some symbols 2 cells wide, for example a terminal with a CJK locale, or with the setting that draws "ambiguous width" characters wide. Then the rows, the masks and the line under the header lose their alignment. With `--ascii`, or with `LAZYBW_ASCII=1`, lazybw draws only ASCII characters. It needs no Nerd Font then. Examples: `>` is the cursor, `*` masks a value, `-` draws the line under the header, `...` ends a cut text, and the cards have a `+--+` border. `LAZYBW_ASCII` takes the values of `strconv.ParseBool`, such as `1`, `true`, `0` and `false`. For another value, lazybw prints a warning and draws the Unicode glyphs. [docs/GLYPHS.md](docs/GLYPHS.md#ascii-mode) lists each ASCII glyph.
 
 A release binary prints its release version for `--version`. A `go install` build prints its module version, for example `lazybw v0.3.0`. A build with no version information prints `lazybw dev`.
 
