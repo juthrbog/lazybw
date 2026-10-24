@@ -24,14 +24,10 @@ type HeaderData struct {
 // space drops the email badge.
 const minHeaderEmailW = 6
 
-// GlyphLogo is the glyph in front of the name in the header,
-// nf-md-shield_lock.
-const GlyphLogo = "\U000F099D"
-
 // RenderHeader renders the 2-line header: title bar + gradient separator.
 // Both lines are exactly data.Width cells wide.
 func RenderHeader(data HeaderData) string {
-	title := GradientText(" "+GlyphLogo+" lazybw", GradientFrom, GradientTo)
+	title := GradientText(" "+Glyphs.Logo+" lazybw", GradientFrom, GradientTo)
 
 	// Build components left-to-right.
 	bar := title

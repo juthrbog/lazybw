@@ -15,14 +15,14 @@ import (
 func RenderGroupRow(name string, count int, expanded, selected bool, width int) string {
 	cursor := "  "
 	if selected {
-		cursor = "▶ "
+		cursor = Glyphs.Cursor
 	}
 
 	// The chevrons differ from the cursor, so that a selected collapsed
 	// group does not show the same glyph twice.
-	chevron := "▸"
+	chevron := Glyphs.Collapsed
 	if expanded {
-		chevron = "▾"
+		chevron = Glyphs.Expanded
 	}
 
 	prefix := cursor + chevron + "  "
@@ -66,9 +66,9 @@ func RenderItemRow(item bwcmd.Item, selected bool, width int, indent bool) strin
 	}
 	if selected {
 		if indent {
-			cursor = "  ▶ "
+			cursor = "  " + Glyphs.Cursor
 		} else {
-			cursor = "▶ "
+			cursor = Glyphs.Cursor
 		}
 	}
 
@@ -79,6 +79,11 @@ func RenderItemRow(item bwcmd.Item, selected bool, width int, indent bool) strin
 	// becomes a trailing space. Trim it, so that the description stays
 	// aligned to the right edge.
 	desc := strings.TrimRight(SanitizeLine(item.Description()), " ")
+	if item.Type == bwcmd.ItemTypeCard {
+		// Description masks the card number with "•". Use the mask of the
+		// active glyph set.
+		desc = strings.ReplaceAll(desc, "•", Glyphs.Mask)
+	}
 
 	// cursor + glyph + 2 spaces + name + gap + desc
 	prefixW := lipgloss.Width(cursor) + lipgloss.Width(glyph) + 2

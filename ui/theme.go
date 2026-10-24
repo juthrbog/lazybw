@@ -3,10 +3,8 @@ package ui
 import (
 	"image/color"
 	"slices"
-	"time"
 
 	"charm.land/bubbles/v2/list"
-	"charm.land/bubbles/v2/spinner"
 	"charm.land/huh/v2"
 	"charm.land/lipgloss/v2"
 
@@ -47,17 +45,11 @@ var (
 	GradientTo     color.Color
 )
 
-// Spinner definitions for loading states.
+// Spinner definitions for loading states. UseASCII changes them.
 var (
-	SpinnerUnlock = spinner.Spinner{
-		Frames: []string{"󰌾", "󰷖", "󰌆", "󰌿"},
-		FPS:    time.Second / 3,
-	}
-	SpinnerLock = spinner.Spinner{
-		Frames: []string{"󰌿", "󰌆", "󰷖", "󰌾"},
-		FPS:    time.Second / 3,
-	}
-	SpinnerLoad = spinner.Dot
+	SpinnerUnlock = Glyphs.SpinnerUnlock
+	SpinnerLock   = Glyphs.SpinnerLock
+	SpinnerLoad   = Glyphs.SpinnerLoad
 )
 
 // Pre-built styles — set by initStyles, called from ApplyTheme.
@@ -144,7 +136,13 @@ func ApplyTheme(name string) {
 // the form, and a form that is built later never gets that message. So the
 // theme ignores the background that huh passes in.
 func followBackground(styles func(isDark bool) *huh.Styles) huh.Theme {
-	return huh.ThemeFunc(func(bool) *huh.Styles { return styles(IsDark) })
+	return huh.ThemeFunc(func(bool) *huh.Styles {
+		s := styles(IsDark)
+		// The focused field has a border on its left. Use the border of the
+		// active glyph set.
+		s.Focused.Base = s.Focused.Base.BorderStyle(Glyphs.FormBorder)
+		return s
+	})
 }
 
 // huhThemeCharm is huh.ThemeCharm with readable option text. huh.ThemeCharm
@@ -259,16 +257,18 @@ func initStyles() {
 		Background(ColorHighlight).
 		Padding(0, 1)
 
-	// Render the glyphs in the new colors. The comments give the Nerd Font
-	// names of the code points. docs/GLYPHS.md lists them.
-	GlyphLogin = lipgloss.NewStyle().Foreground(ColorHighlight).Render("\U000F033E")    // nf-md-lock
-	GlyphCard = lipgloss.NewStyle().Foreground(ColorGreen).Render("\U000F0FEF")         // nf-md-credit_card
-	GlyphNote = lipgloss.NewStyle().Foreground(ColorYellow).Render("\U000F039E")        // nf-md-note_text
-	GlyphIdentity = lipgloss.NewStyle().Foreground(ColorHighlight).Render("\U000F0004") // nf-md-account
-	GlyphSSHKey = lipgloss.NewStyle().Foreground(ColorGreen).Render("\U000F08C0")       // nf-md-ssh
-	GlyphSuccess = lipgloss.NewStyle().Foreground(ColorGreen).Render("✓")
-	GlyphError = lipgloss.NewStyle().Foreground(ColorRed).Render("✗")
-	GlyphCopy = lipgloss.NewStyle().Foreground(ColorGreen).Render("\U000F018F") // nf-md-content_copy
+	// Render the glyphs of the active set in the new colors. glyphs.go
+	// gives the Nerd Font names of the code points, and docs/GLYPHS.md
+	// lists them.
+	g := Glyphs
+	GlyphLogin = lipgloss.NewStyle().Foreground(ColorHighlight).Render(g.Login)
+	GlyphCard = lipgloss.NewStyle().Foreground(ColorGreen).Render(g.Card)
+	GlyphNote = lipgloss.NewStyle().Foreground(ColorYellow).Render(g.Note)
+	GlyphIdentity = lipgloss.NewStyle().Foreground(ColorHighlight).Render(g.Identity)
+	GlyphSSHKey = lipgloss.NewStyle().Foreground(ColorGreen).Render(g.SSHKey)
+	GlyphSuccess = lipgloss.NewStyle().Foreground(ColorGreen).Render(g.Success)
+	GlyphError = lipgloss.NewStyle().Foreground(ColorRed).Render(g.Error)
+	GlyphCopy = lipgloss.NewStyle().Foreground(ColorGreen).Render(g.Copy)
 }
 
 // ListStyles returns the styles of the vault list and its filter input for
