@@ -65,7 +65,7 @@ func (m VaultModel) footerStatus() string {
 	toast := m.toast
 	if m.syncing {
 		if toast == "" {
-			toast = "Syncing…"
+			toast = "Syncing" + ui.Glyphs.Ellipsis
 		}
 		toast = m.syncSpinner.View() + " " + toast
 	}

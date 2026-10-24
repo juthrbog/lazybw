@@ -309,7 +309,7 @@ func (m VaultModel) renderReprompt(width, contentHeight int) string {
 	title := ui.StyleTitle.Render(ansi.Wrap("Master password re-prompt", textW, ""))
 
 	errText := m.reprompt.errText
-	body := ui.StyleFaint.Render(ansi.Wrap("Checking the master password…", textW, ""))
+	body := ui.StyleFaint.Render(ansi.Wrap("Checking the master password"+ui.Glyphs.Ellipsis, textW, ""))
 	if !m.reprompt.busy() {
 		body = m.reprompt.form.View()
 		// The form does not show its own error. That error is newer than

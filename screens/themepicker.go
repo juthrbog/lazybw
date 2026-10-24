@@ -147,7 +147,7 @@ func (p ThemePickerModel) FooterHints() []ui.HintBinding {
 	return []ui.HintBinding{
 		{Key: "enter", Desc: "select"},
 		{Key: "esc", Desc: "cancel"},
-		{Key: "↑/↓", Desc: "navigate"},
+		{Key: ui.Glyphs.UpDown(), Desc: "navigate"},
 		{Key: "/", Desc: "filter"},
 	}
 }

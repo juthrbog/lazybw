@@ -134,6 +134,7 @@ Follow these rules in a new test:
 | root (`main`) | `secrets_test.go` | Unlock drops the unlock screen, and each lock path drops the vault. |
 | root (`main`) | `panic_cleanup_test.go` | The exit cleanup after a panic in `Update`. |
 | root (`main`) | `lastsync_test.go` | The sync age in the footer, from bw status. |
+| root (`main`) | `ascii_test.go` | With `--ascii`, each screen, card and footer draws only ASCII characters. `LAZYBW_ASCII` turns the mode on. |
 | root (`main`) | `theme_test.go` | The warning for an unknown theme, and the restyle after a theme or background change. |
 | root (`main`) | `helpers_test.go` | No tests. The fake `bw` and the helpers. |
 | `bwcmd` | `exec_test.go`, `kill_unix_test.go` | How lazybw runs `bw`: arguments, environment, time limits, errors and the debug log. |

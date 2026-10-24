@@ -22,8 +22,8 @@ const (
 // passphrase mode.
 var genSeparators = []string{"-", "_", ".", " "}
 
-// genPlaceholder is the generator output while bw generate runs.
-const genPlaceholder = "Generating…"
+// genPlaceholder returns the generator output while bw generate runs.
+func genPlaceholder() string { return "Generating" + ui.Glyphs.Ellipsis }
 
 // genMaxWidth is the widest that a line of the generated value gets.
 const genMaxWidth = 72
@@ -121,7 +121,7 @@ func (g GeneratorModel) updateKey(msg tea.KeyPressMsg) (GeneratorModel, tea.Cmd)
 	case key.Matches(msg, k.Regenerate):
 		return g, g.generate()
 	case key.Matches(msg, k.Copy):
-		if g.err == "" && g.password != "" && g.password != genPlaceholder {
+		if g.err == "" && g.password != "" && g.password != genPlaceholder() {
 			return g, session.CopyToClipboard(g.password, session.CopyFieldPassword)
 		}
 	case key.Matches(msg, k.Mode):
@@ -207,7 +207,7 @@ func separatorName(sep string) string {
 // sequence number, so that a slow, older result cannot replace a newer one.
 func (g *GeneratorModel) generate() tea.Cmd {
 	g.seq++
-	g.password = genPlaceholder
+	g.password = genPlaceholder()
 	g.err = ""
 	return bwcmd.Generate(g.seq, g.args()...)
 }
@@ -296,9 +296,9 @@ func (g GeneratorModel) View(width int) string {
 
 func checkMark(v bool) string {
 	if v {
-		return ui.StyleToast.Render("✓")
+		return ui.StyleToast.Render(ui.Glyphs.On)
 	}
-	return ui.StyleFaint.Render("·")
+	return ui.StyleFaint.Render(ui.Glyphs.Off)
 }
 
 // FooterHints returns the footer hints for the mode of the card.

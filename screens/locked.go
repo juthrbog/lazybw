@@ -402,9 +402,9 @@ func (m *LockedModel) endTwoStep() {
 // ViewContent returns the screen content for the root frame to center.
 func (m LockedModel) ViewContent(width, contentHeight int) string {
 	if m.state == lockedUnlocking {
-		busy := "Unlocking…"
+		busy := "Unlocking" + ui.Glyphs.Ellipsis
 		if m.isLogin {
-			busy = "Logging in…"
+			busy = "Logging in" + ui.Glyphs.Ellipsis
 		}
 		return ui.CenterInArea(m.spinner.View()+" "+busy, width, contentHeight)
 	}
@@ -446,7 +446,7 @@ func (m LockedModel) FooterContent() ([]ui.HintBinding, string) {
 	case m.state == lockedTwoStep && m.stage == stageMethod:
 		return []ui.HintBinding{
 			{Key: "enter", Desc: "submit"},
-			{Key: "↑/↓", Desc: "navigate"},
+			{Key: ui.Glyphs.UpDown(), Desc: "navigate"},
 			{Key: "esc", Desc: "back"},
 			{Key: "ctrl+q", Desc: "quit"},
 		}, ""

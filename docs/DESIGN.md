@@ -964,6 +964,7 @@ or field values.
 | `--idle-timeout` | `15m` | Lock the vault after this time with no key press. The minimum is `30s`. A smaller value prints a warning and uses `30s`. |
 | `--theme` | `catppuccin-mocha` | The color theme. `LAZYBW_THEME` sets it when the flag is not given. |
 | `--debug` | `false` | Write the debug log (see [Debug log](#debug-log)). |
+| `--ascii` | `false` | Draw only ASCII characters. `LAZYBW_ASCII` sets it when the flag is not given. See [GLYPHS.md](GLYPHS.md#ascii-mode). |
 | `--version` | | Print the version and stop. |
 
 `--version` prints `lazybw <version>`. A release build gets the version

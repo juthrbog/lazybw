@@ -10,6 +10,7 @@ import (
 	"os/signal"
 	"path/filepath"
 	"runtime/debug"
+	"strconv"
 	"strings"
 	"syscall"
 	"time"
@@ -26,12 +27,16 @@ func main() {
 	ver := flag.Bool("version", false, "print version and exit")
 	idleTimeout := flag.Duration("idle-timeout", 15*time.Minute, "lock vault after this duration of inactivity (minimum 30s)")
 	theme := flag.String("theme", "", "color theme ("+strings.Join(ui.ThemeNames, ", ")+")")
+	ascii := flag.Bool("ascii", false, "draw only ASCII characters, for terminals that draw some symbols 2 cells wide")
 	flag.Parse()
 
 	if *ver {
 		fmt.Println(versionString())
 		return
 	}
+
+	// The glyph set comes first, because the theme styles the glyphs.
+	ui.UseASCII(*ascii || asciiFromEnv(os.Getenv("LAZYBW_ASCII"), os.Stderr))
 
 	// Apply theme: flag > env var > default (catppuccin-mocha).
 	themeName := *theme
@@ -160,6 +165,21 @@ func printLockErrors(w io.Writer, final tea.Model, cleanupErr error) {
 // setTheme applies the theme from --theme or LAZYBW_THEME. An empty name
 // keeps the default theme. For a name that is not a theme, it writes a
 // warning with the theme names to w and applies the default theme.
+// asciiFromEnv reports whether the value of LAZYBW_ASCII turns on the ASCII
+// glyphs. An empty value turns them off. For a value that strconv.ParseBool
+// does not accept, it writes a warning to w and turns them off.
+func asciiFromEnv(value string, w io.Writer) bool {
+	if value == "" {
+		return false
+	}
+	on, err := strconv.ParseBool(value)
+	if err != nil {
+		_, _ = fmt.Fprintf(w, "Warning: LAZYBW_ASCII=%q is not true or false, so lazybw uses the Unicode glyphs\n", value)
+		return false
+	}
+	return on
+}
+
 func setTheme(name string, w io.Writer) {
 	if name == "" {
 		return

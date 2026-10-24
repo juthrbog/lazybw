@@ -87,7 +87,7 @@ func TestGlyphRunes(t *testing.T) {
 		{"secure note (nf-md-note_text)", ItemGlyph(bwcmd.ItemTypeSecureNote), 0xF039E},
 		{"identity (nf-md-account)", ItemGlyph(bwcmd.ItemTypeIdentity), 0xF0004},
 		{"SSH key (nf-md-ssh)", ItemGlyph(bwcmd.ItemTypeSSHKey), 0xF08C0},
-		{"header logo (nf-md-shield_lock)", GlyphLogo, 0xF099D},
+		{"header logo (nf-md-shield_lock)", Glyphs.Logo, 0xF099D},
 	}
 	for _, tt := range tests {
 		if got := []rune(ansi.Strip(tt.glyph)); len(got) != 1 || got[0] != tt.want {

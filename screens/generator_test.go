@@ -72,8 +72,8 @@ func TestGeneratorReopenDropsLateResult(t *testing.T) {
 	}
 	updated, _ := m.Update(bwcmd.GenerateResult{Password: "late", Seq: first})
 	m = updated.(VaultModel)
-	if m.gen.password != genPlaceholder {
-		t.Errorf("password = %q, want %q until the new result", m.gen.password, genPlaceholder)
+	if m.gen.password != genPlaceholder() {
+		t.Errorf("password = %q, want %q until the new result", m.gen.password, genPlaceholder())
 	}
 }
 

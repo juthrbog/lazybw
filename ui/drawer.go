@@ -111,7 +111,7 @@ func RenderDrawer(props DrawerProps) string {
 			// Replace the last row with a marker, so that the user knows
 			// that fields are hidden.
 			hidden := len(fields) - maxFields + 1
-			more := Truncate(fmt.Sprintf("  ↓ %d more", hidden), props.Width)
+			more := Truncate(fmt.Sprintf("  %s %d more", Glyphs.Down, hidden), props.Width)
 			fields = append(fields[:maxFields-1], StyleFaint.Render(more))
 		}
 		for len(fields) < maxFields {
@@ -124,6 +124,11 @@ func RenderDrawer(props DrawerProps) string {
 	}
 
 	return sep + "\n" + strings.Join(fields, "\n")
+}
+
+// mask returns n cells of the mask glyph, which hide a secret value.
+func mask(n int) string {
+	return strings.Repeat(Glyphs.Mask, n)
 }
 
 // drawerKeys are the vault keys that the drawer hints name.
@@ -176,7 +181,7 @@ func MaxScrollOffset(props DrawerProps) int {
 func renderNoSelection(width, height int) string {
 	lines := []string{
 		RenderGradientLine(width),
-		StyleFaint.Render(Truncate("  No item selected — navigate with j/k or search with /", width)),
+		StyleFaint.Render(Truncate("  No item selected "+Glyphs.Dash+" navigate with j/k or search with /", width)),
 	}
 	for len(lines) < height {
 		lines = append(lines, "")
@@ -195,7 +200,7 @@ func renderGroupSummary(g GroupSummary, props DrawerProps, height int) string {
 	width := props.Width
 	lines := []string{
 		"  " + StyleTitle.Render(Truncate(SanitizeLine(g.Name), width-2)),
-		StyleFaint.Render(Truncate(fmt.Sprintf("  %d items · enter to %s", g.Count, action), width)),
+		StyleFaint.Render(Truncate(fmt.Sprintf("  %d items%senter to %s", g.Count, Glyphs.Dot, action), width)),
 	}
 	if props.AutoHeight {
 		return strings.Join(lines, "\n")
@@ -300,7 +305,7 @@ func renderLoginFields(props DrawerProps) []string {
 	if password == "" {
 		fields = append(fields, renderedFieldRow("Password", StyleFaint.Render("(none)"), "", w))
 	} else {
-		fields = append(fields, fieldRow("Password", "••••••••••", copyHint(drawerKeys.Copy), w))
+		fields = append(fields, fieldRow("Password", mask(10), copyHint(drawerKeys.Copy), w))
 	}
 
 	if item.Login != nil && item.Login.Totp != "" {
@@ -340,9 +345,9 @@ func renderCardFields(item *bwcmd.Item, width int) []string {
 
 	fields = append(fields, fieldRow("Cardholder", c.CardholderName, "", width))
 
-	numDisplay := "••••••••••••"
+	numDisplay := mask(12)
 	if len(c.Number) >= 4 {
-		numDisplay = "•••• •••• •••• " + c.Number[len(c.Number)-4:]
+		numDisplay = mask(4) + " " + mask(4) + " " + mask(4) + " " + c.Number[len(c.Number)-4:]
 	}
 	fields = append(fields, fieldRow("Number", numDisplay, copyHint(drawerKeys.Copy), width))
 
@@ -354,7 +359,7 @@ func renderCardFields(item *bwcmd.Item, width int) []string {
 	if c.Code == "" {
 		fields = append(fields, renderedFieldRow("CVV", StyleFaint.Render("(none)"), "", width))
 	} else {
-		fields = append(fields, fieldRow("CVV", "•••", copyHint(drawerKeys.CopyCVV), width))
+		fields = append(fields, fieldRow("CVV", mask(3), copyHint(drawerKeys.CopyCVV), width))
 	}
 
 	return fields
@@ -418,13 +423,13 @@ func renderIdentityFields(item *bwcmd.Item, width int) []string {
 
 	// Sensitive fields — masked.
 	if id.SSN != "" {
-		fields = append(fields, fieldRow("SSN", "•••••••••", copyHint(drawerKeys.Copy), width))
+		fields = append(fields, fieldRow("SSN", mask(9), copyHint(drawerKeys.Copy), width))
 	}
 	if id.PassportNumber != "" {
-		fields = append(fields, fieldRow("Passport", "•••••••••", "", width))
+		fields = append(fields, fieldRow("Passport", mask(9), "", width))
 	}
 	if id.LicenseNumber != "" {
-		fields = append(fields, fieldRow("License", "•••••••••", "", width))
+		fields = append(fields, fieldRow("License", mask(9), "", width))
 	}
 
 	// Address.
@@ -484,7 +489,7 @@ func renderSSHKeyFields(item *bwcmd.Item, width int) []string {
 		fields = append(fields, fieldRow("Public Key", k.PublicKey, copyHint(drawerKeys.CopyUsername), width))
 	}
 
-	fields = append(fields, fieldRow("Private Key", "••••••••••", copyHint(drawerKeys.Copy), width))
+	fields = append(fields, fieldRow("Private Key", mask(10), copyHint(drawerKeys.Copy), width))
 
 	if len(fields) == 0 {
 		fields = []string{"  " + GlyphSSHKey + " " + StyleFaint.Render("(empty SSH key)")}
@@ -580,7 +585,7 @@ func renderTOTP(code string, secsLeft, period int, invalid, showSecs bool) strin
 		return StyleError.Render("invalid TOTP secret")
 	}
 	if code == "" {
-		return StyleFaint.Render("loading…")
+		return StyleFaint.Render("loading" + Glyphs.Ellipsis)
 	}
 	if period <= 0 {
 		period = 30
@@ -592,11 +597,12 @@ func renderTOTP(code string, secsLeft, period int, invalid, showSecs bool) strin
 		display = code[:3] + " " + code[3:]
 	}
 
-	// Micro-bar countdown: 4-character bar using block elements (U+2588-258F)
-	// with light shade (░) for the empty track. 4 chars * 8 levels = 32 states
-	// for the period, giving a visible change every second at 30 seconds.
+	// Micro-bar countdown: 4 cells of the bar glyphs of the active set, for
+	// example block elements (U+2588-258F) with a light shade (░) for the
+	// empty track. 4 cells * 8 levels = 32 states for the period, giving a
+	// visible change every second at 30 seconds.
 	const barWidth = 4
-	blocks := [8]rune{'█', '▉', '▊', '▋', '▌', '▍', '▎', '▏'}
+	g := Glyphs
 
 	fill := min(secsLeft*barWidth*8/period, barWidth*8)
 	full := fill / 8
@@ -605,11 +611,11 @@ func renderTOTP(code string, secsLeft, period int, invalid, showSecs bool) strin
 	var filled, track strings.Builder
 	for i := range barWidth {
 		if i < full {
-			filled.WriteRune('█')
+			filled.WriteString(g.BarFull)
 		} else if i == full && frac > 0 {
-			filled.WriteRune(blocks[8-frac])
+			filled.WriteString(g.BarSteps[7-frac])
 		} else {
-			track.WriteRune('░')
+			track.WriteString(g.BarEmpty)
 		}
 	}
 
