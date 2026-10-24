@@ -49,7 +49,7 @@ func RenderOverlay(bg, fg string, width, height int) string {
 
 	// Wrap foreground in a bordered card with padding.
 	card := lipgloss.NewStyle().
-		Border(lipgloss.RoundedBorder()).
+		Border(Glyphs.CardBorder).
 		BorderForeground(ColorHighlight).
 		Padding(cardPadY, cardPadX).
 		Render(fg)

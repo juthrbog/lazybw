@@ -44,7 +44,7 @@ func RenderHints(hints []HintBinding, maxWidth int) string {
 }
 
 func joinHints(hints []HintBinding) string {
-	sep := StyleHintSep.Render(" · ")
+	sep := StyleHintSep.Render(Glyphs.Sep)
 	parts := make([]string, len(hints))
 	for i, h := range hints {
 		parts[i] = StyleHintKey.Render(h.Key) + " " + StyleHintDesc.Render(h.Desc)

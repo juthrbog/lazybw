@@ -268,8 +268,8 @@ func (m VaultModel) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// The root model schedules and runs the clipboard clear. The
 		// terminal does not answer an OSC 52 write, so the toast says only
 		// that lazybw sent the value.
-		m.setCopyToast(fmt.Sprintf("%s %s sent to clipboard · clears in %ds",
-			ui.GlyphCopy, copyLabel(msg.Field), int(session.ClipboardClearDelay.Seconds())))
+		m.setCopyToast(fmt.Sprintf("%s %s sent to clipboard%sclears in %ds",
+			ui.GlyphCopy, copyLabel(msg.Field), ui.Glyphs.Dot, int(session.ClipboardClearDelay.Seconds())))
 		return m, nil
 
 	case session.ClipboardClearedMsg:
@@ -521,7 +521,7 @@ func (m VaultModel) FooterContent() ([]ui.HintBinding, string) {
 		hints = []ui.HintBinding{
 			ui.Hint(lk.CancelWhileFiltering, "clear"),
 			ui.Hint(lk.AcceptWhileFiltering, "confirm"),
-			{Key: "↑/↓", Desc: "navigate"},
+			{Key: ui.Glyphs.UpDown(), Desc: "navigate"},
 		}
 	case m.list.FilterState() == list.FilterApplied:
 		// Show that the list is filtered, and how to clear the filter. The

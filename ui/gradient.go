@@ -36,7 +36,7 @@ func RenderGradientLine(width int) string {
 	colors := lipgloss.Blend1D(width, GradientFrom, GradientTo)
 	var b strings.Builder
 	for _, c := range colors {
-		b.WriteString(lipgloss.NewStyle().Foreground(c).Render("▄"))
+		b.WriteString(lipgloss.NewStyle().Foreground(c).Render(Glyphs.Rule))
 	}
 	return b.String()
 }

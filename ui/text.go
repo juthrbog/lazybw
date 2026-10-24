@@ -130,7 +130,7 @@ func Truncate(s string, width int) string {
 	if width <= 0 {
 		return ""
 	}
-	return ansi.Truncate(s, width, "…")
+	return ansi.Truncate(s, width, Glyphs.Ellipsis)
 }
 
 // NoteLines splits a note into the lines that the drawer shows at the given

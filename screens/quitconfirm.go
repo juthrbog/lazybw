@@ -37,7 +37,7 @@ func renderQuitConfirm() string {
 	b.WriteString("\n\n")
 	b.WriteString(keyStyle.Render(yes.Key))
 	b.WriteString(ui.StyleFaint.Render(" " + yes.Desc))
-	b.WriteString(ui.StyleFaint.Render(" · "))
+	b.WriteString(ui.StyleFaint.Render(ui.Glyphs.Dot))
 	b.WriteString(keyStyle.Render(no.Key))
 	b.WriteString(ui.StyleFaint.Render(" " + no.Desc))
 	return b.String()

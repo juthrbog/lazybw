@@ -52,7 +52,9 @@ tasks:
         msg: "Give a version such as v0.3.0 or v0.3.0-rc.1: task release -- v0.3.0"
       - sh: test "$(git branch --show-current)" = main
         msg: "Switch to the main branch first."
-      - sh: test -z "$(git status --porcelain)"
+      # Untracked files do not matter: the tag names a commit, and the
+      # release builds a clean checkout of it.
+      - sh: test -z "$(git status --porcelain --untracked-files=no)"
         msg: "Commit or stash your changes first."
       - sh: git fetch -q origin main && test "$(git rev-parse HEAD)" = "$(git rev-parse origin/main)"
         msg: "Pull first: main is not the same as origin/main."
