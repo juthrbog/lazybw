@@ -352,7 +352,7 @@ func TestCopyNoteIsClearedLikeOtherSecrets(t *testing.T) {
 	m := unlockedVault(t, testItems())
 	m, _ = update(t, m, keyPress("j"))
 	m, _ = update(t, m, keyPress("j")) // the secure note "Keys"
-	m, cmd := update(t, m, keyPress("n"))
+	m, cmd := update(t, m, keyPress("m"))
 	msgs := collectMsgs(cmd)
 	if !hasMsg(msgs, tea.SetClipboard("secret")()) {
 		t.Fatal("n must copy the note")

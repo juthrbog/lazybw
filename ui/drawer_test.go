@@ -354,7 +354,7 @@ func TestRenderDrawerLoginNotesWithCRLF(t *testing.T) {
 		if !strings.Contains(notesRow, "first line") {
 			t.Errorf("Notes row = %q, want it to contain %q", notesRow, "first line")
 		}
-		if !strings.Contains(notesRow, "[n] copy") {
+		if !strings.Contains(notesRow, "[m] copy") {
 			t.Errorf("Notes row = %q, want the copy hint", notesRow)
 		}
 		if strings.ContainsAny(out, "\r\t") {
@@ -451,7 +451,7 @@ func TestRenderDrawerMarksHiddenFields(t *testing.T) {
 
 func TestRenderDrawerSecureNoteShowsCopyHint(t *testing.T) {
 	item := &bwcmd.Item{Type: bwcmd.ItemTypeSecureNote, Name: "Keys", Notes: "secret"}
-	if out := RenderDrawer(DrawerProps{Item: item, Width: 60}); !strings.Contains(out, "[n] copy") {
+	if out := RenderDrawer(DrawerProps{Item: item, Width: 60}); !strings.Contains(out, "[m] copy") {
 		t.Errorf("note drawer must show the copy hint:\n%s", out)
 	}
 }

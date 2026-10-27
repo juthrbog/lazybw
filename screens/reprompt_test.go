@@ -204,9 +204,9 @@ func TestRepromptCorrectPasswordRunsCopy(t *testing.T) {
 	}
 	// The item stays verified while it stays selected: the next copy needs
 	// one key press.
-	_, cmd := m.Update(keyMsg("n"))
+	_, cmd := m.Update(keyMsg("m"))
 	if values, _ := clipboardWrites(t, cmd, "pin 4321"); len(values) != 1 {
-		t.Error("after the check, n on the same item must copy at once")
+		t.Error("after the check, m on the same item must copy at once")
 	}
 	if len(*calls) != 1 {
 		t.Errorf("password checks = %d, want no new check", len(*calls))
@@ -261,11 +261,11 @@ func TestRepromptProtectsEveryField(t *testing.T) {
 		item int
 		key  string
 	}{
-		{0, "c"}, {0, "t"}, {0, "n"}, // password, TOTP and note
+		{0, "c"}, {0, "t"}, {0, "m"}, // password, TOTP and note
 		{1, "c"}, {1, "v"}, // card number and security code
 		{2, "c"}, // SSN
 		{3, "c"}, // SSH private key
-		{4, "n"}, // note
+		{4, "m"}, // note
 	}
 	secrets := []string{"bank-pw", "pin 4321", "4242424242424242", "123", "123-45-6789", "PRIVATE KEY", "note body"}
 	secrets = append(secrets, codesFor(t, alphaKey)...)

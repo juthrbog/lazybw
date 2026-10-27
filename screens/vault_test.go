@@ -439,7 +439,7 @@ func TestCopyNoteCopiesFullNote(t *testing.T) {
 	note := "line one\r\n\x1b[8mline two\tend\n"
 	items := []bwcmd.Item{{ID: "n", Type: bwcmd.ItemTypeSecureNote, Name: "Keys", Notes: note}}
 	m := newTestVault(items)
-	_, cmd := m.Update(keyMsg("n"))
+	_, cmd := m.Update(keyMsg("m"))
 	values, fields := clipboardWrites(t, cmd, note)
 	if len(values) != 1 {
 		t.Fatalf("n must copy the full, unchanged note, got %q", values)
@@ -456,7 +456,7 @@ func TestCopyNoteCopiesFullNote(t *testing.T) {
 
 func TestCopyNoteWithoutNotesCopiesNothing(t *testing.T) {
 	m := newTestVault(testItems()) // Gmail has no notes
-	_, cmd := m.Update(keyMsg("n"))
+	_, cmd := m.Update(keyMsg("m"))
 	if _, fields := clipboardWrites(t, cmd); len(fields) != 0 {
 		t.Errorf("n on an item without notes must not copy, got %v", fields)
 	}
@@ -522,14 +522,14 @@ func TestDrawerScrollIgnoredForLogin(t *testing.T) {
 func TestOverlaysFitSmallTerminals(t *testing.T) {
 	for _, size := range [][2]int{{50, 15}, {30, 10}} {
 		width, height := size[0], size[1]
-		for _, k := range []string{"?", "p", "q", "d", "T"} {
+		for _, k := range []string{"?", "p", "q", "z", "T"} {
 			m := vaultAt(testItems(), width, height)
 			// Do not run the command: p would start bw generate.
 			updated, _ := m.Update(keyMsg(k))
 			m = updated.(VaultModel)
 			out := m.ViewContent(width, height-ui.ChromeHeight)
 			assertArea(t, out, width, height-ui.ChromeHeight)
-			if width == 50 && k != "d" {
+			if width == 50 && k != "z" {
 				// 50x15 has room for the whole card of each dialog.
 				cardColumns(t, out)
 			}
@@ -582,7 +582,7 @@ func TestOverlayDrawerKeepsBorders(t *testing.T) {
 		m := newTestVault(items)
 		m.list.Select(i)
 		m.syncSelection()
-		m = press(t, m, keyMsg("d"))
+		m = press(t, m, keyMsg("z"))
 		out := m.ViewContent(80, 21)
 		assertArea(t, out, 80, 21)
 		left, right := cardColumns(t, out)
@@ -594,7 +594,7 @@ func TestOverlayDrawerKeepsBorders(t *testing.T) {
 	m := newTestVault(items)
 	m.list.Select(2)
 	m.syncSelection()
-	m = press(t, m, keyMsg("d"))
+	m = press(t, m, keyMsg("z"))
 	plain := strings.Join(strings.Fields(strings.ReplaceAll(ansi.Strip(m.ViewContent(80, 21)), "│", " ")), " ")
 	if !strings.Contains(plain, long) {
 		t.Errorf("overlay card does not show all of the note:\n%s", plain)
@@ -671,7 +671,7 @@ func TestOverlayDrawerScrollReachesLastLine(t *testing.T) {
 	for _, size := range [][2]int{{80, 24}, {80, 14}, {80, 12}, {40, 12}, {80, 10}} {
 		width, height := size[0], size[1]
 		m := vaultAt([]bwcmd.Item{tenLineNote()}, width, height)
-		m = press(t, m, keyMsg("d"))
+		m = press(t, m, keyMsg("z"))
 		m = pressN(t, m, "J", 30)
 		out := m.ViewContent(width, height-ui.ChromeHeight)
 		assertArea(t, out, width, height-ui.ChromeHeight)
@@ -881,9 +881,9 @@ func TestToastExpiresAndFooterShowsSyncAge(t *testing.T) {
 
 	m := newTestVault(testItems())
 	m.sess.LastSync = time.Now().Add(-3*time.Minute - 30*time.Second)
-	updated, first := m.Update(keyMsg("d"))
+	updated, first := m.Update(keyMsg("z"))
 	m = updated.(VaultModel)
-	updated, second := m.Update(keyMsg("d"))
+	updated, second := m.Update(keyMsg("z"))
 	m = updated.(VaultModel)
 	if _, status := m.FooterContent(); !strings.Contains(status, "Drawer: inline") || strings.Contains(status, "synced") {
 		t.Fatalf("status = %q, want the toast and no sync age", status)

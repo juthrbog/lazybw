@@ -413,7 +413,7 @@ These tests cover the clipboard messages:
 | `TestClipboardTimerAfterLockDoesNothing` | `lock_test.go` | A `ClipboardClearedMsg` after a lock returns no command, because the lock already cleared the clipboard. |
 | `TestClipboardTimerClearsWhileQuitting` | `lock_test.go` | A `ClipboardClearedMsg` clears the clipboard while lazybw quits. |
 | `TestCleanupAfterExit` | `lock_test.go` | After a `CopiedMsg`, the exit cleanup writes the OSC 52 clear and runs `bw lock`. |
-| `TestCopyNoteIsClearedLikeOtherSecrets` | `model_test.go` | `n` copies the note and sends `CopiedMsg`. The `ClipboardClearedMsg` of that copy clears the clipboard. |
+| `TestCopyNoteIsClearedLikeOtherSecrets` | `model_test.go` | `m` copies the note and sends `CopiedMsg`. The `ClipboardClearedMsg` of that copy clears the clipboard. |
 | `TestUpdateRecordsExitCleanup`, `TestPanicInUpdateStillCleansUp` | `panic_cleanup_test.go` | After a `CopiedMsg`, the recorded exit cleanup includes a clipboard clear, also after a panic in `Update`. |
 | `TestCopiedMsgLeavesClearToRoot` | `screens/vault_test.go` | The vault shows the copy toast for a `CopiedMsg` and starts no timer. The root model starts the clear timer for each `CopiedMsg`. |
 | `TestCopyToastStaysUntilClipboardClear`, `TestClipboardClearKeepsNewerToast` | `screens/toast_test.go` | The copy toast stays until the `ClipboardClearedMsg`. The clear does not remove a newer toast. |

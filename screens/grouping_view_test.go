@@ -57,7 +57,7 @@ func TestDrawerShowsGroupSummary(t *testing.T) {
 	m = selectRow(t, m, "group:github")
 	for _, overlay := range []bool{false, true} {
 		if overlay {
-			m = press(t, m, keyMsg("d"))
+			m = press(t, m, keyMsg("z"))
 		}
 		out := m.ViewContent(80, 24-ui.ChromeHeight)
 		plain := ansi.Strip(out)

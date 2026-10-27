@@ -34,7 +34,7 @@ func TestDrawerHidesSecretsOfRepromptItem(t *testing.T) {
 		t.Errorf("the TOTP and the notes rows must say %q:\n%s", hiddenValue, out)
 	}
 	// The copy keys still show: they ask for the master password.
-	for _, hint := range []string{"[t] copy", "[n] copy"} {
+	for _, hint := range []string{"[t] copy", "[m] copy"} {
 		if !strings.Contains(out, hint) {
 			t.Errorf("the drawer must show %q:\n%s", hint, out)
 		}

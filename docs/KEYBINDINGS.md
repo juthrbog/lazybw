@@ -40,7 +40,7 @@ These are the action bindings of `DefaultVaultKeyMap` in `ui/keymap.go`. The hel
 | `c` | Copy the main secret. That is the password of a login, the card number, the SSN of an identity or the private key of an SSH key. |
 | `t` | Copy the TOTP code. If the TOTP key does not parse, lazybw shows the error toast "Invalid TOTP secret". |
 | `u` | Copy the username of a login, the email of an identity, or the public key of an SSH key |
-| `n` | Copy the note |
+| `m` | Copy the note |
 | `v` | Copy the security code (CVV) of a card |
 | `o` | Open the first URL of a login in the default browser. lazybw opens only http and https URLs. It adds `https://` to a URL that has no scheme. |
 | `J` / `shift+down` | Scroll the note in the drawer down. Only a secure note scrolls. |
@@ -48,7 +48,7 @@ These are the action bindings of `DefaultVaultKeyMap` in `ui/keymap.go`. The hel
 | `+` | Make the inline drawer one row taller |
 | `-` | Make the inline drawer one row shorter |
 | `=` | Set the inline drawer to its default height of 8 rows |
-| `d` | Switch the drawer between inline mode and overlay mode |
+| `z` | Switch the drawer between inline mode and overlay mode |
 | `p` | Open the password generator |
 | `r` | Sync the vault with `bw sync`, and then load the items again. While a sync runs, `r` does nothing. |
 | `l` | Lock the vault and show the unlock screen |
@@ -64,7 +64,7 @@ A copy key copies nothing when the selected item does not have that field. When 
 
 The drawer keys `+`, `-` and `=` do nothing in overlay mode. The drawer height stays between 3 rows and half of the terminal height.
 
-When an item has master password re-prompt, `c`, `t`, `v` and `n` first ask for the master password. See [Master password re-prompt](#master-password-re-prompt).
+When an item has master password re-prompt, `c`, `t`, `v` and `m` first ask for the master password. See [Master password re-prompt](#master-password-re-prompt).
 
 While an overlay shows (help, generator, theme picker, re-prompt or quit confirmation), the vault keys do nothing. The overlay gets the keys.
 
@@ -175,7 +175,7 @@ In passphrase mode, `4` does nothing.
 
 ## Master password re-prompt
 
-A Bitwarden item can have master password re-prompt. For such an item, `c`, `t`, `v` and `n` open a prompt that asks for the master password. `u` and `o` do not ask.
+A Bitwarden item can have master password re-prompt. For such an item, `c`, `t`, `v` and `m` open a prompt that asks for the master password. `u` and `o` do not ask.
 
 | Key | Action |
 |---|---|
