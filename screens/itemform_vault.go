@@ -202,12 +202,13 @@ func renderDiscard() string {
 
 // renderChoiceCard renders a card with a title, a text and a row of keys.
 func renderChoiceCard(title, text string, keys ...key.Help) string {
+	return ui.StyleTitle.Render(title) + "\n\n" + text + "\n\n" + renderChoiceKeys(keys...)
+}
+
+// renderChoiceKeys renders a row of keys with their descriptions.
+func renderChoiceKeys(keys ...key.Help) string {
 	keyStyle := lipgloss.NewStyle().Foreground(ui.ColorHighlight).Bold(true)
 	var b strings.Builder
-	b.WriteString(ui.StyleTitle.Render(title))
-	b.WriteString("\n\n")
-	b.WriteString(text)
-	b.WriteString("\n\n")
 	for i, k := range keys {
 		if i > 0 {
 			b.WriteString(ui.StyleFaint.Render(ui.Glyphs.Dot))

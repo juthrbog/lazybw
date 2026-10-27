@@ -20,7 +20,7 @@ documents give more detail:
 - Compute TOTP codes locally, and show a live countdown in the drawer.
 - Copy with OSC 52, the terminal escape sequence that sets the clipboard.
 - Keep the session token in memory only, clear the clipboard after 60 seconds, and lock the vault after 15 minutes with no key press.
-- Create and edit logins and secure notes in a form. The item goes to `bw` on stdin, never in an argument.
+- Create and edit logins and secure notes in a form, and move items to the trash. The item goes to `bw` on stdin, never in an argument.
 
 ## Stack
 
@@ -493,7 +493,7 @@ A Bitwarden item can have "Master password re-prompt" turned on.
 that the clients ask for the master password. bw does not enforce it, so
 lazybw does.
 
-- For such an item, `c`, `t`, `v`, `m` and `e` open the card `Master password re-prompt` with a password input. After the check, `e` opens the edit form. `u` and `o` do not ask.
+- For such an item, `c`, `t`, `v`, `m`, `e` and `d` open the card `Master password re-prompt` with a password input. After the check, `e` opens the edit form and `d` opens the trash dialog. `u` and `o` do not ask.
 - Enter submits the password. Esc cancels and closes the card. The footer shows `enter submit · esc cancel`.
 - lazybw runs `bw unlock --passwordenv BW_PASSWORD --raw` with the typed password. While bw runs, the card shows `Checking the master password…`, and only Esc works.
 - If bw accepts the password, it returns a new session key, and the old key stops working. lazybw stores the new key with `session.State.ReplaceToken`. The session epoch does not change, so the bw commands that started in this session still belong to it. Then lazybw runs the copy that the user asked for.
@@ -617,6 +617,22 @@ A lock drops the vault model and the form with it. lazybw keeps no draft.
 
 ---
 
+## Move to Trash
+
+`d` or Delete opens the card `Move "<name>" to trash?` for the selected
+item of any type (`screens/delete.go`). For an item with master password
+re-prompt, the password check comes first. `y` runs `bw delete item <id>`
+with no `--permanent`, so the item goes to the trash, where the user can
+restore it for 30 days. `n` and Esc close the card.
+
+While `bw` runs, the card shows "Moving to trash…" and ignores keys. If
+`bw` fails, the card shows the error and `y` tries again. If `bw`
+succeeds, the card closes, lazybw runs `bw list items`, selects the item
+in the next row (or in the row before, for the last row) and shows the
+toast "Moved <name> to trash".
+
+---
+
 ## Keybindings
 
 [KEYBINDINGS.md](KEYBINDINGS.md) is the full reference, with the keys of
@@ -641,6 +657,7 @@ each overlay and of the unlock screen. These are the vault keys:
 | `l` | Lock the vault |
 | `n` | Create an item (see [Item Form](#item-form)) |
 | `e` | Edit the selected login or secure note |
+| `d` / Delete | Move the selected item to the trash (see [Move to Trash](#move-to-trash)) |
 | `p` | Open the password generator |
 | `T` | Open the theme picker |
 | `ctrl+g` | Turn grouping on or off |
@@ -716,6 +733,7 @@ the output of bw.
 | `bw create item` | `ctrl+s` in the form for a new item | 2 min | `BW_SESSION` |
 | `bw get item <id>` | `e` | 2 min | `BW_SESSION` |
 | `bw edit item <id>` | `ctrl+s` in the edit form | 2 min | `BW_SESSION` |
+| `bw delete item <id>` | `y` in the trash dialog | 2 min | `BW_SESSION` |
 
 `bw create item` and `bw edit item` get the item as base64-encoded JSON on
 stdin, not as an argument, because any local user can read the arguments
@@ -1078,7 +1096,8 @@ lazybw/
 │   ├── toast.go          # Toasts and the footer status
 │   ├── generator.go      # GeneratorModel: the password generator card
 │   ├── itemform.go       # Item form: fields, checks and the item JSON
-│   ├── itemform_vault.go # New item card, save, discard dialog
+│   ├── itemform_vault.go # New item card, edit, save, discard dialog
+│   ├── delete.go         # Move to trash dialog
 │   ├── themepicker.go    # ThemePickerModel: the theme picker card
 │   ├── quitconfirm.go    # Quit confirmation card
 │   ├── grouping.go       # Group keys and the grouping algorithm
@@ -1104,7 +1123,7 @@ lazybw/
 │   ├── kill_unix.go      # Kill the process group after a time limit
 │   ├── kill_other.go     # Default kill on other systems
 │   ├── parser.go         # Parse bw status and bw list items
-│   ├── write.go          # bw create, get and edit item, and the JSON of a new item
+│   ├── write.go          # bw create, get, edit and delete item, and the JSON of a new item
 │   └── types.go          # Item types
 ├── session/
 │   ├── manager.go        # Session state, epoch, idle test
@@ -1125,7 +1144,7 @@ lazybw/
 
 ## Not in Scope
 
-- Delete of items (planned in #6)
+- Permanent delete, and restore from the trash
 - Organization and collection navigation
 - More than one account
 - SSH agent integration

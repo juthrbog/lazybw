@@ -86,6 +86,7 @@ var (
 	GlyphCopy     string
 	GlyphSave     string
 	GlyphEdit     string
+	GlyphDelete   string
 )
 
 func init() {
@@ -273,6 +274,7 @@ func initStyles() {
 	GlyphCopy = lipgloss.NewStyle().Foreground(ColorGreen).Render(g.Copy)
 	GlyphSave = lipgloss.NewStyle().Foreground(ColorGreen).Render(g.Save)
 	GlyphEdit = lipgloss.NewStyle().Foreground(ColorGreen).Render(g.Edit)
+	GlyphDelete = lipgloss.NewStyle().Foreground(ColorRed).Render(g.Delete)
 }
 
 // ListStyles returns the styles of the vault list and its filter input for

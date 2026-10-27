@@ -15,7 +15,7 @@ import (
 type GlyphSet struct {
 	// Icons, without styles. initStyles colors the item icons.
 	Logo, Login, Card, Note, Identity, SSHKey, Copy string
-	Save, Edit, Success, Error                      string
+	Save, Edit, Delete, Success, Error              string
 
 	Cursor    string // in front of the selected row, with its space
 	Expanded  string // an expanded group
@@ -53,6 +53,7 @@ var unicodeGlyphs = GlyphSet{
 	Copy:     "\U000F018F", // nf-md-content_copy
 	Save:     "\U000F0193", // nf-md-content_save
 	Edit:     "\U000F03EB", // nf-md-pencil
+	Delete:   "\U000F01B4", // nf-md-delete
 	Success:  "✓",
 	Error:    "✗",
 
@@ -98,6 +99,7 @@ var asciiGlyphs = GlyphSet{
 	Copy:     "*",
 	Save:     "S",
 	Edit:     "E",
+	Delete:   "X",
 	Success:  "+",
 	Error:    "!",
 

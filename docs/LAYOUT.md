@@ -308,7 +308,7 @@ The vault shows one of these overlays at a time. The drawer in overlay mode stay
 | Help | `?` | The title "Keybindings" and the filter state, then the keys in the groups Copy, Navigation, Vault and UI. The last row of the card shows `?/esc close · ↑/↓ scroll`, and `· ↓ more` when more rows are below. While you type a filter, it shows `enter done · esc clear`. |
 | Theme picker | `T` | The huh select "Choose theme" with the 7 themes. On a short terminal, the select gets fewer rows and scrolls. |
 | Generator | `p` | The title "Password Generator", the mode, the options and the generated value |
-| Master password re-prompt | `c`, `t`, `v`, `m` or `e` on an item with re-prompt | The title "Master password re-prompt", the text "Enter your master password to continue." and the password field |
+| Master password re-prompt | `c`, `t`, `v`, `m`, `e` or `d` on an item with re-prompt | The title "Master password re-prompt", the text "Enter your master password to continue." and the password field |
 
 The content of the help card is 3/4 of the terminal width, and at most 70 cells. The theme picker is 40 cells wide. The password field of the re-prompt card is 40 cells wide, or less on a narrow terminal.
 

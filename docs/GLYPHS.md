@@ -72,6 +72,7 @@ The unlock screen shows `SpinnerUnlock` while `bw unlock` or `bw login` runs. Th
 | `GlyphCopy` | 󰆏 | U+F018F | `nf-md-content_copy` | `ColorGreen` | The copy toast |
 | `GlyphSave` | 󰆓 | U+F0193 | `nf-md-content_save` | `ColorGreen` | The "Created" toast after the item form saves |
 | `GlyphEdit` | 󰏫 | U+F03EB | `nf-md-pencil` | `ColorGreen` | The "Saved" toast after an edit |
+| `GlyphDelete` | 󰆴 | U+F01B4 | `nf-md-delete` | `ColorRed` | The "Moved to trash" toast |
 
 ### Generator options (`screens/generator.go`)
 
@@ -131,6 +132,7 @@ With `--ascii` or `LAZYBW_ASCII=1`, lazybw draws each glyph of the table below i
 | 󰆏 ✓ ✗ | `*` `+` `!` | The copy toast, success and error |
 | 󰆓 | `S` | The "Created" toast after the item form saves |
 | 󰏫 | `E` | The "Saved" toast after an edit |
+| 󰆴 | `X` | The "Moved to trash" toast |
 | ▶ | `>` | The cursor of the selected row |
 | ▸ ▾ | `+` `-` | A collapsed and an expanded group |
 | • | `*` | A mask |

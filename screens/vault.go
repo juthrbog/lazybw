@@ -43,6 +43,7 @@ const (
 	overlayQuit                // the quit dialog
 	overlayNewItem             // the card that picks the type of a new item
 	overlayDiscard             // the dialog that asks to discard the form
+	overlayDelete              // the dialog that moves an item to the trash
 )
 
 // VaultModel is the main vault browsing screen.
@@ -94,6 +95,7 @@ type VaultModel struct {
 	formOpen  bool
 	selectID  string
 	loadingID string
+	del       deleteState
 
 	// Master password re-prompt. verifiedID is the ID of the selected item
 	// after the user entered the master password for it. checking is true
@@ -193,6 +195,7 @@ func (m *VaultModel) Clear() {
 	m.totpCode = ""
 	m.gen.Clear()
 	m.closeForm()
+	m.closeDelete()
 	m.closeReprompt()
 	m.verifiedID = ""
 }
@@ -261,6 +264,8 @@ func (m VaultModel) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m.updateNewItem(msg)
 		case overlayDiscard:
 			return m.updateDiscard(msg)
+		case overlayDelete:
+			return m.updateDelete(msg)
 		}
 		if m.formOpen {
 			return m.updateForm(msg)
@@ -344,6 +349,9 @@ func (m VaultModel) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case bwcmd.GetItemResult:
 		return m.handleGetItemResult(msg)
 
+	case bwcmd.DeleteResult:
+		return m.handleDeleteResult(msg)
+
 	case OpenURLResult:
 		if msg.Err != nil {
 			return m, m.setErrorToast("Open URL failed: " + msg.Err.Error())
@@ -355,7 +363,7 @@ func (m VaultModel) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case spinner.TickMsg:
-		if m.syncing || m.form.saving {
+		if m.syncing || m.form.saving || m.del.running {
 			var cmd tea.Cmd
 			m.syncSpinner, cmd = m.syncSpinner.Update(msg)
 			return m, cmd
@@ -452,6 +460,9 @@ func (m VaultModel) handleActionKeys(msg tea.KeyPressMsg) (tea.Model, tea.Cmd, b
 	case key.Matches(msg, m.keymap.Edit):
 		return m.editSelected()
 
+	case key.Matches(msg, m.keymap.Delete):
+		return m.deleteSelected()
+
 	case key.Matches(msg, m.keymap.Generate):
 		var cmd tea.Cmd
 		m.gen, cmd = m.gen.Open()
@@ -545,6 +556,8 @@ func (m VaultModel) ViewContent(width, contentHeight int) string {
 		card = renderNewItem()
 	case overlayDiscard:
 		card = renderDiscard()
+	case overlayDelete:
+		card = m.renderDelete(width)
 	default:
 		return bg
 	}
@@ -571,6 +584,8 @@ func (m VaultModel) FooterContent() ([]ui.HintBinding, string) {
 		return newItemHints(), ""
 	case overlayDiscard:
 		return discardHints(), ""
+	case overlayDelete:
+		return m.deleteHints(), ""
 	}
 	if m.formOpen {
 		return m.form.hints(), ""
