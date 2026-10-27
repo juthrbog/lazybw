@@ -45,19 +45,28 @@ type formLine struct {
 	// uri is the URI object of the item that a URI line edits, or nil for a
 	// new URI. Its other keys, such as "match", stay when the form saves.
 	uri map[string]any
+	// changed is true when the user changed the value. The edit form writes
+	// back only changed values, because the inputs replace characters such
+	// as tabs, and an unchanged value must stay as bw printed it.
+	changed bool
 }
 
 // itemForm is the full-screen form that creates an item. It edits a copy of
 // the item JSON, so that a save keeps the keys that the form does not show.
 type itemForm struct {
 	itemType bwcmd.ItemType
-	item     map[string]any
-	lines    []formLine
-	notes    textarea.Model
+	// id is the ID of the item that the form edits, or "" for a new item.
+	id    string
+	item  map[string]any
+	lines []formLine
+	notes textarea.Model
 	// focus is the index of the focused line. len(lines) is the notes field.
 	focus  int
 	reveal bool // the password shows as text
 	dirty  bool // the user changed a value
+	// notesChanged is true when the user changed the notes. See
+	// formLine.changed.
+	notesChanged bool
 
 	// errLine is the line that failed a check, and errText its error.
 	errLine int
@@ -97,6 +106,64 @@ func newItemForm(t bwcmd.ItemType, width, height int) (itemForm, tea.Cmd) {
 	return f, f.focusLine(0)
 }
 
+// newEditForm returns the form that edits the item JSON item, of type t
+// and with the ID id, for a content area of the given size. The fields
+// start with the values of the item.
+func newEditForm(t bwcmd.ItemType, id string, item map[string]any, width, height int) (itemForm, tea.Cmd) {
+	f, _ := newItemForm(t, width, height)
+	f.id = id
+	f.item = item
+	login, _ := item["login"].(map[string]any)
+	var lines []formLine
+	for _, l := range f.lines {
+		switch l.kind {
+		case fieldName:
+			l.input.SetValue(jsonString(item["name"]))
+		case fieldUsername:
+			l.input.SetValue(jsonString(login["username"]))
+		case fieldPassword:
+			l.input.SetValue(jsonString(login["password"]))
+		case fieldTOTP:
+			l.input.SetValue(jsonString(login["totp"]))
+		case fieldURI:
+			// One line for each URI of the item. Only the first line has
+			// the label. addURILine adds the empty line after them.
+			uris, _ := login["uris"].([]any)
+			added := false
+			for _, u := range uris {
+				uri, ok := u.(map[string]any)
+				if !ok {
+					continue
+				}
+				line := newFormLine(fieldURI, "", jsonString(uri["uri"]))
+				if !added {
+					line.label = l.label
+				}
+				line.uri = uri
+				lines = append(lines, line)
+				added = true
+			}
+			if added {
+				continue
+			}
+		}
+		lines = append(lines, l)
+	}
+	f.lines = lines
+	f.addURILine()
+	f.notes.SetValue(jsonString(item["notes"]))
+	f.setReveal(false)
+	f.resize(width, height)
+	return f, f.focusLine(0)
+}
+
+// jsonString returns v when it is a string, and "" otherwise, for example
+// for a JSON null.
+func jsonString(v any) string {
+	s, _ := v.(string)
+	return s
+}
+
 // newFormLine returns a line of the form with the value v.
 func newFormLine(kind fieldKind, label, v string) formLine {
 	in := textinput.New()
@@ -107,10 +174,14 @@ func newFormLine(kind fieldKind, label, v string) formLine {
 
 // title returns the title of the form.
 func (f itemForm) title() string {
-	if f.itemType == bwcmd.ItemTypeSecureNote {
-		return "New secure note"
+	verb := "New"
+	if f.id != "" {
+		verb = "Edit"
 	}
-	return "New login"
+	if f.itemType == bwcmd.ItemTypeSecureNote {
+		return verb + " secure note"
+	}
+	return verb + " login"
 }
 
 // clear drops the values of the form. Go strings cannot be zeroed, so it
@@ -173,6 +244,7 @@ func (f *itemForm) setPassword(v string) {
 	for i := range f.lines {
 		if f.lines[i].kind == fieldPassword {
 			f.lines[i].input.SetValue(v)
+			f.lines[i].changed = true
 			f.dirty = true
 		}
 	}
@@ -199,14 +271,16 @@ func (f itemForm) update(msg tea.Msg) (itemForm, tea.Cmd) {
 	if f.onNotes() {
 		before := f.notes.Value()
 		f.notes, cmd = f.notes.Update(msg)
-		f.dirty = f.dirty || f.notes.Value() != before
+		if f.notes.Value() != before {
+			f.dirty, f.notesChanged = true, true
+		}
 		return f, cmd
 	}
 	line := &f.lines[f.focus]
 	before := line.input.Value()
 	line.input, cmd = line.input.Update(msg)
 	if line.input.Value() != before {
-		f.dirty = true
+		f.dirty, line.changed = true, true
 		if f.errLine == f.focus {
 			f.errLine, f.errText = -1, ""
 		}
@@ -245,7 +319,7 @@ func (f *itemForm) validate() (bool, tea.Cmd) {
 		switch {
 		case l.kind == fieldName && v == "":
 			f.errLine, f.errText = i, nameRequiredText
-		case l.kind == fieldTOTP && v != "":
+		case l.kind == fieldTOTP && v != "" && f.writes(l.changed):
 			p, err := totp.Parse(v)
 			p.Clear()
 			if err != nil {
@@ -259,31 +333,23 @@ func (f *itemForm) validate() (bool, tea.Cmd) {
 	return true, nil
 }
 
-// value returns the value of the first line of kind, or nil when it is
-// empty, as Bitwarden stores an empty field.
-func (f itemForm) value(kind fieldKind) any {
-	for _, l := range f.lines {
-		if l.kind == kind {
-			if v := l.input.Value(); v != "" {
-				return v
-			}
-			return nil
-		}
-	}
-	return nil
-}
+// writes reports whether the form writes a field back: each field of a new
+// item, and only the changed fields of an item that the form edits.
+func (f itemForm) writes(changed bool) bool { return f.id == "" || changed }
 
 // itemJSON returns the item JSON with the values of the form. Empty URI
-// lines are left out.
+// lines are left out. For an edit, the keys of the fields that the user did
+// not change keep their values from bw.
 func (f itemForm) itemJSON() map[string]any {
 	item := make(map[string]any, len(f.item))
 	for k, v := range f.item {
 		item[k] = v
 	}
-	item["name"] = strings.TrimSpace(f.lines[0].input.Value())
-	item["notes"] = nil
-	if v := f.notes.Value(); v != "" {
-		item["notes"] = v
+	if f.writes(f.lines[0].changed) {
+		item["name"] = strings.TrimSpace(f.lines[0].input.Value())
+	}
+	if f.writes(f.notesChanged) {
+		item["notes"] = emptyAsNull(f.notes.Value())
 	}
 	if f.itemType != bwcmd.ItemTypeLogin {
 		return item
@@ -294,25 +360,58 @@ func (f itemForm) itemJSON() map[string]any {
 			login[k] = v
 		}
 	}
-	login["username"] = f.value(fieldUsername)
-	login["password"] = f.value(fieldPassword)
-	login["totp"] = f.value(fieldTOTP)
-	uris := []any{}
+	urisChanged := false
+	var uris []any
 	for _, l := range f.lines {
-		v := strings.TrimSpace(l.input.Value())
-		if l.kind != fieldURI || v == "" {
-			continue
+		switch l.kind {
+		case fieldUsername:
+			if f.writes(l.changed) {
+				login["username"] = emptyAsNull(l.input.Value())
+			}
+		case fieldPassword:
+			if f.writes(l.changed) {
+				login["password"] = emptyAsNull(l.input.Value())
+			}
+		case fieldTOTP:
+			if f.writes(l.changed) {
+				login["totp"] = emptyAsNull(strings.TrimSpace(l.input.Value()))
+			}
+		case fieldURI:
+			urisChanged = urisChanged || l.changed
+			v := l.input.Value()
+			if l.changed {
+				v = strings.TrimSpace(v)
+			}
+			if v == "" {
+				continue
+			}
+			uri := map[string]any{"match": nil}
+			for k, old := range l.uri {
+				uri[k] = old
+			}
+			if l.changed {
+				uri["uri"] = v
+			}
+			uris = append(uris, uri)
 		}
-		uri := map[string]any{"match": nil}
-		for k, old := range l.uri {
-			uri[k] = old
-		}
-		uri["uri"] = v
-		uris = append(uris, uri)
 	}
-	login["uris"] = uris
+	if f.writes(urisChanged) {
+		if uris == nil {
+			uris = []any{}
+		}
+		login["uris"] = uris
+	}
 	item["login"] = login
 	return item
+}
+
+// emptyAsNull returns nil for "", as Bitwarden stores an empty field, and
+// v otherwise.
+func emptyAsNull(v string) any {
+	if v == "" {
+		return nil
+	}
+	return v
 }
 
 // private returns the values of the form, which the debug log must not

@@ -50,6 +50,7 @@ These are the action bindings of `DefaultVaultKeyMap` in `ui/keymap.go`. The hel
 | `=` | Set the inline drawer to its default height of 8 rows |
 | `z` | Switch the drawer between inline mode and overlay mode |
 | `n` | Create an item. See [New item](#new-item). |
+| `e` | Edit the selected login or secure note. See [Item form](#item-form). |
 | `p` | Open the password generator |
 | `r` | Sync the vault with `bw sync`, and then load the items again. While a sync runs, `r` does nothing. |
 | `l` | Lock the vault and show the unlock screen |
@@ -65,7 +66,7 @@ A copy key copies nothing when the selected item does not have that field. When 
 
 The drawer keys `+`, `-` and `=` do nothing in overlay mode. The drawer height stays between 3 rows and half of the terminal height.
 
-When an item has master password re-prompt, `c`, `t`, `v` and `m` first ask for the master password. See [Master password re-prompt](#master-password-re-prompt).
+When an item has master password re-prompt, `c`, `t`, `v`, `m` and `e` first ask for the master password. See [Master password re-prompt](#master-password-re-prompt).
 
 While an overlay shows (help, generator, theme picker, re-prompt, new item or quit confirmation), the vault keys do nothing. The overlay gets the keys.
 
@@ -188,6 +189,8 @@ In passphrase mode, `4` does nothing.
 
 ## Item form
 
+`n` opens the item form for a new item, and `e` opens it for the selected item. For an edit, the fields start with the values of the item, and lazybw saves with `bw edit item`. `e` edits logins and secure notes. For another item type, `e` shows the toast "Editing <type> items is not supported yet".
+
 The item form shows in place of the list and the drawer. A login has the fields Name, Username, Password, TOTP, URI and Notes. A secure note has the fields Name and Notes. Letters type text, so the form commands use `tab`, `ctrl` and `esc`.
 
 | Key | Action |
@@ -195,26 +198,26 @@ The item form shows in place of the list and the drawer. A login has the fields 
 | `tab` | Go to the next field |
 | `shift+tab` | Go to the previous field |
 | `enter` | Add a new line in Notes. In the other fields, go to the next field. |
-| `ctrl+s` | Save the item with `bw create item` |
+| `ctrl+s` | Save the item with `bw create item` or `bw edit item` |
 | `ctrl+g` | Open the password generator. Only the Password field takes this key. |
 | `ctrl+r` | Show or hide the password. The password is hidden each time the form opens. |
 | `esc` | Close the form. If you changed a value, a dialog asks "Discard changes?" first: `y` discards the changes and `n` or `esc` goes back to the form. |
 
-The URI field has one line for each URI and one empty line. When you type in the empty line, a new empty line shows below it. lazybw does not save empty lines.
+The URI field has one line for each URI and one empty line. When you type in the empty line, a new empty line shows below it. lazybw does not save empty lines, so to remove a URI, clear its line.
 
 The name is required. The TOTP field takes an `otpauth://` URI or a base32 key. If a check fails, the field shows the error and lazybw does not save.
 
-While `bw create item` runs, the form shows "Saving…" and ignores all keys. If `bw` fails, the form shows the error and keeps all values, and `ctrl+s` tries again. If `bw` succeeds, the form closes, lazybw loads the items again, selects the new item and shows the toast "Created" with the name.
+While `bw` saves, the form shows "Saving…" and ignores all keys. If `bw` fails, the form shows the error and keeps all values, and `ctrl+s` tries again. If `bw` succeeds, the form closes, lazybw loads the items again, selects the item and shows the toast "Created" or "Saved" with the name.
 
 If the vault locks while the form shows, lazybw discards the form and its values.
 
 ## Master password re-prompt
 
-A Bitwarden item can have master password re-prompt. For such an item, `c`, `t`, `v` and `m` open a prompt that asks for the master password. `u` and `o` do not ask.
+A Bitwarden item can have master password re-prompt. For such an item, `c`, `t`, `v`, `m` and `e` open a prompt that asks for the master password. `u` and `o` do not ask.
 
 | Key | Action |
 |---|---|
-| `enter` | Submit the master password. lazybw runs `bw unlock` with it. If `bw unlock` accepts the password, lazybw copies the field. |
+| `enter` | Submit the master password. lazybw runs `bw unlock` with it. If `bw unlock` accepts the password, lazybw copies the field or opens the edit form. |
 | `esc` | Close the prompt and copy nothing. `esc` also works while `bw unlock` runs. |
 
 While `bw unlock` runs, the prompt ignores all other keys. The prompt does not accept an empty password.

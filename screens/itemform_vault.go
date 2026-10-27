@@ -16,8 +16,64 @@ var newItemKeys = ui.DefaultNewItemKeyMap()
 // discardKeys are the keys of the dialog that asks to discard changes.
 var discardKeys = ui.DefaultConfirmKeyMap()
 
-// createItemCmd is the bw command that creates an item. Tests replace it.
-var createItemCmd = bwcmd.CreateItem
+// The bw commands of the item form. Tests replace them.
+var (
+	createItemCmd = bwcmd.CreateItem
+	getItemCmd    = bwcmd.GetItem
+	editItemCmd   = bwcmd.EditItem
+)
+
+// editSelected opens the edit form for the selected item. The edit form
+// shows each field, so for an item with master password re-prompt it asks
+// for the master password first. It edits logins and secure notes only.
+func (m VaultModel) editSelected() (tea.Model, tea.Cmd, bool) {
+	item := m.selectedItem()
+	if item == nil || m.loadingID != "" {
+		return m, nil, true
+	}
+	if item.Type != bwcmd.ItemTypeLogin && item.Type != bwcmd.ItemTypeSecureNote {
+		name := strings.ToLower(ui.ItemTypeName(item.Type))
+		return m, m.setToast("Editing " + name + " items is not supported yet"), true
+	}
+	if m.needsReprompt() {
+		return m, m.openReprompt(secretEdit), true
+	}
+	return m, m.startEdit(), true
+}
+
+// startEdit runs bw get item for the selected item. The edit form opens
+// when the result comes back.
+func (m *VaultModel) startEdit() tea.Cmd {
+	item := m.selectedItem()
+	if item == nil {
+		return nil
+	}
+	m.loadingID = item.ID
+	m.showToast("Loading "+ui.Truncate(ui.SanitizeLine(item.Name), maxFilterHintW)+ui.Glyphs.Ellipsis, false, false)
+	return getItemCmd(m.sess.Token, m.sess.Epoch, item.ID)
+}
+
+// handleGetItemResult opens the edit form with the item that bw get item
+// returned. It drops the result when the session ended, or when the user
+// selected another item or opened something else while bw ran.
+func (m VaultModel) handleGetItemResult(msg bwcmd.GetItemResult) (VaultModel, tea.Cmd) {
+	if msg.Epoch != m.sess.Epoch || msg.ID != m.loadingID {
+		return m, nil
+	}
+	m.loadingID = ""
+	m.clearToast()
+	item := m.selectedItem()
+	if item == nil || item.ID != msg.ID || m.overlay != overlayNone || m.formOpen {
+		return m, nil
+	}
+	if msg.Err != nil {
+		return m, m.setErrorToast("Edit failed: " + userError(msg.Err, actionOther))
+	}
+	var cmd tea.Cmd
+	m.form, cmd = newEditForm(item.Type, msg.ID, msg.Item, m.width, m.height-ui.ChromeHeight)
+	m.formOpen = true
+	return m, cmd
+}
 
 // updateNewItem handles a key while the new item card shows. l and s open
 // the form for that type, and esc closes the card.
@@ -77,26 +133,36 @@ func (m VaultModel) saveForm() (VaultModel, tea.Cmd) {
 	}
 	m.form.saving = true
 	m.form.bwErr = ""
-	save := createItemCmd(m.sess.Token, m.sess.Epoch, m.form.itemJSON(), m.form.private())
+	var save tea.Cmd
+	if m.form.id != "" {
+		save = editItemCmd(m.sess.Token, m.sess.Epoch, m.form.id, m.form.itemJSON(), m.form.private())
+	} else {
+		save = createItemCmd(m.sess.Token, m.sess.Epoch, m.form.itemJSON(), m.form.private())
+	}
 	return m, tea.Batch(m.syncSpinner.Tick, save)
 }
 
-// handleCreateResult handles the result of bw create item. A failed save
-// keeps the form open with its values and shows the error. A save that
-// worked closes the form, loads the items again and selects the new item.
-func (m VaultModel) handleCreateResult(msg bwcmd.CreateResult) (VaultModel, tea.Cmd) {
-	if msg.Epoch != m.sess.Epoch || !m.formOpen {
+// handleSaveResult handles the result of bw create item or bw edit item
+// for the item id. A failed save keeps the form open with its values and
+// shows the error. A save that worked closes the form, loads the items
+// again and selects the item.
+func (m VaultModel) handleSaveResult(id string, err error, epoch uint64) (VaultModel, tea.Cmd) {
+	if epoch != m.sess.Epoch || !m.formOpen || !m.form.saving {
 		return m, nil
 	}
 	m.form.saving = false
-	if msg.Err != nil {
-		m.form.bwErr = userError(msg.Err, actionOther)
+	if err != nil {
+		m.form.bwErr = userError(err, actionOther)
 		return m, nil
+	}
+	glyph, verb := ui.GlyphSave, " Created "
+	if m.form.id != "" {
+		glyph, verb = ui.GlyphEdit, " Saved "
 	}
 	name := strings.TrimSpace(m.form.lines[0].input.Value())
 	m.closeForm()
-	m.selectID = msg.ID
-	toast := m.setToast(ui.GlyphSave + " Created " + ui.Truncate(ui.SanitizeLine(name), maxFilterHintW))
+	m.selectID = id
+	toast := m.setToast(glyph + verb + ui.Truncate(ui.SanitizeLine(name), maxFilterHintW))
 	return m, tea.Batch(toast, bwcmd.FetchItems(m.sess.Token, m.sess.Epoch))
 }
 

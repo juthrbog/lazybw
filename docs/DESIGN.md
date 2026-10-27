@@ -20,7 +20,7 @@ documents give more detail:
 - Compute TOTP codes locally, and show a live countdown in the drawer.
 - Copy with OSC 52, the terminal escape sequence that sets the clipboard.
 - Keep the session token in memory only, clear the clipboard after 60 seconds, and lock the vault after 15 minutes with no key press.
-- Create logins and secure notes in a form. The item goes to `bw` on stdin, never in an argument.
+- Create and edit logins and secure notes in a form. The item goes to `bw` on stdin, never in an argument.
 
 ## Stack
 
@@ -493,7 +493,7 @@ A Bitwarden item can have "Master password re-prompt" turned on.
 that the clients ask for the master password. bw does not enforce it, so
 lazybw does.
 
-- For such an item, `c`, `t`, `v` and `m` open the card `Master password re-prompt` with a password input. `u` and `o` do not ask.
+- For such an item, `c`, `t`, `v`, `m` and `e` open the card `Master password re-prompt` with a password input. After the check, `e` opens the edit form. `u` and `o` do not ask.
 - Enter submits the password. Esc cancels and closes the card. The footer shows `enter submit · esc cancel`.
 - lazybw runs `bw unlock --passwordenv BW_PASSWORD --raw` with the typed password. While bw runs, the card shows `Checking the master password…`, and only Esc works.
 - If bw accepts the password, it returns a new session key, and the old key stops working. lazybw stores the new key with `session.State.ReplaceToken`. The session epoch does not change, so the bw commands that started in this session still belong to it. Then lazybw runs the copy that the user asked for.
@@ -583,17 +583,35 @@ for the generator and for "Discard changes?" show over the form.
 
 The form edits a copy of the item JSON, a `map[string]any`. A new item
 starts from `bwcmd.NewItemJSON`: no organization, no folder, no favorite,
-no custom fields and no re-prompt. `itemJSON` sets only the keys that the
-form shows, so the edit form can later keep the keys that `bwcmd.Item`
-does not model. Empty fields become `null`, as Bitwarden stores them.
+no custom fields and no re-prompt. Empty fields become `null`, as
+Bitwarden stores them.
 
-On save, lazybw runs `bw create item` (see [Commands](#commands)). The
+`e` opens the same form for the selected login or secure note. Other types
+show a toast. For an item with master password re-prompt, `e` asks for the
+password first. lazybw then runs `bw get item <id>` and opens the form with
+that output, not with the list item, because `bwcmd.Item` does not model
+keys such as custom fields, the password history and passkeys. The decoder
+keeps numbers as `json.Number`, so they encode as `bw` printed them. A
+result that comes after the user selected another item, or opened a card,
+is dropped.
+
+For an edit, `itemJSON` writes back only the fields that the user changed.
+The text inputs replace characters such as tabs and `\r`, so an unchanged
+note or password must keep the value from `bw`. Each URI line keeps its URI
+object, so a changed URI keeps its `match`. A cleared URI line removes the
+URI. The TOTP check runs only on a changed TOTP value, so that an old key
+that does not parse does not block other changes. If another client changed
+the item while the form was open, the save overwrites that change (last
+write wins).
+
+On save, lazybw runs `bw create item` or `bw edit item <id>` (see
+[Commands](#commands)). The
 form shows "Saving…" and ignores keys until the result comes back. A
 result of an ended session is dropped. If `bw` fails, the form shows the
 error and keeps all values, and `ctrl+s` tries again. If `bw` succeeds,
 the form closes, lazybw runs `bw list items` (no `bw sync`, because
 `bw create` writes to the server and to the local data of `bw`), selects
-the new item and shows the toast "Created" with the name.
+the item and shows the toast "Created" or "Saved" with the name.
 
 A lock drops the vault model and the form with it. lazybw keeps no draft.
 
@@ -622,6 +640,7 @@ each overlay and of the unlock screen. These are the vault keys:
 | `r` | Sync the vault (`bw sync`) |
 | `l` | Lock the vault |
 | `n` | Create an item (see [Item Form](#item-form)) |
+| `e` | Edit the selected login or secure note |
 | `p` | Open the password generator |
 | `T` | Open the theme picker |
 | `ctrl+g` | Turn grouping on or off |
@@ -694,12 +713,16 @@ the output of bw.
 | `bw sync` | `r` | 2 min | `BW_SESSION` |
 | `bw lock` | Lock key, idle lock, quit, a second failed item load, exit cleanup | 15 s | `BW_SESSION` |
 | `bw generate [options]` | Password generator | 15 s | None |
-| `bw create item` | `ctrl+s` in the item form | 2 min | `BW_SESSION` |
+| `bw create item` | `ctrl+s` in the form for a new item | 2 min | `BW_SESSION` |
+| `bw get item <id>` | `e` | 2 min | `BW_SESSION` |
+| `bw edit item <id>` | `ctrl+s` in the edit form | 2 min | `BW_SESSION` |
 
-`bw create item` gets the item as base64-encoded JSON on stdin, not as an
-argument, because any local user can read the arguments of a process.
-lazybw zeros the JSON and the encoded input after the command. `bw create`
-prints the new item. lazybw reads only its `id` and then zeros the output.
+`bw create item` and `bw edit item` get the item as base64-encoded JSON on
+stdin, not as an argument, because any local user can read the arguments
+of a process. lazybw zeros the JSON and the encoded input after the
+command. `bw create` prints the new item. lazybw reads only its `id` and
+then zeros the output. lazybw also zeros the output of `bw get item` and
+`bw edit item`.
 
 `bw status` returns `{status, userEmail, lastSync}`. `bw unlock --raw` and
 `bw login --raw` print only the session key. An exit code of 0 with no
@@ -956,7 +979,7 @@ wheel, so the wheel moves the selection in the list.
 - The clipboard clears 60 seconds after a copy, and on a lock or a quit.
 - A lock drops the vault data, zeros the decoded TOTP secret, drops the session token and runs `bw lock`.
 - lazybw asks for the master password before it copies or shows a protected field of an item with master password re-prompt.
-- A new item goes to `bw create item` on stdin, never in an argument. A lock discards an open item form.
+- A new or changed item goes to `bw` on stdin, never in an argument. A lock discards an open item form.
 
 ### Exit cleanup
 
@@ -1009,9 +1032,9 @@ target is stderr, which draws over the TUI.
 - Errors. `logReason` in `model.go` gives only the kind of error, for example `timed out` or `bw error (exit status 1)`. The line does not repeat the message of bw, because that message is a line of the bw output.
 
 A failed bw command also writes its subcommand, its error and its stderr,
-with the private values replaced by `[hidden]`. For `bw create item`, the
-private values also include the encoded input and each value of the item
-form. The lines of `RootModel`
+with the private values replaced by `[hidden]`. For `bw create item` and
+`bw edit item`, the private values also include the encoded input and each
+value of the item form. The lines of `RootModel`
 never hold the session token, the master password, the email, item names
 or field values.
 
@@ -1081,7 +1104,7 @@ lazybw/
 │   ├── kill_unix.go      # Kill the process group after a time limit
 │   ├── kill_other.go     # Default kill on other systems
 │   ├── parser.go         # Parse bw status and bw list items
-│   ├── write.go          # bw create item and the JSON of a new item
+│   ├── write.go          # bw create, get and edit item, and the JSON of a new item
 │   └── types.go          # Item types
 ├── session/
 │   ├── manager.go        # Session state, epoch, idle test
@@ -1102,7 +1125,7 @@ lazybw/
 
 ## Not in Scope
 
-- Edit and delete of items (planned in #6)
+- Delete of items (planned in #6)
 - Organization and collection navigation
 - More than one account
 - SSH agent integration

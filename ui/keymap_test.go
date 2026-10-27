@@ -82,6 +82,7 @@ func TestDefaultVaultKeyMap(t *testing.T) {
 		"DrawerReset":    {"="},
 		"DrawerToggle":   {"z"},
 		"New":            {"n"},
+		"Edit":           {"e"},
 		"Generate":       {"p"},
 		"Sync":           {"r"},
 		"Lock":           {"l"},

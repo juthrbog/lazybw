@@ -88,10 +88,12 @@ type VaultModel struct {
 
 	// The item form. It shows in place of the list and the drawer while
 	// formOpen is true. selectID is the item to select after the next load,
-	// such as an item that the form created.
-	form     itemForm
-	formOpen bool
-	selectID string
+	// such as an item that the form created. loadingID is the item that
+	// bw get item loads for the edit form, or "" when no load runs.
+	form      itemForm
+	formOpen  bool
+	selectID  string
+	loadingID string
 
 	// Master password re-prompt. verifiedID is the ID of the selected item
 	// after the user entered the master password for it. checking is true
@@ -334,7 +336,13 @@ func (m VaultModel) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, cmd
 
 	case bwcmd.CreateResult:
-		return m.handleCreateResult(msg)
+		return m.handleSaveResult(msg.ID, msg.Err, msg.Epoch)
+
+	case bwcmd.EditResult:
+		return m.handleSaveResult(msg.ID, msg.Err, msg.Epoch)
+
+	case bwcmd.GetItemResult:
+		return m.handleGetItemResult(msg)
 
 	case OpenURLResult:
 		if msg.Err != nil {
@@ -440,6 +448,9 @@ func (m VaultModel) handleActionKeys(msg tea.KeyPressMsg) (tea.Model, tea.Cmd, b
 	case key.Matches(msg, m.keymap.New):
 		m.overlay = overlayNewItem
 		return m, nil, true
+
+	case key.Matches(msg, m.keymap.Edit):
+		return m.editSelected()
 
 	case key.Matches(msg, m.keymap.Generate):
 		var cmd tea.Cmd
