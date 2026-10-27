@@ -20,6 +20,7 @@ documents give more detail:
 - Compute TOTP codes locally, and show a live countdown in the drawer.
 - Copy with OSC 52, the terminal escape sequence that sets the clipboard.
 - Keep the session token in memory only, clear the clipboard after 60 seconds, and lock the vault after 15 minutes with no key press.
+- Create logins and secure notes in a form. The item goes to `bw` on stdin, never in an argument.
 
 ## Stack
 
@@ -548,6 +549,54 @@ the card shows `Generating…`. Each request gets a sequence number, so that
 a slow, older result cannot replace a newer one. If `bw generate` fails,
 the card shows the error in the error style, and `c` copies nothing.
 
+When the item form opens the generator with `ctrl+g`, `OpenForField` turns
+on the `Use` binding. `enter` then puts the value in the password field and
+closes the card, and only `r` makes a new value.
+
+---
+
+## Item Form
+
+`n` opens a card that asks for the type: `l` for a login, `s` for a secure
+note. The choice opens the item form (`screens/itemform.go`) in place of
+the list and the drawer. The footer shows the keys of the form. The cards
+for the generator and for "Discard changes?" show over the form.
+
+```
+ New login
+
+ ▶ Name      GitHub
+   Username  octo
+   Password  •••••••
+   TOTP
+   URI       github.com
+   URI
+   Notes
+```
+
+- A login has Name, Username, Password, TOTP, URI and Notes. A secure note has Name and Notes. Cards and identities come later. lazybw does not create SSH keys, because `bw` cannot generate a key.
+- `tab` and `shift+tab` move between the fields. `enter` moves to the next field, except in Notes, where it adds a new line.
+- The password is masked. `ctrl+r` shows or hides it, and each new form masks it again.
+- The URI part has one line for each URI and one empty line. Text in the empty line adds a new empty line below it. A save leaves out empty lines.
+- `ctrl+s` checks the values first. The name is required. The TOTP value must give a code with `totp.Parse`. A failed check shows its error below the field, moves the focus there and does not run `bw`.
+- `esc` closes a form with no changes at once. For a form with changes, it opens "Discard changes?": `y` discards and `n` or `esc` goes back to the form.
+
+The form edits a copy of the item JSON, a `map[string]any`. A new item
+starts from `bwcmd.NewItemJSON`: no organization, no folder, no favorite,
+no custom fields and no re-prompt. `itemJSON` sets only the keys that the
+form shows, so the edit form can later keep the keys that `bwcmd.Item`
+does not model. Empty fields become `null`, as Bitwarden stores them.
+
+On save, lazybw runs `bw create item` (see [Commands](#commands)). The
+form shows "Saving…" and ignores keys until the result comes back. A
+result of an ended session is dropped. If `bw` fails, the form shows the
+error and keeps all values, and `ctrl+s` tries again. If `bw` succeeds,
+the form closes, lazybw runs `bw list items` (no `bw sync`, because
+`bw create` writes to the server and to the local data of `bw`), selects
+the new item and shows the toast "Created" with the name.
+
+A lock drops the vault model and the form with it. lazybw keeps no draft.
+
 ---
 
 ## Keybindings
@@ -572,6 +621,7 @@ each overlay and of the unlock screen. These are the vault keys:
 | `/` | Open the filter |
 | `r` | Sync the vault (`bw sync`) |
 | `l` | Lock the vault |
+| `n` | Create an item (see [Item Form](#item-form)) |
 | `p` | Open the password generator |
 | `T` | Open the theme picker |
 | `ctrl+g` | Turn grouping on or off |
@@ -586,8 +636,8 @@ each overlay and of the unlock screen. These are the vault keys:
 | `ctrl+c` | Lock and quit at once |
 
 `ui/keymap.go` holds each key label in one place. `VaultKeyMap`,
-`GeneratorKeyMap` and `ConfirmKeyMap` give each binding its keys and its
-help text. `VaultKeyMap.categorized` puts each vault binding next to its
+`GeneratorKeyMap`, `ConfirmKeyMap`, `NewItemKeyMap` and `FormKeyMap` give
+each binding its keys and its help text. `VaultKeyMap.categorized` puts each vault binding next to its
 help category. The help overlay, the footer hints and the drawer hints all
 take the key label from the help of the binding. The footer has its own
 short descriptions, because it has little room.
@@ -629,7 +679,8 @@ lazybw.
 lazybw runs every bw command through the package variable `bwcmd.Run`, a
 `bwcmd.Runner`. The default, `execRun`, starts `bw` with
 `exec.CommandContext` and an argument list. No shell runs. User text goes
-only after `--` or in `--code=`. A test can replace `bwcmd.Run` to script
+only after `--` or in `--code=`. Item data goes only on stdin, which the
+`Runner` gets as a byte slice. A test can replace `bwcmd.Run` to script
 the output of bw.
 
 ### Commands
@@ -643,6 +694,12 @@ the output of bw.
 | `bw sync` | `r` | 2 min | `BW_SESSION` |
 | `bw lock` | Lock key, idle lock, quit, a second failed item load, exit cleanup | 15 s | `BW_SESSION` |
 | `bw generate [options]` | Password generator | 15 s | None |
+| `bw create item` | `ctrl+s` in the item form | 2 min | `BW_SESSION` |
+
+`bw create item` gets the item as base64-encoded JSON on stdin, not as an
+argument, because any local user can read the arguments of a process.
+lazybw zeros the JSON and the encoded input after the command. `bw create`
+prints the new item. lazybw reads only its `id` and then zeros the output.
 
 `bw status` returns `{status, userEmail, lastSync}`. `bw unlock --raw` and
 `bw login --raw` print only the session key. An exit code of 0 with no
@@ -899,6 +956,7 @@ wheel, so the wheel moves the selection in the list.
 - The clipboard clears 60 seconds after a copy, and on a lock or a quit.
 - A lock drops the vault data, zeros the decoded TOTP secret, drops the session token and runs `bw lock`.
 - lazybw asks for the master password before it copies or shows a protected field of an item with master password re-prompt.
+- A new item goes to `bw create item` on stdin, never in an argument. A lock discards an open item form.
 
 ### Exit cleanup
 
@@ -951,7 +1009,9 @@ target is stderr, which draws over the TUI.
 - Errors. `logReason` in `model.go` gives only the kind of error, for example `timed out` or `bw error (exit status 1)`. The line does not repeat the message of bw, because that message is a line of the bw output.
 
 A failed bw command also writes its subcommand, its error and its stderr,
-with the private values replaced by `[hidden]`. The lines of `RootModel`
+with the private values replaced by `[hidden]`. For `bw create item`, the
+private values also include the encoded input and each value of the item
+form. The lines of `RootModel`
 never hold the session token, the master password, the email, item names
 or field values.
 
@@ -994,6 +1054,8 @@ lazybw/
 │   ├── vault_drawer.go   # Drawer size, drawer keys and TOTP state
 │   ├── toast.go          # Toasts and the footer status
 │   ├── generator.go      # GeneratorModel: the password generator card
+│   ├── itemform.go       # Item form: fields, checks and the item JSON
+│   ├── itemform_vault.go # New item card, save, discard dialog
 │   ├── themepicker.go    # ThemePickerModel: the theme picker card
 │   ├── quitconfirm.go    # Quit confirmation card
 │   ├── grouping.go       # Group keys and the grouping algorithm
@@ -1004,7 +1066,7 @@ lazybw/
 ├── ui/
 │   ├── theme.go          # Themes, palette, styles, glyphs, huh theme
 │   ├── contrast.go       # WCAG contrast and the header badge text color
-│   ├── keymap.go         # Vault, generator and confirm key maps, help categories
+│   ├── keymap.go         # Vault, generator, confirm, new item and form key maps
 │   ├── drawer.go         # Drawer renderer
 │   ├── itemrow.go        # Item row and group header row
 │   ├── frame.go          # Header, footer and centering
@@ -1019,6 +1081,7 @@ lazybw/
 │   ├── kill_unix.go      # Kill the process group after a time limit
 │   ├── kill_other.go     # Default kill on other systems
 │   ├── parser.go         # Parse bw status and bw list items
+│   ├── write.go          # bw create item and the JSON of a new item
 │   └── types.go          # Item types
 ├── session/
 │   ├── manager.go        # Session state, epoch, idle test
@@ -1039,7 +1102,7 @@ lazybw/
 
 ## Not in Scope
 
-- Vault editing (create, update or delete items)
+- Edit and delete of items (planned in #6)
 - Organization and collection navigation
 - More than one account
 - SSH agent integration

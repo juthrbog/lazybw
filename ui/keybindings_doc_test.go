@@ -14,8 +14,8 @@ const keybindingsDoc = "../docs/KEYBINDINGS.md"
 var inlineCode = regexp.MustCompile("`([^`\n]+)`")
 
 // TestKeybindingsDocListsKeys fails when a key of a binding of
-// DefaultVaultKeyMap, DefaultGeneratorKeyMap or DefaultConfirmKeyMap is
-// not in docs/KEYBINDINGS.md as inline code. The test walks the structs, so
+// DefaultVaultKeyMap, DefaultGeneratorKeyMap, DefaultConfirmKeyMap,
+// DefaultNewItemKeyMap or DefaultFormKeyMap is not in docs/KEYBINDINGS.md as inline code. The test walks the structs, so
 // a new binding also fails until the doc lists its keys.
 func TestKeybindingsDocListsKeys(t *testing.T) {
 	doc, err := os.ReadFile(keybindingsDoc)
@@ -27,7 +27,7 @@ func TestKeybindingsDocListsKeys(t *testing.T) {
 		documented[m[1]] = true
 	}
 
-	for _, km := range []any{DefaultVaultKeyMap(), DefaultGeneratorKeyMap(), DefaultConfirmKeyMap()} {
+	for _, km := range []any{DefaultVaultKeyMap(), DefaultGeneratorKeyMap(), DefaultConfirmKeyMap(), DefaultNewItemKeyMap(), DefaultFormKeyMap()} {
 		names, bindings := bindingsOf(t, km)
 		for i, b := range bindings {
 			if len(b.Keys()) == 0 {

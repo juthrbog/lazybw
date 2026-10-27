@@ -41,6 +41,8 @@ const (
 	overlayThemePicker         // the theme picker
 	overlayHelp                // the key help
 	overlayQuit                // the quit dialog
+	overlayNewItem             // the card that picks the type of a new item
+	overlayDiscard             // the dialog that asks to discard the form
 )
 
 // VaultModel is the main vault browsing screen.
@@ -83,6 +85,13 @@ type VaultModel struct {
 	picker  ThemePickerModel
 
 	currentTheme string
+
+	// The item form. It shows in place of the list and the drawer while
+	// formOpen is true. selectID is the item to select after the next load,
+	// such as an item that the form created.
+	form     itemForm
+	formOpen bool
+	selectID string
 
 	// Master password re-prompt. verifiedID is the ID of the selected item
 	// after the user entered the master password for it. checking is true
@@ -181,6 +190,7 @@ func (m *VaultModel) Clear() {
 	}
 	m.totpCode = ""
 	m.gen.Clear()
+	m.closeForm()
 	m.closeReprompt()
 	m.verifiedID = ""
 }
@@ -213,6 +223,9 @@ func (m VaultModel) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.drawerHeight = m.clampDrawerHeight(m.drawerHeight)
 		m.resizeList()
 		m.help.Resize(msg.Width, msg.Height-ui.ChromeHeight)
+		if m.formOpen {
+			m.form.resize(msg.Width, msg.Height-ui.ChromeHeight)
+		}
 		switch m.overlay {
 		case overlayReprompt:
 			// The password form keeps the width of the card, so that the
@@ -242,6 +255,13 @@ func (m VaultModel) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, cmd
 		case overlayQuit:
 			return m.updateQuitConfirm(msg)
+		case overlayNewItem:
+			return m.updateNewItem(msg)
+		case overlayDiscard:
+			return m.updateDiscard(msg)
+		}
+		if m.formOpen {
+			return m.updateForm(msg)
 		}
 		if !m.list.SettingFilter() {
 			// When not filtering, intercept our action keys before the list.
@@ -306,7 +326,15 @@ func (m VaultModel) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if msg.Err != nil {
 			return m, m.setErrorToast("Load failed: " + userError(msg.Err, actionOther))
 		}
-		return m, m.replaceItems(msg.Items)
+		cmd := m.replaceItems(msg.Items)
+		if m.selectID != "" {
+			m.selectKey(rowKey{id: m.selectID})
+			m.selectID = ""
+		}
+		return m, cmd
+
+	case bwcmd.CreateResult:
+		return m.handleCreateResult(msg)
 
 	case OpenURLResult:
 		if msg.Err != nil {
@@ -319,7 +347,7 @@ func (m VaultModel) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case spinner.TickMsg:
-		if m.syncing {
+		if m.syncing || m.form.saving {
 			var cmd tea.Cmd
 			m.syncSpinner, cmd = m.syncSpinner.Update(msg)
 			return m, cmd
@@ -338,6 +366,12 @@ func (m VaultModel) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		cmds = append(cmds, cmd)
 	case overlayThemePicker:
 		return m.updateThemePicker(msg)
+	}
+	if m.formOpen {
+		// The fields get the cursor blink of the focused input.
+		var cmd tea.Cmd
+		m.form, cmd = m.form.update(msg)
+		cmds = append(cmds, cmd)
 	}
 
 	// Forward non-key messages to the list (e.g. filter debounce timers).
@@ -401,6 +435,10 @@ func (m VaultModel) handleActionKeys(msg tea.KeyPressMsg) (tea.Model, tea.Cmd, b
 	case key.Matches(msg, m.keymap.Help):
 		m.help.Show(m.keymap.HelpBindings(), m.width, m.height-ui.ChromeHeight)
 		m.overlay = overlayHelp
+		return m, nil, true
+
+	case key.Matches(msg, m.keymap.New):
+		m.overlay = overlayNewItem
 		return m, nil, true
 
 	case key.Matches(msg, m.keymap.Generate):
@@ -473,7 +511,12 @@ func (m VaultModel) HeaderInfo() (int, string) {
 
 // ViewContent renders the vault content for the root frame.
 func (m VaultModel) ViewContent(width, contentHeight int) string {
-	bg := m.renderVaultContent(width, contentHeight)
+	var bg string
+	if m.formOpen {
+		bg = m.form.view(width, contentHeight, m.syncSpinner.View())
+	} else {
+		bg = m.renderVaultContent(width, contentHeight)
+	}
 
 	var card string
 	switch m.overlay {
@@ -487,6 +530,10 @@ func (m VaultModel) ViewContent(width, contentHeight int) string {
 		card = m.help.View()
 	case overlayQuit:
 		card = renderQuitConfirm()
+	case overlayNewItem:
+		card = renderNewItem()
+	case overlayDiscard:
+		card = renderDiscard()
 	default:
 		return bg
 	}
@@ -509,6 +556,13 @@ func (m VaultModel) FooterContent() ([]ui.HintBinding, string) {
 		return m.help.FooterHints(), ""
 	case overlayQuit:
 		return quitHints(), ""
+	case overlayNewItem:
+		return newItemHints(), ""
+	case overlayDiscard:
+		return discardHints(), ""
+	}
+	if m.formOpen {
+		return m.form.hints(), ""
 	}
 
 	// The key labels come from the bindings. The footer has little room,
@@ -546,6 +600,7 @@ func (m VaultModel) FooterContent() ([]ui.HintBinding, string) {
 			ui.Hint(k.CopyTOTP, "totp"),
 			ui.Hint(k.Help, "help"),
 			ui.Hint(k.Quit, "quit"),
+			ui.Hint(k.New, "new"),
 			ui.Hint(k.ToggleGrouping, "group"),
 			ui.Hint(k.DrawerToggle, "drawer"),
 			ui.Hint(k.Generate, "gen"),

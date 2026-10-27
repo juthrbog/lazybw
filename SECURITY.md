@@ -38,6 +38,25 @@ only in the output of `bw`. That is the buffer that holds its stdout, and
 the copy buffers of `os/exec` (see
 [What stays in memory](#what-stays-in-memory)).
 
+### Writes to the vault
+
+lazybw can create logins and secure notes. It runs `bw create item`, which
+writes the item to the Bitwarden server and to the local data of `bw`.
+lazybw does not edit or delete items yet.
+
+The item goes to `bw` as base64-encoded JSON on stdin. It never goes in an
+argument, because any local user can read the arguments of a process in
+`ps` or `/proc/PID/cmdline`. lazybw zeroes the JSON and the encoded input
+after the command. `bw create` prints the new item, decrypted. lazybw reads
+only its ID and then zeroes that output.
+
+A new item gets no organization, no folder and no master password
+re-prompt. The item form masks the password until you press `ctrl+r`, and
+each new form masks it again.
+
+If the vault locks while the item form shows, lazybw drops the form and its
+values. lazybw keeps no draft of a form, in memory or on disk.
+
 ### What lazybw zeroes and drops
 
 On a lock, an idle lock and a quit, lazybw does these actions:
@@ -50,8 +69,8 @@ On a lock, an idle lock and a quit, lazybw does these actions:
   and `SSHKey` structs with the items, so this also covers the rows.
 - It removes all list rows and clears the filter. Each row has its own copy
   of `Notes`.
-- It drops the current TOTP code, the generated password and the text of an
-  open master password prompt.
+- It drops the current TOTP code, the generated password, the text of an
+  open master password prompt and the values of an open item form.
 - It replaces the vault screen with an empty one.
 - It sets the session token to `""` and runs `bw lock`. See
   [Lock and exit](#lock-and-exit).
@@ -93,6 +112,10 @@ uses the memory again. These copies stay in memory in this way:
 - The copy buffers inside `os/exec` that move the stdout of `bw` into
   lazybw. lazybw cannot get to them.
 - The output of `bw generate`. lazybw does not zero it.
+- The values that you type in the item form. The bubbles text inputs keep
+  them in rune slices, and the key press messages of Bubble Tea carry each
+  typed character. The item JSON for `bw create item` holds them as Go
+  strings until the garbage collector frees it.
 - Each copied value, inside the OSC 52 sequence that Bubble Tea writes to
   the terminal.
 - The fields that are not secret: item names, usernames, URLs, card holder
@@ -281,7 +304,8 @@ names only the kind of error, for example `timed out` or
 `bw error (exit status 1)`. It does not repeat the message of `bw`. For a
 failed `bw` command, the log also has the stderr of `bw`. lazybw replaces
 the token, the password, the two-step code and the email in it with
-`[hidden]`.
+`[hidden]`. For `bw create item`, it also replaces the encoded item and
+each value of the item form.
 
 ## Bubble Tea trace file
 
@@ -322,7 +346,8 @@ These areas have no known open problem:
 
 - Shell injection: lazybw passes all arguments of `bw` and of the URL
   opener as `exec.Command` arguments, never through a shell. The email
-  comes after `--`, so `bw` cannot read it as an option.
+  comes after `--`, so `bw` cannot read it as an option. Item data goes on
+  stdin, never in an argument.
 - URLs: `o` opens only `http` and `https` URLs.
 - Terminal escape sequences: lazybw removes escape sequences and control
   characters from vault text before it draws the text. The copy keys copy

@@ -31,6 +31,7 @@ type VaultKeyMap struct {
 	DrawerShrink   key.Binding
 	DrawerReset    key.Binding
 	DrawerToggle   key.Binding
+	New            key.Binding
 	Generate       key.Binding
 	Sync           key.Binding
 	Lock           key.Binding
@@ -66,6 +67,7 @@ func (k VaultKeyMap) categorized() []categorizedBinding {
 		{k.DrawerShrink, CategoryNavigation},
 		{k.DrawerReset, CategoryNavigation},
 		{k.DrawerToggle, CategoryNavigation},
+		{k.New, CategoryVault},
 		{k.Generate, CategoryVault},
 		{k.Sync, CategoryVault},
 		{k.Lock, CategoryVault},
@@ -152,6 +154,10 @@ func DefaultVaultKeyMap() VaultKeyMap {
 			key.WithKeys("z"),
 			key.WithHelp("z", "toggle drawer overlay"),
 		),
+		New: key.NewBinding(
+			key.WithKeys("n"),
+			key.WithHelp("n", "new item"),
+		),
 		Generate: key.NewBinding(
 			key.WithKeys("p"),
 			key.WithHelp("p", "generate password"),
@@ -224,7 +230,11 @@ type GeneratorKeyMap struct {
 	Option3 key.Binding
 	Option4 key.Binding
 	Copy    key.Binding
-	Close   key.Binding
+	// Use puts the value in the password field of the item form. The
+	// generator turns it on only when the form opened it, and then takes
+	// enter from Regenerate.
+	Use   key.Binding
+	Close key.Binding
 }
 
 // DefaultGeneratorKeyMap returns the standard bindings for the password
@@ -267,9 +277,81 @@ func DefaultGeneratorKeyMap() GeneratorKeyMap {
 			key.WithKeys("c"),
 			key.WithHelp("c", "copy"),
 		),
+		Use: key.NewBinding(
+			key.WithKeys("enter"),
+			key.WithHelp("enter", "use"),
+			key.WithDisabled(),
+		),
 		Close: key.NewBinding(
 			key.WithKeys("esc"),
 			key.WithHelp("esc", "close"),
+		),
+	}
+}
+
+// NewItemKeyMap defines the keys of the card that picks the type of a new
+// item.
+type NewItemKeyMap struct {
+	Login  key.Binding
+	Note   key.Binding
+	Cancel key.Binding
+}
+
+// DefaultNewItemKeyMap returns the standard bindings for the new item card.
+func DefaultNewItemKeyMap() NewItemKeyMap {
+	return NewItemKeyMap{
+		Login: key.NewBinding(
+			key.WithKeys("l"),
+			key.WithHelp("l", "login"),
+		),
+		Note: key.NewBinding(
+			key.WithKeys("s"),
+			key.WithHelp("s", "secure note"),
+		),
+		Cancel: key.NewBinding(
+			key.WithKeys("esc"),
+			key.WithHelp("esc", "cancel"),
+		),
+	}
+}
+
+// FormKeyMap defines the keys of the item form. Letters type text, so the
+// commands use tab, ctrl and esc.
+type FormKeyMap struct {
+	Next     key.Binding
+	Prev     key.Binding
+	Save     key.Binding
+	Generate key.Binding
+	Reveal   key.Binding
+	Cancel   key.Binding
+}
+
+// DefaultFormKeyMap returns the standard bindings for the item form.
+func DefaultFormKeyMap() FormKeyMap {
+	return FormKeyMap{
+		Next: key.NewBinding(
+			key.WithKeys("tab"),
+			key.WithHelp("tab", "next field"),
+		),
+		Prev: key.NewBinding(
+			key.WithKeys("shift+tab"),
+			key.WithHelp("shift+tab", "previous field"),
+		),
+		Save: key.NewBinding(
+			key.WithKeys("ctrl+s"),
+			key.WithHelp("ctrl+s", "save"),
+		),
+		Generate: key.NewBinding(
+			key.WithKeys("ctrl+g"),
+			key.WithHelp("ctrl+g", "generate password"),
+		),
+		Reveal: key.NewBinding(
+			key.WithKeys("ctrl+r"),
+			key.WithHelp("ctrl+r", "show or hide password"),
+		),
+		Cancel: key.NewBinding(
+			key.WithKeys("esc"),
+			key.WithHelp("esc", "cancel"),
 		),
 	}
 }
