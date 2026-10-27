@@ -32,6 +32,7 @@ type VaultKeyMap struct {
 	DrawerReset    key.Binding
 	DrawerToggle   key.Binding
 	New            key.Binding
+	Edit           key.Binding
 	Generate       key.Binding
 	Sync           key.Binding
 	Lock           key.Binding
@@ -68,6 +69,7 @@ func (k VaultKeyMap) categorized() []categorizedBinding {
 		{k.DrawerReset, CategoryNavigation},
 		{k.DrawerToggle, CategoryNavigation},
 		{k.New, CategoryVault},
+		{k.Edit, CategoryVault},
 		{k.Generate, CategoryVault},
 		{k.Sync, CategoryVault},
 		{k.Lock, CategoryVault},
@@ -157,6 +159,10 @@ func DefaultVaultKeyMap() VaultKeyMap {
 		New: key.NewBinding(
 			key.WithKeys("n"),
 			key.WithHelp("n", "new item"),
+		),
+		Edit: key.NewBinding(
+			key.WithKeys("e"),
+			key.WithHelp("e", "edit item"),
 		),
 		Generate: key.NewBinding(
 			key.WithKeys("p"),

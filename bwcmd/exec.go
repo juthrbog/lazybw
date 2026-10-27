@@ -241,7 +241,7 @@ func subcommand(args []string) string {
 		return ""
 	}
 	switch args[0] {
-	case "list", "create":
+	case "list", "create", "get", "edit", "delete":
 		if len(args) > 1 {
 			return args[0] + " " + args[1]
 		}

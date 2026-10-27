@@ -116,3 +116,60 @@ func TestCreateItemNeedsID(t *testing.T) {
 		t.Errorf("CreateItem = %+v, want an error", res)
 	}
 }
+
+// TestGetItemKeepsNumbers checks that GetItem keeps each key of the item
+// and keeps the numbers as bw printed them.
+func TestGetItemKeepsNumbers(t *testing.T) {
+	var gotArgs []string
+	useRunner(t, func(_ context.Context, _ []string, _ []byte, args ...string) ([]byte, []byte, error) {
+		gotArgs = args
+		return []byte(`{"id":"abc","type":1,"reprompt":0,"revisionDate":"2026-01-01T00:00:00Z","passwordHistory":[{"password":"old"}],"login":{"uris":[{"match":3,"uri":"a"}]}}`), nil, nil
+	})
+	res := GetItem("t", 2, "abc")().(GetItemResult)
+	if res.Err != nil || res.ID != "abc" || res.Epoch != 2 {
+		t.Fatalf("GetItem = %+v", res)
+	}
+	if want := []string{"get", "item", "abc"}; !reflect.DeepEqual(gotArgs, want) {
+		t.Errorf("args = %q, want %q", gotArgs, want)
+	}
+	if res.Item["type"] != json.Number("1") {
+		t.Errorf("type = %#v, want json.Number 1", res.Item["type"])
+	}
+	raw, err := json.Marshal(res.Item)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{`"match":3`, `"passwordHistory":[{"password":"old"}]`, `"revisionDate":"2026-01-01T00:00:00Z"`} {
+		if !strings.Contains(string(raw), want) {
+			t.Errorf("encoded item %s does not hold %s", raw, want)
+		}
+	}
+}
+
+// TestEditItemSendsItemOnStdin checks that EditItem names the item in the
+// args and sends the item JSON only on stdin.
+func TestEditItemSendsItemOnStdin(t *testing.T) {
+	var gotArgs []string
+	var gotStdin []byte
+	useRunner(t, func(_ context.Context, _ []string, stdin []byte, args ...string) ([]byte, []byte, error) {
+		gotArgs, gotStdin = args, append([]byte(nil), stdin...)
+		return []byte(`{"id":"abc"}`), nil, nil
+	})
+	item := map[string]any{"id": "abc", "name": "Gmail", "login": map[string]any{"password": "hunter2"}}
+	res := EditItem("t", 5, "abc", item, []string{"hunter2"})().(EditResult)
+	if res.Err != nil || res.ID != "abc" || res.Epoch != 5 {
+		t.Fatalf("EditItem = %+v", res)
+	}
+	if want := []string{"edit", "item", "abc"}; !reflect.DeepEqual(gotArgs, want) {
+		t.Errorf("args = %q, want %q", gotArgs, want)
+	}
+	for _, a := range gotArgs {
+		if strings.Contains(a, "hunter2") {
+			t.Errorf("args %q hold a field value", gotArgs)
+		}
+	}
+	raw, err := base64.StdEncoding.DecodeString(string(gotStdin))
+	if err != nil || !strings.Contains(string(raw), `"password":"hunter2"`) {
+		t.Errorf("stdin = %q (%v), want the encoded item", raw, err)
+	}
+}

@@ -1,6 +1,7 @@
 package bwcmd
 
 import (
+	"bytes"
 	"encoding/base64"
 	"encoding/json"
 	"errors"
@@ -15,6 +16,23 @@ var errNoItemID = errors.New("bw did not return the new item")
 // CreateResult is returned by CreateItem. ID is the ID of the new item.
 // Epoch is the session epoch that was passed to CreateItem.
 type CreateResult struct {
+	ID    string
+	Err   error
+	Epoch uint64
+}
+
+// GetItemResult is returned by GetItem. Item is the item JSON as bw prints
+// it, with each number as a json.Number, so that bw edit item gets back
+// each key that lazybw does not change.
+type GetItemResult struct {
+	ID    string
+	Item  map[string]any
+	Err   error
+	Epoch uint64
+}
+
+// EditResult is returned by EditItem. ID is the ID of the item.
+type EditResult struct {
 	ID    string
 	Err   error
 	Epoch uint64
@@ -101,4 +119,52 @@ func itemID(out []byte) (string, error) {
 		return "", errNoItemID
 	}
 	return v.ID, nil
+}
+
+// GetItem runs `bw get item <id>` and returns a GetItemResult tagged with
+// epoch. The edit form starts from this fresh copy of the item, not from
+// the list, so that it keeps each key of the item, also the keys that
+// bwcmd.Item does not model.
+func GetItem(token string, epoch uint64, id string) tea.Cmd {
+	return func() tea.Msg {
+		out, err := execBw(longTimeout, token, "", "get", "item", id)
+		if err != nil {
+			return GetItemResult{ID: id, Err: err, Epoch: epoch}
+		}
+		item, err := decodeItem(out)
+		return GetItemResult{ID: id, Item: item, Err: err, Epoch: epoch}
+	}
+}
+
+// decodeItem decodes the item JSON that bw get item prints, and then zeros
+// out. Numbers stay json.Number values, so that they encode as bw printed
+// them.
+func decodeItem(out []byte) (map[string]any, error) {
+	defer clear(out)
+	dec := json.NewDecoder(bytes.NewReader(out))
+	dec.UseNumber()
+	var item map[string]any
+	if err := dec.Decode(&item); err != nil {
+		return nil, fmt.Errorf("parse bw get item output: %w", err)
+	}
+	if item == nil {
+		return nil, errors.New("parse bw get item output: got null")
+	}
+	return item, nil
+}
+
+// EditItem runs `bw edit item <id>` and returns an EditResult tagged with
+// epoch. As in CreateItem, the item JSON goes to bw on stdin, and the debug
+// log hides each value of private.
+func EditItem(token string, epoch uint64, id string, item map[string]any, private []string) tea.Cmd {
+	return func() tea.Msg {
+		input, err := encodeItem(item)
+		if err != nil {
+			return EditResult{ID: id, Err: err, Epoch: epoch}
+		}
+		defer clear(input)
+		out, err := execBwInput(longTimeout, token, "", input, private, "edit", "item", id)
+		clear(out)
+		return EditResult{ID: id, Err: err, Epoch: epoch}
+	}
 }

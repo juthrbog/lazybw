@@ -40,9 +40,9 @@ the copy buffers of `os/exec` (see
 
 ### Writes to the vault
 
-lazybw can create logins and secure notes. It runs `bw create item`, which
-writes the item to the Bitwarden server and to the local data of `bw`.
-lazybw does not edit or delete items yet.
+lazybw can create and edit logins and secure notes. It runs
+`bw create item` and `bw edit item`, which write the item to the Bitwarden
+server and to the local data of `bw`. lazybw does not delete items yet.
 
 The item goes to `bw` as base64-encoded JSON on stdin. It never goes in an
 argument, because any local user can read the arguments of a process in
@@ -51,7 +51,12 @@ after the command. `bw create` prints the new item, decrypted. lazybw reads
 only its ID and then zeroes that output.
 
 A new item gets no organization, no folder and no master password
-re-prompt. The item form masks the password until you press `ctrl+r`, and
+re-prompt. For an edit, lazybw runs `bw get item` and changes only the
+fields that you changed. All other keys go back to `bw` as `bw get item`
+printed them, for example the password history, custom fields and passkeys.
+`bw get item` prints the decrypted item. lazybw zeroes that output after
+it decodes it. The decoded strings stay in memory, as the strings of
+`bw list items` do. The item form masks the password until you press `ctrl+r`, and
 each new form masks it again.
 
 If the vault locks while the item form shows, lazybw drops the form and its
@@ -227,7 +232,8 @@ lazybw does not test the version of `bw` at start.
 In Bitwarden, you can turn on master password re-prompt for an item. `bw`
 gives this setting to lazybw but does not enforce it. lazybw enforces it.
 For such an item, `c`, `t`, `v` and `m` ask for the master password before
-they copy. The drawer hides the TOTP code and the note text until you enter
+they copy, and `e` asks before it opens the edit form, which shows each
+field. The drawer hides the TOTP code and the note text until you enter
 the password.
 
 `u` (username) and `o` (open URL) do not ask. After the correct password,
@@ -304,8 +310,8 @@ names only the kind of error, for example `timed out` or
 `bw error (exit status 1)`. It does not repeat the message of `bw`. For a
 failed `bw` command, the log also has the stderr of `bw`. lazybw replaces
 the token, the password, the two-step code and the email in it with
-`[hidden]`. For `bw create item`, it also replaces the encoded item and
-each value of the item form.
+`[hidden]`. For `bw create item` and `bw edit item`, it also replaces the
+encoded item and each value of the item form.
 
 ## Bubble Tea trace file
 

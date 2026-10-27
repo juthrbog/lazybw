@@ -71,6 +71,7 @@ The unlock screen shows `SpinnerUnlock` while `bw unlock` or `bw login` runs. Th
 | `GlyphError` | ✗ | U+2717 | none (Unicode) | `ColorRed` | Error toasts, the error screen, and the errors of the unlock screen, the re-prompt prompt and the generator |
 | `GlyphCopy` | 󰆏 | U+F018F | `nf-md-content_copy` | `ColorGreen` | The copy toast |
 | `GlyphSave` | 󰆓 | U+F0193 | `nf-md-content_save` | `ColorGreen` | The "Created" toast after the item form saves |
+| `GlyphEdit` | 󰏫 | U+F03EB | `nf-md-pencil` | `ColorGreen` | The "Saved" toast after an edit |
 
 ### Generator options (`screens/generator.go`)
 
@@ -129,6 +130,7 @@ With `--ascii` or `LAZYBW_ASCII=1`, lazybw draws each glyph of the table below i
 | Item icons 󰌾 󰿯 󰎞 󰀄 󰣀 | `L` `C` `N` `I` `K` | Login, card, note, identity and SSH key, in their theme colors |
 | 󰆏 ✓ ✗ | `*` `+` `!` | The copy toast, success and error |
 | 󰆓 | `S` | The "Created" toast after the item form saves |
+| 󰏫 | `E` | The "Saved" toast after an edit |
 | ▶ | `>` | The cursor of the selected row |
 | ▸ ▾ | `+` `-` | A collapsed and an expanded group |
 | • | `*` | A mask |
@@ -195,7 +197,6 @@ The 4-cell bar replaced the indicator with 5 circle steps. It has 32 steps, so i
 
 | Concept | Glyph | Code point | Nerd Font name |
 | --- | --- | --- | --- |
-| Edit | 󰏫 | U+F03EB | `nf-md-pencil` |
 | Delete | 󰆴 | U+F01B4 | `nf-md-delete` |
 | Undo | 󰕌 | U+F054C | `nf-md-undo` |
 

@@ -21,15 +21,17 @@ var repromptUnlockCmd = bwcmd.Unlock
 // a token nor an error.
 var errNoSessionKey = errors.New("bw did not return a session key")
 
-// secretAction is a copy of a protected field. For an item with master
-// password re-prompt, the vault runs it only after a password check.
+// secretAction is a copy of a protected field, or an action that shows
+// protected fields. For an item with master password re-prompt, the vault
+// runs it only after a password check.
 type secretAction int
 
 const (
 	secretMain secretAction = iota // c: the password, card number, SSN or SSH private key
 	secretTOTP                     // t: the TOTP code
 	secretCVV                      // v: the card security code
-	secretNote                     // n: the note
+	secretNote                     // m: the note
+	secretEdit                     // e: the edit form, which shows each field
 )
 
 // repromptState is the master password prompt of the vault screen. The
@@ -290,6 +292,9 @@ func (m VaultModel) handleRepromptResult(msg repromptResultMsg) (tea.Model, tea.
 		return m, nil
 	}
 	m.verifiedID = itemID
+	if act == secretEdit {
+		return m, m.startEdit()
+	}
 	value, field, ok := m.secretFor(act)
 	if !ok {
 		return m, nil
