@@ -47,7 +47,7 @@ lazybw shows your vault in a terminal UI that you control with the keyboard. You
 - The detail panel below the list (the drawer) shows the current TOTP code and a countdown bar. The bar changes from green to yellow to red as the time runs out.
 - lazybw shows logins, secure notes, cards, identities and SSH keys. Each item type has its own detail view.
 - Press `/` to filter the vault with a fuzzy search while you type.
-- Press `n` to create a login or a secure note in a form, and `e` to edit one. The password generator can fill the password field.
+- Press `n` to create a login or a secure note in a form, and `e` to edit one. The password generator can fill the password field. `d` moves an item to the trash.
 - Press `ctrl+g` to put items with similar names into groups. `enter` expands or collapses a group.
 - For an item with master password re-prompt, lazybw asks for the master password before it copies a protected field.
 - The session token stays in memory only. lazybw clears the clipboard 60 seconds after a copy, and also when you lock or quit. The vault locks after 15 minutes with no key press. See [SECURITY.md](SECURITY.md).
@@ -171,6 +171,7 @@ Each theme has colors for a dark and for a light terminal background. lazybw ask
 | `o` | Open the URL in the browser |
 | `n` | Create a login (`l`) or a secure note (`s`). In the form, `tab` goes to the next field, `ctrl+s` saves and `esc` cancels. |
 | `e` | Edit the selected login or secure note in the same form |
+| `d` / `delete` | Move the selected item to the trash. lazybw asks for confirmation first: `y` moves it, and `n` or `esc` cancels. |
 | `p` | Open the password generator |
 | `r` | Sync the vault |
 | `l` | Lock the vault |
@@ -180,7 +181,7 @@ Each theme has colors for a dark and for a light terminal background. lazybw ask
 
 On the unlock screen, `ctrl+q` quits, because `q` types into the password field.
 
-For an item with master password re-prompt, `c`, `t`, `v`, `m` and `e` ask for the master password first. `enter` submits the password, and `esc` cancels. After the correct password, lazybw does the copy or opens the edit form. It does not ask again while the item stays selected.
+For an item with master password re-prompt, `c`, `t`, `v`, `m`, `e` and `d` ask for the master password first. `enter` submits the password, and `esc` cancels. After the correct password, lazybw does the copy, or opens the edit form or the trash dialog. It does not ask again while the item stays selected.
 
 The help overlay (`?`) shows the vault keys in four groups: Copy, Navigation, Vault and UI. Press `/` in the overlay to filter it. The overlay does not show the keys of the password generator, the item form, the filter input or the theme picker. The footer shows these keys while each one is open. See [docs/KEYBINDINGS.md](docs/KEYBINDINGS.md) for the full reference.
 

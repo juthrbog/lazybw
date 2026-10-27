@@ -51,6 +51,7 @@ These are the action bindings of `DefaultVaultKeyMap` in `ui/keymap.go`. The hel
 | `z` | Switch the drawer between inline mode and overlay mode |
 | `n` | Create an item. See [New item](#new-item). |
 | `e` | Edit the selected login or secure note. See [Item form](#item-form). |
+| `d` / `delete` | Move the selected item to the trash. See [Move to trash](#move-to-trash). |
 | `p` | Open the password generator |
 | `r` | Sync the vault with `bw sync`, and then load the items again. While a sync runs, `r` does nothing. |
 | `l` | Lock the vault and show the unlock screen |
@@ -66,9 +67,9 @@ A copy key copies nothing when the selected item does not have that field. When 
 
 The drawer keys `+`, `-` and `=` do nothing in overlay mode. The drawer height stays between 3 rows and half of the terminal height.
 
-When an item has master password re-prompt, `c`, `t`, `v`, `m` and `e` first ask for the master password. See [Master password re-prompt](#master-password-re-prompt).
+When an item has master password re-prompt, `c`, `t`, `v`, `m`, `e` and `d` first ask for the master password. See [Master password re-prompt](#master-password-re-prompt).
 
-While an overlay shows (help, generator, theme picker, re-prompt, new item or quit confirmation), the vault keys do nothing. The overlay gets the keys.
+While an overlay shows (help, generator, theme picker, re-prompt, new item, move to trash or quit confirmation), the vault keys do nothing. The overlay gets the keys.
 
 ## Filter mode
 
@@ -211,13 +212,24 @@ While `bw` saves, the form shows "Saving…" and ignores all keys. If `bw` fails
 
 If the vault locks while the form shows, lazybw discards the form and its values.
 
-## Master password re-prompt
+## Move to trash
 
-A Bitwarden item can have master password re-prompt. For such an item, `c`, `t`, `v`, `m` and `e` open a prompt that asks for the master password. `u` and `o` do not ask.
+`d` or `delete` opens a dialog that asks `Move "<name>" to trash?`. It works for each item type.
 
 | Key | Action |
 |---|---|
-| `enter` | Submit the master password. lazybw runs `bw unlock` with it. If `bw unlock` accepts the password, lazybw copies the field or opens the edit form. |
+| `y` | Move the item to the trash with `bw delete item`. lazybw has no permanent delete. You can restore the item from the trash for 30 days. |
+| `n` / `esc` | Close the dialog and delete nothing |
+
+While `bw delete item` runs, the dialog ignores all keys. If `bw` fails, the dialog shows the error, and `y` tries again. If `bw` succeeds, the dialog closes, lazybw loads the items again, selects the next item and shows the toast "Moved <name> to trash".
+
+## Master password re-prompt
+
+A Bitwarden item can have master password re-prompt. For such an item, `c`, `t`, `v`, `m`, `e` and `d` open a prompt that asks for the master password. `u` and `o` do not ask.
+
+| Key | Action |
+|---|---|
+| `enter` | Submit the master password. lazybw runs `bw unlock` with it. If `bw unlock` accepts the password, lazybw copies the field, or opens the edit form or the trash dialog. |
 | `esc` | Close the prompt and copy nothing. `esc` also works while `bw unlock` runs. |
 
 While `bw unlock` runs, the prompt ignores all other keys. The prompt does not accept an empty password.

@@ -168,3 +168,20 @@ func EditItem(token string, epoch uint64, id string, item map[string]any, privat
 		return EditResult{ID: id, Err: err, Epoch: epoch}
 	}
 }
+
+// DeleteResult is returned by DeleteItem. ID is the ID of the item.
+type DeleteResult struct {
+	ID    string
+	Err   error
+	Epoch uint64
+}
+
+// DeleteItem runs `bw delete item <id>` and returns a DeleteResult tagged
+// with epoch. It passes no --permanent, so bw moves the item to the trash,
+// where the user can restore it for 30 days.
+func DeleteItem(token string, epoch uint64, id string) tea.Cmd {
+	return func() tea.Msg {
+		_, err := execBw(longTimeout, token, "", "delete", "item", id)
+		return DeleteResult{ID: id, Err: err, Epoch: epoch}
+	}
+}

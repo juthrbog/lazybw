@@ -42,7 +42,9 @@ the copy buffers of `os/exec` (see
 
 lazybw can create and edit logins and secure notes. It runs
 `bw create item` and `bw edit item`, which write the item to the Bitwarden
-server and to the local data of `bw`. lazybw does not delete items yet.
+server and to the local data of `bw`. `d` runs `bw delete item <id>`,
+which moves the item to the trash. lazybw never passes `--permanent`, so
+you can restore a deleted item from the trash for 30 days.
 
 The item goes to `bw` as base64-encoded JSON on stdin. It never goes in an
 argument, because any local user can read the arguments of a process in
@@ -232,8 +234,8 @@ lazybw does not test the version of `bw` at start.
 In Bitwarden, you can turn on master password re-prompt for an item. `bw`
 gives this setting to lazybw but does not enforce it. lazybw enforces it.
 For such an item, `c`, `t`, `v` and `m` ask for the master password before
-they copy, and `e` asks before it opens the edit form, which shows each
-field. The drawer hides the TOTP code and the note text until you enter
+they copy. `e` asks before it opens the edit form, which shows each
+field, and `d` asks before it opens the trash dialog. The drawer hides the TOTP code and the note text until you enter
 the password.
 
 `u` (username) and `o` (open URL) do not ask. After the correct password,

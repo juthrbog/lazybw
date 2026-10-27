@@ -117,6 +117,26 @@ func TestCreateItemNeedsID(t *testing.T) {
 	}
 }
 
+// TestDeleteItemMovesToTrash checks that DeleteItem names the item and
+// passes no --permanent.
+func TestDeleteItemMovesToTrash(t *testing.T) {
+	var gotArgs []string
+	useRunner(t, func(_ context.Context, _ []string, stdin []byte, args ...string) ([]byte, []byte, error) {
+		gotArgs = args
+		if stdin != nil {
+			t.Errorf("stdin = %q, want none", stdin)
+		}
+		return nil, nil, nil
+	})
+	res := DeleteItem("t", 6, "abc")().(DeleteResult)
+	if res.Err != nil || res.ID != "abc" || res.Epoch != 6 {
+		t.Fatalf("DeleteItem = %+v", res)
+	}
+	if want := []string{"delete", "item", "abc"}; !reflect.DeepEqual(gotArgs, want) {
+		t.Errorf("args = %q, want %q", gotArgs, want)
+	}
+}
+
 // TestGetItemKeepsNumbers checks that GetItem keeps each key of the item
 // and keeps the numbers as bw printed them.
 func TestGetItemKeepsNumbers(t *testing.T) {
