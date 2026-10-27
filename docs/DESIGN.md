@@ -53,7 +53,7 @@ waste space and add visual noise. The screen has these parts:
 - A 1-row footer at the bottom: key hints on the left, and a toast or the sync age on the right.
 
 The layout is the same at every terminal width. A wider terminal shows
-longer names and descriptions. `d` changes the drawer to a card over the
+longer names and descriptions. `z` changes the drawer to a card over the
 list (see [Drawer Detail](#drawer-detail)).
 
 ---
@@ -123,7 +123,7 @@ header card and 6 field rows.
 - `+` and `-` change the drawer height by one row. `=` sets it back to 8 rows.
 - The drawer keeps at least 3 rows and at most half of the screen height, and the list keeps at least 2 rows. On a very short screen, the drawer gets the rows that the list leaves.
 - When the fields do not fit, the last row shows `↓ N more`.
-- `d` toggles the overlay mode. The drawer then shows as a card over the list, at most 80 columns wide, and the list gets all of the content area. In overlay mode, `+`, `-` and `=` do nothing.
+- `z` toggles the overlay mode. The drawer then shows as a card over the list, at most 80 columns wide, and the list gets all of the content area. In overlay mode, `+`, `-` and `=` do nothing.
 
 Each field row has a label, the value and a copy hint, such as `[c] copy`.
 In a narrow drawer, lazybw drops the copy hint first, so that the value
@@ -396,7 +396,7 @@ the master password passes.
 | Identity | Name, Email, Phone, Company, SSN, Passport, License, Address | SSN | Email |
 | SSH key | Fingerprint, Public Key, Private Key (masked) | Private key | Public key |
 
-`t` copies the TOTP code of a login. `v` copies the card security code. `n`
+`t` copies the TOTP code of a login. `v` copies the card security code. `m`
 copies the notes of the item. `o` opens the first URL of a login. A key
 that has no value to copy on the selected item does nothing. `u` on a login
 with no username shows `No username to copy`, because an empty write can
@@ -492,7 +492,7 @@ A Bitwarden item can have "Master password re-prompt" turned on.
 that the clients ask for the master password. bw does not enforce it, so
 lazybw does.
 
-- For such an item, `c`, `t`, `v` and `n` open the card `Master password re-prompt` with a password input. `u` and `o` do not ask.
+- For such an item, `c`, `t`, `v` and `m` open the card `Master password re-prompt` with a password input. `u` and `o` do not ask.
 - Enter submits the password. Esc cancels and closes the card. The footer shows `enter submit · esc cancel`.
 - lazybw runs `bw unlock --passwordenv BW_PASSWORD --raw` with the typed password. While bw runs, the card shows `Checking the master password…`, and only Esc works.
 - If bw accepts the password, it returns a new session key, and the old key stops working. lazybw stores the new key with `session.State.ReplaceToken`. The session epoch does not change, so the bw commands that started in this session still belong to it. Then lazybw runs the copy that the user asked for.
@@ -567,7 +567,7 @@ each overlay and of the unlock screen. These are the vault keys:
 | `t` | Copy the current TOTP code |
 | `u` | Copy the username, identity email or SSH public key |
 | `v` | Copy the card security code |
-| `n` | Copy the notes |
+| `m` | Copy the notes |
 | `o` | Open the first URL in the browser |
 | `/` | Open the filter |
 | `r` | Sync the vault (`bw sync`) |
@@ -580,7 +580,7 @@ each overlay and of the unlock screen. These are the vault keys:
 | `K` / Shift+Up | Scroll the note in the drawer up |
 | `+` / `-` | Make the drawer taller or shorter |
 | `=` | Set the drawer height back to 8 rows |
-| `d` | Toggle the drawer overlay |
+| `z` | Toggle the drawer overlay |
 | `?` | Show the help overlay |
 | `q` | Ask to quit, then lock and quit on `y` |
 | `ctrl+c` | Lock and quit at once |
@@ -667,7 +667,7 @@ lazybw reads these fields:
 | `id` | Keeps the selection, the group and the TOTP state on the same item after a sync |
 | `type` | The item type: 1 login, 2 secure note, 3 card, 4 identity, 5 SSH key |
 | `name` | The list row, the filter and the grouping |
-| `notes` | The drawer and `n` |
+| `notes` | The drawer and `m` |
 | `reprompt` | The master password re-prompt |
 | `login.username`, `login.password`, `login.totp`, `login.uris[].uri` | The drawer, `c`, `u`, `t` and `o` |
 | `card.cardholderName`, `card.number`, `card.expMonth`, `card.expYear`, `card.code` | The drawer, `c` and `v` |

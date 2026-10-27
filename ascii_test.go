@@ -103,7 +103,7 @@ func TestASCIIModeDrawsOnlyASCII(t *testing.T) {
 		{"generator", keyPress("p"), "Generating..."},
 		{"theme picker", keyPress("T"), "Choose theme"},
 		{"quit dialog", keyPress("q"), "Quit lazybw?"},
-		{"drawer overlay", keyPress("d"), "+----"},
+		{"drawer overlay", keyPress("z"), "+----"},
 		{"filter input", keyPress("/"), "^/v navigate"},
 	} {
 		open, _ := update(t, m, tc.key)

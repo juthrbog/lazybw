@@ -34,7 +34,7 @@ func TestClipboardClearKeepsNewerToast(t *testing.T) {
 	m := newTestVault(testItems())
 	updated, _ := m.Update(session.CopiedMsg{Field: session.CopyFieldPassword})
 	m = updated.(VaultModel)
-	updated, _ = m.Update(keyMsg("d"))
+	updated, _ = m.Update(keyMsg("z"))
 	m = updated.(VaultModel)
 	updated, _ = m.Update(session.ClipboardClearedMsg{})
 	m = updated.(VaultModel)

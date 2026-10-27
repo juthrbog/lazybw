@@ -203,7 +203,7 @@ lazybw does not test the version of `bw` at start.
 
 In Bitwarden, you can turn on master password re-prompt for an item. `bw`
 gives this setting to lazybw but does not enforce it. lazybw enforces it.
-For such an item, `c`, `t`, `v` and `n` ask for the master password before
+For such an item, `c`, `t`, `v` and `m` ask for the master password before
 they copy. The drawer hides the TOTP code and the note text until you enter
 the password.
 

@@ -105,8 +105,8 @@ func DefaultVaultKeyMap() VaultKeyMap {
 			key.WithHelp("u", "copy username"),
 		),
 		CopyNote: key.NewBinding(
-			key.WithKeys("n"),
-			key.WithHelp("n", "copy note"),
+			key.WithKeys("m"),
+			key.WithHelp("m", "copy note"),
 		),
 		CopyCVV: key.NewBinding(
 			key.WithKeys("v"),
@@ -149,8 +149,8 @@ func DefaultVaultKeyMap() VaultKeyMap {
 			key.WithHelp("=", "reset drawer height"),
 		),
 		DrawerToggle: key.NewBinding(
-			key.WithKeys("d"),
-			key.WithHelp("d", "toggle drawer overlay"),
+			key.WithKeys("z"),
+			key.WithHelp("z", "toggle drawer overlay"),
 		),
 		Generate: key.NewBinding(
 			key.WithKeys("p"),

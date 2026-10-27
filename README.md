@@ -29,7 +29,7 @@
   Password    ••••••••••  [c] copy
   TOTP        843 291  ██▊░ 21s  [t] copy
   URL         https://console.aws.amazon.com  [o] open
-  Notes       root account  [n] copy
+  Notes       root account  [m] copy
 
  j/k navigate · / search · c pwd · t totp · ? help        synced 5m ago
 ```
@@ -165,7 +165,7 @@ Each theme has colors for a dark and for a light terminal background. lazybw ask
 | `c` | Copy the password. For a card, copy the number. For an identity, copy the SSN. For an SSH key, copy the private key. |
 | `t` | Copy the TOTP code |
 | `u` | Copy the username. For an identity, copy the email. For an SSH key, copy the public key. |
-| `n` | Copy the note |
+| `m` | Copy the note |
 | `v` | Copy the card security code |
 | `o` | Open the URL in the browser |
 | `p` | Open the password generator |
@@ -177,7 +177,7 @@ Each theme has colors for a dark and for a light terminal background. lazybw ask
 
 On the unlock screen, `ctrl+q` quits, because `q` types into the password field.
 
-For an item with master password re-prompt, `c`, `t`, `v` and `n` ask for the master password first. `enter` submits the password, and `esc` cancels. After the correct password, lazybw does the copy. It does not ask again while the item stays selected.
+For an item with master password re-prompt, `c`, `t`, `v` and `m` ask for the master password first. `enter` submits the password, and `esc` cancels. After the correct password, lazybw does the copy. It does not ask again while the item stays selected.
 
 The help overlay (`?`) shows the vault keys in four groups: Copy, Navigation, Vault and UI. Press `/` in the overlay to filter it. The overlay does not show the keys of the password generator, the filter input or the theme picker. The footer shows these keys while each one is open. See [docs/KEYBINDINGS.md](docs/KEYBINDINGS.md) for the full reference.
 

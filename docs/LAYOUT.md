@@ -286,7 +286,7 @@ When no row is selected, the drawer says that no item is selected, and it names 
 
 ### Overlay mode
 
-`d` switches the drawer to overlay mode, and `d` again switches it back. The toast "Drawer: overlay" or "Drawer: inline" shows.
+`z` switches the drawer to overlay mode, and `z` again switches it back. The toast "Drawer: overlay" or "Drawer: inline" shows.
 
 In overlay mode, the list uses all of the content area, and the drawer shows as a card over the list (see [Overlays](#overlays)). The card has no gradient line. `+`, `-` and `=` do nothing in overlay mode.
 
@@ -308,7 +308,7 @@ The vault shows one of these overlays at a time. The drawer in overlay mode stay
 | Help | `?` | The title "Keybindings" and the filter state, then the keys in the groups Copy, Navigation, Vault and UI. The last row of the card shows `?/esc close · ↑/↓ scroll`, and `· ↓ more` when more rows are below. While you type a filter, it shows `enter done · esc clear`. |
 | Theme picker | `T` | The huh select "Choose theme" with the 7 themes. On a short terminal, the select gets fewer rows and scrolls. |
 | Generator | `p` | The title "Password Generator", the mode, the options and the generated value |
-| Master password re-prompt | `c`, `t`, `v` or `n` on an item with re-prompt | The title "Master password re-prompt", the text "Enter your master password to continue." and the password field |
+| Master password re-prompt | `c`, `t`, `v` or `m` on an item with re-prompt | The title "Master password re-prompt", the text "Enter your master password to continue." and the password field |
 
 The content of the help card is 3/4 of the terminal width, and at most 70 cells. The theme picker is 40 cells wide. The password field of the re-prompt card is 40 cells wide, or less on a narrow terminal.
 
