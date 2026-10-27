@@ -63,7 +63,7 @@ func envValue(env []string, name string) (string, bool) {
 // bw output. PATH does not change, and no bw program runs.
 func TestRunnerScriptsOutput(t *testing.T) {
 	var calls []bwCall
-	useRunner(t, func(ctx context.Context, env []string, args ...string) ([]byte, []byte, error) {
+	useRunner(t, func(ctx context.Context, env []string, _ []byte, args ...string) ([]byte, []byte, error) {
 		_, hasDeadline := ctx.Deadline()
 		calls = append(calls, bwCall{args: args, env: env, hasDeadline: hasDeadline})
 		switch args[0] {
@@ -129,7 +129,7 @@ func TestRunnerScriptsOutput(t *testing.T) {
 func TestRunnerTimeout(t *testing.T) {
 	setTimeouts(t, 20*time.Millisecond, 20*time.Millisecond)
 	partial := []byte("partial output")
-	useRunner(t, func(ctx context.Context, _ []string, _ ...string) ([]byte, []byte, error) {
+	useRunner(t, func(ctx context.Context, _ []string, _ []byte, _ ...string) ([]byte, []byte, error) {
 		<-ctx.Done()
 		return partial, nil, ctx.Err()
 	})

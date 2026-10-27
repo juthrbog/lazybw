@@ -2,7 +2,7 @@
 
 This page lists the keys of each lazybw screen. The key names are the names that Bubble Tea gives the keys, for example `enter`, `shift+down` or `pgdown`.
 
-A test in `ui/keybindings_doc_test.go` reads this file. It fails when a key of `DefaultVaultKeyMap`, `DefaultGeneratorKeyMap` or `DefaultConfirmKeyMap` (`ui/keymap.go`) is not on this page as inline code.
+A test in `ui/keybindings_doc_test.go` reads this file. It fails when a key of `DefaultVaultKeyMap`, `DefaultGeneratorKeyMap`, `DefaultConfirmKeyMap`, `DefaultNewItemKeyMap` or `DefaultFormKeyMap` (`ui/keymap.go`) is not on this page as inline code.
 
 ## All screens
 
@@ -49,6 +49,7 @@ These are the action bindings of `DefaultVaultKeyMap` in `ui/keymap.go`. The hel
 | `-` | Make the inline drawer one row shorter |
 | `=` | Set the inline drawer to its default height of 8 rows |
 | `z` | Switch the drawer between inline mode and overlay mode |
+| `n` | Create an item. See [New item](#new-item). |
 | `p` | Open the password generator |
 | `r` | Sync the vault with `bw sync`, and then load the items again. While a sync runs, `r` does nothing. |
 | `l` | Lock the vault and show the unlock screen |
@@ -66,7 +67,7 @@ The drawer keys `+`, `-` and `=` do nothing in overlay mode. The drawer height s
 
 When an item has master password re-prompt, `c`, `t`, `v` and `m` first ask for the master password. See [Master password re-prompt](#master-password-re-prompt).
 
-While an overlay shows (help, generator, theme picker, re-prompt or quit confirmation), the vault keys do nothing. The overlay gets the keys.
+While an overlay shows (help, generator, theme picker, re-prompt, new item or quit confirmation), the vault keys do nothing. The overlay gets the keys.
 
 ## Filter mode
 
@@ -143,10 +144,12 @@ Both modes:
 
 | Key | Action |
 |---|---|
-| `enter` / `r` | Make a new value |
+| `enter` / `r` | Make a new value. When the item form opened the generator, only `r` makes a new value. |
 | `m` / `tab` | Switch between password mode and passphrase mode |
 | `c` | Copy the value. `c` copies nothing while `bw generate` runs or when an error shows. |
 | `esc` | Close the generator |
+
+When the item form opened the generator with `ctrl+g`, `enter` puts the value in the password field and closes the generator. See [Item form](#item-form).
 
 While the generator shows, the footer shows only its keys. After `c`, the toast "Password sent to clipboard" shows in the footer when you close the generator.
 
@@ -172,6 +175,38 @@ Passphrase mode starts with 4 words, the separator `-`, capital letters on and a
 | `3` | Go to the next separator: `-`, `_`, `.` or space |
 
 In passphrase mode, `4` does nothing.
+
+## New item
+
+`n` opens a card that asks for the type of the new item.
+
+| Key | Action |
+|---|---|
+| `l` | Open the item form for a login |
+| `s` | Open the item form for a secure note |
+| `esc` | Close the card |
+
+## Item form
+
+The item form shows in place of the list and the drawer. A login has the fields Name, Username, Password, TOTP, URI and Notes. A secure note has the fields Name and Notes. Letters type text, so the form commands use `tab`, `ctrl` and `esc`.
+
+| Key | Action |
+|---|---|
+| `tab` | Go to the next field |
+| `shift+tab` | Go to the previous field |
+| `enter` | Add a new line in Notes. In the other fields, go to the next field. |
+| `ctrl+s` | Save the item with `bw create item` |
+| `ctrl+g` | Open the password generator. Only the Password field takes this key. |
+| `ctrl+r` | Show or hide the password. The password is hidden each time the form opens. |
+| `esc` | Close the form. If you changed a value, a dialog asks "Discard changes?" first: `y` discards the changes and `n` or `esc` goes back to the form. |
+
+The URI field has one line for each URI and one empty line. When you type in the empty line, a new empty line shows below it. lazybw does not save empty lines.
+
+The name is required. The TOTP field takes an `otpauth://` URI or a base32 key. If a check fails, the field shows the error and lazybw does not save.
+
+While `bw create item` runs, the form shows "Saving…" and ignores all keys. If `bw` fails, the form shows the error and keeps all values, and `ctrl+s` tries again. If `bw` succeeds, the form closes, lazybw loads the items again, selects the new item and shows the toast "Created" with the name.
+
+If the vault locks while the form shows, lazybw discards the form and its values.
 
 ## Master password re-prompt
 

@@ -42,7 +42,10 @@ type GeneratorModel struct {
 	// over each Open, so that a late result of an earlier card is dropped.
 	seq    uint64
 	closed bool
-	keys   ui.GeneratorKeyMap
+	// used is true when the user took the value for the password field of
+	// the item form.
+	used bool
+	keys ui.GeneratorKeyMap
 
 	length    int
 	uppercase bool
@@ -75,6 +78,28 @@ func (g GeneratorModel) Open() (GeneratorModel, tea.Cmd) {
 	return g, g.generate()
 }
 
+// OpenForField opens the generator for the password field of the item
+// form. enter then takes the value, and only r generates a new value.
+func (g GeneratorModel) OpenForField() (GeneratorModel, tea.Cmd) {
+	g, cmd := g.Open()
+	g.keys.Regenerate.SetKeys("r")
+	g.keys.Regenerate.SetHelp("r", "regen")
+	g.keys.Use.SetEnabled(true)
+	return g, cmd
+}
+
+// Used reports whether the user took the value for the item form.
+func (g GeneratorModel) Used() bool { return g.used }
+
+// Value returns the generated value, or "" while bw generate runs or after
+// an error.
+func (g GeneratorModel) Value() string {
+	if g.err != "" || g.password == genPlaceholder() {
+		return ""
+	}
+	return g.password
+}
+
 // Closed reports whether the user closed the card.
 func (g GeneratorModel) Closed() bool { return g.closed }
 
@@ -90,6 +115,9 @@ func (m VaultModel) updateGenerator(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	m.gen, cmd = m.gen.Update(msg)
 	if m.gen.Closed() {
 		m.overlay = overlayNone
+		if m.gen.Used() && m.formOpen {
+			m.form.setPassword(m.gen.Value())
+		}
 	}
 	return m, cmd
 }
@@ -118,11 +146,16 @@ func (g GeneratorModel) updateKey(msg tea.KeyPressMsg) (GeneratorModel, tea.Cmd)
 	case key.Matches(msg, k.Close):
 		g.closed = true
 		return g, nil
+	case key.Matches(msg, k.Use):
+		if g.Value() != "" {
+			g.used, g.closed = true, true
+		}
+		return g, nil
 	case key.Matches(msg, k.Regenerate):
 		return g, g.generate()
 	case key.Matches(msg, k.Copy):
-		if g.err == "" && g.password != "" && g.password != genPlaceholder() {
-			return g, session.CopyToClipboard(g.password, session.CopyFieldPassword)
+		if v := g.Value(); v != "" {
+			return g, session.CopyToClipboard(v, session.CopyFieldPassword)
 		}
 	case key.Matches(msg, k.Mode):
 		if g.mode == genModePassword {
@@ -311,12 +344,16 @@ func (g GeneratorModel) FooterHints() []ui.HintBinding {
 		size = ui.HintPair(k.Longer, k.Shorter, "/", "words")
 		options = ui.HintPair(k.Option1, k.Option3, "-", "options")
 	}
-	return []ui.HintBinding{
+	var hints []ui.HintBinding
+	if k.Use.Enabled() {
+		hints = append(hints, ui.Hint(k.Use, "use"))
+	}
+	return append(hints,
 		ui.Hint(k.Regenerate, "regen"),
 		size,
 		ui.Hint(k.Mode, "mode"),
 		options,
 		ui.Hint(k.Copy, "copy"),
 		ui.Hint(k.Close, "close"),
-	}
+	)
 }

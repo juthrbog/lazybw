@@ -84,6 +84,7 @@ var (
 	GlyphSuccess  string
 	GlyphError    string
 	GlyphCopy     string
+	GlyphSave     string
 )
 
 func init() {
@@ -269,6 +270,7 @@ func initStyles() {
 	GlyphSuccess = lipgloss.NewStyle().Foreground(ColorGreen).Render(g.Success)
 	GlyphError = lipgloss.NewStyle().Foreground(ColorRed).Render(g.Error)
 	GlyphCopy = lipgloss.NewStyle().Foreground(ColorGreen).Render(g.Copy)
+	GlyphSave = lipgloss.NewStyle().Foreground(ColorGreen).Render(g.Save)
 }
 
 // ListStyles returns the styles of the vault list and its filter input for

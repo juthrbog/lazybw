@@ -31,7 +31,8 @@ func bindingsOf(t *testing.T, km any) (names []string, bindings []key.Binding) {
 
 // checkKeyMap checks the keys of each binding of km against want, which
 // must list each field. Each binding must have help text, and no key may
-// belong to two bindings.
+// belong to two enabled bindings. A disabled binding can share a key, because
+// the screen that turns it on takes the key from the other binding.
 func checkKeyMap(t *testing.T, km any, want map[string][]string) {
 	t.Helper()
 	names, bindings := bindingsOf(t, km)
@@ -48,6 +49,9 @@ func checkKeyMap(t *testing.T, km any, want map[string][]string) {
 		}
 		if h := b.Help(); h.Key == "" || h.Desc == "" {
 			t.Errorf("%s has no help text: %+v", name, h)
+		}
+		if !b.Enabled() {
+			continue
 		}
 		for _, k := range b.Keys() {
 			if other, ok := owner[k]; ok {
@@ -77,6 +81,7 @@ func TestDefaultVaultKeyMap(t *testing.T) {
 		"DrawerShrink":   {"-"},
 		"DrawerReset":    {"="},
 		"DrawerToggle":   {"z"},
+		"New":            {"n"},
 		"Generate":       {"p"},
 		"Sync":           {"r"},
 		"Lock":           {"l"},
@@ -99,7 +104,27 @@ func TestDefaultGeneratorKeyMap(t *testing.T) {
 		"Option3":    {"3"},
 		"Option4":    {"4"},
 		"Copy":       {"c"},
+		"Use":        {"enter"},
 		"Close":      {"esc"},
+	})
+}
+
+func TestDefaultNewItemKeyMap(t *testing.T) {
+	checkKeyMap(t, DefaultNewItemKeyMap(), map[string][]string{
+		"Login":  {"l"},
+		"Note":   {"s"},
+		"Cancel": {"esc"},
+	})
+}
+
+func TestDefaultFormKeyMap(t *testing.T) {
+	checkKeyMap(t, DefaultFormKeyMap(), map[string][]string{
+		"Next":     {"tab"},
+		"Prev":     {"shift+tab"},
+		"Save":     {"ctrl+s"},
+		"Generate": {"ctrl+g"},
+		"Reveal":   {"ctrl+r"},
+		"Cancel":   {"esc"},
 	})
 }
 
