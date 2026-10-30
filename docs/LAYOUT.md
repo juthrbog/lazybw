@@ -68,7 +68,7 @@ The status gets its space first, but it leaves room for the first hint. The foot
 | Unlocking or logging in | | |
 | Two-step login, method | `enter submit · ↑/↓ navigate · esc back · ctrl+q quit` | |
 | Two-step login, code | `enter submit · esc back · ctrl+q quit` | |
-| Vault | `j/k navigate · / search · c pwd · t totp · ? help · q quit · ctrl+g group · d drawer · p gen · T theme` | Toast or sync age |
+| Vault | `j/k navigate · / search · c pwd · t totp · ? help · q quit · n new · e edit · d trash · ctrl+g group · z drawer · p gen · T theme` | Toast or sync age |
 | Vault, filter input open | `esc clear · enter confirm · ↑/↓ navigate` | Toast or sync age |
 | Vault, filter applied | `filter: <text> · esc clear · ? help · q quit · c pwd · t totp` | Toast or sync age |
 | Quit confirmation | `y yes · n no` | |

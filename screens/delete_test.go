@@ -162,6 +162,19 @@ func TestDeleteResultOfEndedSessionIsDropped(t *testing.T) {
 	}
 }
 
+func TestFooterShowsEditAndTrash(t *testing.T) {
+	hints, _ := newTestVault(editItems()).FooterContent()
+	for _, want := range [][2]string{{"e", "edit"}, {"d", "trash"}} {
+		found := false
+		for _, h := range hints {
+			found = found || (h.Key == want[0] && h.Desc == want[1])
+		}
+		if !found {
+			t.Errorf("footer hints %v have no %s %s", hints, want[0], want[1])
+		}
+	}
+}
+
 func TestDeleteDialogFitsSmallTerminals(t *testing.T) {
 	long := bwcmd.Item{ID: "x", Type: bwcmd.ItemTypeLogin, Name: strings.Repeat("Very long name ", 10)}
 	for _, size := range [][2]int{{80, 24}, {50, 15}, {30, 10}} {

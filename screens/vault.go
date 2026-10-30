@@ -627,6 +627,8 @@ func (m VaultModel) FooterContent() ([]ui.HintBinding, string) {
 			ui.Hint(k.Help, "help"),
 			ui.Hint(k.Quit, "quit"),
 			ui.Hint(k.New, "new"),
+			ui.Hint(k.Edit, "edit"),
+			ui.Hint(k.Delete, "trash"),
 			ui.Hint(k.ToggleGrouping, "group"),
 			ui.Hint(k.DrawerToggle, "drawer"),
 			ui.Hint(k.Generate, "gen"),

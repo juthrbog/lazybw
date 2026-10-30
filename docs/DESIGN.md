@@ -690,7 +690,7 @@ the sync age when no toast shows, is on the right.
  j/k navigate · / search · c pwd   󰆏 Password sent to clipboard · clears in 60s
 ```
 
-The normal hints are `j/k navigate · / search · c pwd · t totp · ? help · q quit · ctrl+g group · d drawer · p gen · T theme`.
+The normal hints are `j/k navigate · / search · c pwd · t totp · ? help · q quit · n new · e edit · d trash · ctrl+g group · z drawer · p gen · T theme`.
 lazybw drops hints from the end when they do not fit. Each overlay, the
 filter input and the quit confirmation show their own hints.
 
