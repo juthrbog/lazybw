@@ -4,6 +4,8 @@ This page lists the keys of each lazybw screen. The key names are the names that
 
 A test in `ui/keybindings_doc_test.go` reads this file. It fails when a key of `DefaultVaultKeyMap`, `DefaultGeneratorKeyMap`, `DefaultConfirmKeyMap`, `DefaultNewItemKeyMap` or `DefaultFormKeyMap` (`ui/keymap.go`) is not on this page as inline code.
 
+lazybw does not capture the mouse. The click-and-drag text selection of your terminal works in every screen.
+
 ## All screens
 
 | Key | Action |
@@ -104,6 +106,8 @@ The dialog ignores all other keys. `ctrl+c` quits at once.
 ## Help overlay
 
 The help overlay opens after `?`. It lists the vault keys in four groups: Copy, Navigation, Vault and UI.
+
+The help overlay does not show the keys of the password generator, the item form, the filter input or the theme picker. The footer shows these keys while each one is open.
 
 | Key | Action |
 |---|---|
@@ -263,6 +267,10 @@ While `bw unlock` or `bw login` runs, only `ctrl+q` and `ctrl+c` work.
 ### Two-step login
 
 If the account uses two-step login, lazybw first asks for the method and then for the code.
+
+lazybw supports three methods: an authenticator app, email and YubiKey OTP. If you choose email, Bitwarden sends the code to the email address of the account.
+
+Bitwarden can also ask for a new-device code. It does this when an account without two-step login logs in from a new device, for example a new install of `bw`. `bw` has no option that takes this code, so lazybw shows a message that tells you to run `bw login` once in a terminal. Enter the code from the email there, and then start lazybw again.
 
 Method form:
 

@@ -39,6 +39,11 @@ tasks:
     cmds:
       - gofmt -l -w .
 
+  demo:
+    desc: Record the README demo to docs/images/lazybw.gif (needs vhs)
+    cmds:
+      - vhs scripts/demo/demo.tape
+
   release-dry-run:
     desc: Build the release archives locally, with no signature and no SBOMs
     cmds:
