@@ -1068,6 +1068,8 @@ or field values.
 | `--ascii` | `false` | Draw only ASCII characters. `LAZYBW_ASCII` sets it when the flag is not given. See [GLYPHS.md](GLYPHS.md#ascii-mode). |
 | `--version` | | Print the version and stop. |
 
+The README has a copy of this table for users, with a column for the environment variables. If you add or change a flag, update both tables.
+
 `--version` prints `lazybw <version>`. A release build gets the version
 from goreleaser through `-X main.version`. A `go install` build has no
 ldflags, so the version variable stays `dev`. lazybw then prints the module
