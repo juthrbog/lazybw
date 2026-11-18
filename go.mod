@@ -1,6 +1,6 @@
 module github.com/juthrbog/lazybw
 
-go 1.26.0
+go 1.26.7
 
 toolchain go1.27.2
 
@@ -8,7 +8,7 @@ require (
 	charm.land/bubbles/v2 v2.2.1
 	charm.land/bubbletea/v2 v2.1.1
 	charm.land/huh/v2 v2.0.3
-	charm.land/lipgloss/v2 v2.0.6
+	charm.land/lipgloss/v2 v2.1.0
 	github.com/catppuccin/go v0.3.0
 	github.com/charmbracelet/x/ansi v0.11.9
 )
