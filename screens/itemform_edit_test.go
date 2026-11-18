@@ -226,7 +226,7 @@ func TestEditSavesAndRefreshes(t *testing.T) {
 	items := editItems()
 	items[0].Login.Password = "new-pw"
 	items[0].Login.Username = "octo2"
-	m, _ = send(m, bwcmd.ItemsResult{Items: items, Epoch: m.sess.Epoch})
+	m, _ = send(m, bwcmd.ItemsResult{Items: items, Epoch: m.sess.Epoch, Seq: m.listSeq})
 	if item := m.selectedItem(); item == nil || item.ID != "gh" {
 		t.Fatalf("selected = %v, want gh", item)
 	}

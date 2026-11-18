@@ -101,6 +101,11 @@ type Item struct {
 	// passes it through and does not enforce it, so lazybw asks for the
 	// master password before it copies or shows a protected field.
 	Reprompt int `json:"reprompt"`
+
+	// DeletedDate is the time when the item went to the trash, in ISO 8601
+	// UTC (for example "2026-11-17T10:20:30.123Z"). It is empty for an
+	// item that is not in the trash.
+	DeletedDate string `json:"deletedDate"`
 }
 
 // FilterValue implements bubbles/list.Item. Used for fuzzy filtering.

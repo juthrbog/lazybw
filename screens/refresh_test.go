@@ -117,7 +117,7 @@ func TestRefreshDropsSyncToast(t *testing.T) {
 	if !strings.Contains(m.toast, "Vault synced") {
 		t.Fatalf("toast = %q, want the sync toast", m.toast)
 	}
-	updated, _ = m.Update(bwcmd.ItemsResult{Items: testItems()})
+	updated, _ = m.Update(bwcmd.ItemsResult{Items: testItems(), Seq: m.listSeq})
 	m = updated.(VaultModel)
 	if m.toast != "" {
 		t.Errorf("toast = %q, want none after the refresh", m.toast)

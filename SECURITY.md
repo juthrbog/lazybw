@@ -32,6 +32,11 @@ passwords, TOTP keys, notes, card numbers and security codes, SSNs,
 passport and license numbers, and SSH private keys. lazybw also keeps the
 session token (the `BW_SESSION` key) and the email of the account.
 
+`D` shows the trash. lazybw then runs `bw list items --trash`, which also
+returns decrypted items. lazybw keeps them in the same way and in the same
+slice as the vault items. It keeps only one list at a time: `D` drops the
+secret fields of the items of the old list before it loads the new list.
+
 The JSON also has fields that lazybw does not parse, for example the
 password history, custom field values and passkey keys. These values exist
 only in the output of `bw`. That is the buffer that holds its stdout, and
@@ -44,7 +49,9 @@ lazybw can create and edit logins and secure notes. It runs
 `bw create item` and `bw edit item`, which write the item to the Bitwarden
 server and to the local data of `bw`. `d` runs `bw delete item <id>`,
 which moves the item to the trash. lazybw never passes `--permanent`, so
-you can restore a deleted item from the trash for 30 days.
+you can restore a deleted item from the trash for 30 days, with `D` and
+`U` in lazybw. `U` runs `bw restore item <id>`. Only the ID goes in the
+arguments. lazybw has no permanent delete.
 
 The item goes to `bw` as base64-encoded JSON on stdin. It never goes in an
 argument, because any local user can read the arguments of a process in
@@ -84,14 +91,16 @@ On a lock, an idle lock and a quit, lazybw does these actions:
 
 After a sync, lazybw drops the secret fields of the old items in the same
 way. It does the same for an item list that arrives after its session
-ended.
+ended, for a trash list or a vault list that arrives while the other list
+shows, for the items of the old list after `D`, and for a restored item.
+A lock drops the trash list in the same way as the vault list.
 
 lazybw also zeroes these byte buffers:
 
 - The stdout of `bw` goes into a buffer that zeroes its old array each time
   it grows. So the buffer leaves no partial copy of the vault JSON behind.
-- After the parse, lazybw zeroes the stdout of `bw list items`, `bw unlock`
-  and `bw login`. When a `bw` command fails, lazybw zeroes its stdout.
+- After the parse, lazybw zeroes the stdout of `bw list items` (also with
+  `--trash`), `bw unlock` and `bw login`. When a `bw` command fails, lazybw zeroes its stdout.
 
 When you submit the unlock or login form, lazybw takes the master password
 and sets the string that the form writes to `""`. Then it puts a new, empty
@@ -235,7 +244,8 @@ In Bitwarden, you can turn on master password re-prompt for an item. `bw`
 gives this setting to lazybw but does not enforce it. lazybw enforces it.
 For such an item, `c`, `t`, `v` and `m` ask for the master password before
 they copy. `e` asks before it opens the edit form, which shows each
-field, and `d` asks before it opens the trash dialog. The drawer hides the TOTP code and the note text until you enter
+field, `d` asks before it opens the trash dialog, and `U` asks before it
+opens the restore dialog. The drawer hides the TOTP code and the note text until you enter
 the password.
 
 `u` (username) and `o` (open URL) do not ask. After the correct password,
@@ -305,6 +315,8 @@ The log has a line for each state change:
   after a second failed item load.
 - The `bw lock` result.
 - Sync results and errors.
+- The item count after a trash load, and a dropped trash list or vault
+  list.
 
 The lines that lazybw writes never contain the session token, the master
 password, the email, item names or field values. A line about an error
@@ -313,7 +325,8 @@ names only the kind of error, for example `timed out` or
 failed `bw` command, the log also has the stderr of `bw`. lazybw replaces
 the token, the password, the two-step code and the email in it with
 `[hidden]`. For `bw create item` and `bw edit item`, it also replaces the
-encoded item and each value of the item form.
+encoded item and each value of the item form. A failed restore shows as
+`bw restore item failed`, with no item ID and no item values.
 
 ## Bubble Tea trace file
 

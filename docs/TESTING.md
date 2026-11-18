@@ -120,8 +120,8 @@ The fake `bw` programs are shell scripts. On Windows, `fakeBw` and `fakeOpener` 
 
 Follow these rules in a new test:
 
-1. In the root package, use the fake `bw`. Call `fakeBwLog(t)` to see what the fake got.
-2. In `screens`, replace `unlockCmd`, `loginCmd` or `repromptUnlockCmd` with a stub. Do not change `PATH`.
+1. In the root package, use the fake `bw`. Call `fakeBwLog(t)` to see what the fake got. The root tests cannot replace `fetchTrashCmd`, because it is not exported. A root test that presses `D` sends the `bwcmd.TrashResult` itself and does not run the command of `D`.
+2. In `screens`, replace `unlockCmd`, `loginCmd`, `repromptUnlockCmd`, `fetchTrashCmd` or `restoreItemCmd` with a stub. Do not change `PATH`. `D` and a sync in the trash list call `fetchTrashCmd`. The way back to the vault returns `bwcmd.FetchItems`, so send `D` with `send` and do not run its command.
 3. In `bwcmd`, call `useRunner(t, r)` before the first call to `bw`, so that `r` gives the output of `bw`. To test how `execRun` starts the process, for example its environment or the kill after a timeout, call `fakeBw(t, script)` instead.
 
 ## Test files
@@ -131,7 +131,7 @@ Follow these rules in a new test:
 | root (`main`) | `model_test.go` | The state machine of `RootModel`: bw status, unlock, item load, lock, quit and idle lock. Also the frame size, the footer, the `bw lock` errors on the unlock screen and the debug log, which holds no secrets. It holds the `TestMain`. |
 | root (`main`) | `main_test.go` | The `--version` text, the `TEA_TRACE` check, and the `bw lock` errors that `main` prints after the exit. |
 | root (`main`) | `lock_test.go` | The lock key, the idle lock, quit, retry, the clipboard clear, the exit cleanup and late bw results. |
-| root (`main`) | `secrets_test.go` | Unlock drops the unlock screen, and each lock path drops the vault. |
+| root (`main`) | `secrets_test.go` | Unlock drops the unlock screen, and each lock path drops the vault and the trash list. |
 | root (`main`) | `panic_cleanup_test.go` | The exit cleanup after a panic in `Update`. |
 | root (`main`) | `lastsync_test.go` | The sync age in the footer, from bw status. |
 | root (`main`) | `ascii_test.go` | With `--ascii`, each screen, card and footer draws only ASCII characters. `LAZYBW_ASCII` turns the mode on. |
@@ -148,6 +148,8 @@ Follow these rules in a new test:
 | `screens` | `vault_overlay_test.go` | Each overlay card owns the view, the footer and the keys until Esc closes it. |
 | `screens` | `generator_test.go` | The password generator. |
 | `screens` | `reprompt_test.go` | The master password re-prompt. |
+| `screens` | `trash_test.go` | The `D` key: the switch between the vault and the trash list, the load numbers, the texts of an empty list, `r` after a failed load, the footer and the help in the trash. |
+| `screens` | `restore_test.go` | The `U` key and the restore dialog. |
 | `screens` | `toast_test.go` | The lifetime of the toasts. |
 | `screens` | `totp_cache_test.go` | The TOTP code of the selected item. |
 | `screens` | `refresh_test.go` | The vault after a sync replaces its items. |
@@ -227,6 +229,9 @@ Use `waitForMsg` when the commands hold a timer or a slow command. `collectMsgs`
 | `assertArea(t, out, width, height)` | `vault_test.go` | See [Frame size](#frame-size). |
 | `stubUnlock(t)`, `stubLogin(t, results...)` | `twostep_test.go` | Replace `unlockCmd` and `loginCmd`, and record each call. |
 | `stubReprompt(t)` | `reprompt_test.go` | Replaces `repromptUnlockCmd`. The password `right` passes. Other passwords fail as a wrong master password does. |
+| `fakeFetchTrash(t)` | `trash_test.go` | Replaces `fetchTrashCmd`, and records the epoch and the load number of each call. The command returns no message. |
+| `trashVault(t, items)` | `trash_test.go` | Returns a `VaultModel` that shows `items` as the trash list. Call `fakeFetchTrash` first. |
+| `fakeRestore(t)` | `restore_test.go` | Replaces `restoreItemCmd`, and records the ID of each call. The command returns no message. |
 | `fakeOpener(t, script)` | `openurl_test.go` | Replaces `openerCommand` with a shell script. |
 | `pickTheme(t, m, name)` | `theme_test.go` | Opens the theme picker, moves to `name` and presses Enter. |
 
@@ -328,6 +333,8 @@ Some code reads a package variable, so that a test can replace a command, a time
 | `Run` | `bwcmd` | `execRun`, which starts `bw` from `PATH` | `useRunner` in `exec_test.go` |
 | `unlockCmd`, `loginCmd` | `screens` | `bwcmd.Unlock`, `bwcmd.LoginUser` | `stubUnlock`, `stubLogin` in `twostep_test.go` |
 | `repromptUnlockCmd` | `screens` | `bwcmd.Unlock` | `stubReprompt` in `reprompt_test.go` |
+| `fetchTrashCmd` | `screens` (`trash.go`) | `bwcmd.FetchTrash` | `fakeFetchTrash` in `trash_test.go` |
+| `restoreItemCmd` | `screens` (`restore.go`) | `bwcmd.RestoreItem` | `fakeRestore` in `restore_test.go` |
 | `openerCommand` | `screens` | `systemOpener` | `fakeOpener` and `TestOpenURLReportsOpenerFailure` in `openurl_test.go` |
 | `toastDuration` | `screens` | 4 s | `TestToastExpiresAndFooterShowsSyncAge` in `vault_test.go` |
 | `errorToastDuration` | `screens` | 8 s | `TestErrorToastExpires` in `toast_test.go` |

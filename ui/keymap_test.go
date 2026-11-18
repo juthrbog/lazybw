@@ -84,6 +84,8 @@ func TestDefaultVaultKeyMap(t *testing.T) {
 		"New":            {"n"},
 		"Edit":           {"e"},
 		"Delete":         {"d", "delete"},
+		"ToggleTrash":    {"D"},
+		"Restore":        {"U"},
 		"Generate":       {"p"},
 		"Sync":           {"r"},
 		"Lock":           {"l"},
@@ -187,6 +189,20 @@ func TestHelpBindingsCategories(t *testing.T) {
 	} {
 		if !slices.Contains(bindings, want) {
 			t.Errorf("the help has no entry %+v", want)
+		}
+	}
+	// D and U come right after d, in the Vault category.
+	keys := make([]string, len(bindings))
+	for i, b := range bindings {
+		keys[i] = b.Key
+	}
+	d := slices.Index(keys, "d")
+	if d < 0 || d+2 >= len(keys) || keys[d+1] != "D" || keys[d+2] != "U" {
+		t.Fatalf("the help keys %q do not have D and U right after d", keys)
+	}
+	for _, b := range bindings[d+1 : d+3] {
+		if b.Category != CategoryVault {
+			t.Errorf("binding %q has the category %q, want %q", b.Key, b.Category, CategoryVault)
 		}
 	}
 }

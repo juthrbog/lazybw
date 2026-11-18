@@ -185,3 +185,20 @@ func DeleteItem(token string, epoch uint64, id string) tea.Cmd {
 		return DeleteResult{ID: id, Err: err, Epoch: epoch}
 	}
 }
+
+// RestoreResult is returned by RestoreItem. ID is the ID of the item.
+type RestoreResult struct {
+	ID    string
+	Err   error
+	Epoch uint64
+}
+
+// RestoreItem runs `bw restore item <id>` and returns a RestoreResult
+// tagged with epoch. bw moves the item from the trash back to the vault.
+// Only the ID goes in args.
+func RestoreItem(token string, epoch uint64, id string) tea.Cmd {
+	return func() tea.Msg {
+		_, err := execBw(longTimeout, token, "", "restore", "item", id)
+		return RestoreResult{ID: id, Err: err, Epoch: epoch}
+	}
+}

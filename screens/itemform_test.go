@@ -150,7 +150,7 @@ func TestCreateLoginSendsFormValues(t *testing.T) {
 		t.Errorf("toast = %q", m.toast)
 	}
 	items := append(testItems(), bwcmd.Item{ID: "new", Type: bwcmd.ItemTypeLogin, Name: "GitHub"})
-	m, _ = send(m, bwcmd.ItemsResult{Items: items, Epoch: m.sess.Epoch})
+	m, _ = send(m, bwcmd.ItemsResult{Items: items, Epoch: m.sess.Epoch, Seq: m.listSeq})
 	if item := m.selectedItem(); item == nil || item.ID != "new" {
 		t.Errorf("selected = %v, want the new item", item)
 	}

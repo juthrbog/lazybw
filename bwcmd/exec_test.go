@@ -88,9 +88,9 @@ func TestRunnerScriptsOutput(t *testing.T) {
 	if unlock.Err != nil || unlock.Token != "session-token" {
 		t.Errorf("Unlock = %+v, want the scripted token", unlock)
 	}
-	items := FetchItems("session-token", 3)().(ItemsResult)
-	if items.Err != nil || len(items.Items) != 1 || items.Items[0].Name != "Gmail" || items.Epoch != 3 {
-		t.Errorf("FetchItems = %+v, want the scripted item and epoch 3", items)
+	items := FetchItems("session-token", 3, 7)().(ItemsResult)
+	if items.Err != nil || len(items.Items) != 1 || items.Items[0].Name != "Gmail" || items.Epoch != 3 || items.Seq != 7 {
+		t.Errorf("FetchItems = %+v, want the scripted item, epoch 3 and seq 7", items)
 	}
 	sync := Sync("session-token", 3)().(SyncResult)
 	var bwErr *Error
@@ -121,6 +121,46 @@ func TestRunnerScriptsOutput(t *testing.T) {
 	}
 	if _, ok := envValue(calls[0].env, "BW_SESSION"); ok {
 		t.Error("status got BW_SESSION, want none")
+	}
+}
+
+// TestFetchTrashListsTrash checks that FetchTrash runs bw list items with
+// --trash and the token, and that the items, the epoch and the load number
+// come back.
+func TestFetchTrashListsTrash(t *testing.T) {
+	var got bwCall
+	useRunner(t, func(_ context.Context, env []string, _ []byte, args ...string) ([]byte, []byte, error) {
+		got = bwCall{args: args, env: env}
+		return []byte(`[{"id":"1","type":1,"name":"Old","deletedDate":"2026-11-17T10:20:30.123Z","login":{"password":"p"}}]`), nil, nil
+	})
+	res := FetchTrash("session-token", 4, 7)().(TrashResult)
+	if res.Err != nil || len(res.Items) != 1 || res.Items[0].Name != "Old" || res.Epoch != 4 || res.Seq != 7 {
+		t.Fatalf("FetchTrash = %+v, want the scripted item, epoch 4 and seq 7", res)
+	}
+	if res.Items[0].DeletedDate != "2026-11-17T10:20:30.123Z" {
+		t.Errorf("DeletedDate = %q, want the date from bw", res.Items[0].DeletedDate)
+	}
+	if want := []string{"list", "items", "--trash"}; !reflect.DeepEqual(got.args, want) {
+		t.Errorf("args = %q, want %q", got.args, want)
+	}
+	if v, _ := envValue(got.env, "BW_SESSION"); v != "session-token" {
+		t.Errorf("BW_SESSION = %q, want the token", v)
+	}
+}
+
+// TestFetchTrashFailure checks that a failed bw list items --trash gives
+// the last stderr line as the error, no items, the epoch and the seq.
+func TestFetchTrashFailure(t *testing.T) {
+	useRunner(t, func(context.Context, []string, []byte, ...string) ([]byte, []byte, error) {
+		return nil, []byte("Error\nYou are not logged in.\n"), errors.New("exit status 1")
+	})
+	res := FetchTrash("tok", 2, 3)().(TrashResult)
+	var bwErr *Error
+	if !errors.As(res.Err, &bwErr) || bwErr.Msg != "You are not logged in." {
+		t.Errorf("err = %#v, want an *Error for the last stderr line", res.Err)
+	}
+	if res.Items != nil || res.Epoch != 2 || res.Seq != 3 {
+		t.Errorf("FetchTrash = %+v, want no items, epoch 2 and seq 3", res)
 	}
 }
 
@@ -263,15 +303,17 @@ esac`)
 	t.Setenv("BW_NOINTERACTION", "false")
 
 	_ = CheckStatus()()
-	_ = FetchItems("tok", 1)()
+	_ = FetchItems("tok", 1, 0)()
 	_ = Unlock("pw")()
 	_ = LoginUser("u@t.com", "pw", TwoStep{})()
 	_ = Lock("tok", 1)()
 	_ = Sync("tok", 1)()
 	_ = Generate(1, "--length", "20")()
+	_ = FetchTrash("tok", 1, 1)()
+	_ = RestoreItem("tok", 1, "id")()
 
 	lines := strings.Split(strings.TrimSpace(readFile(t, path)), "\n")
-	want := []string{"status", "list", "unlock", "login", "lock", "sync", "generate"}
+	want := []string{"status", "list", "unlock", "login", "lock", "sync", "generate", "list", "restore"}
 	if len(lines) != len(want) {
 		t.Fatalf("bw ran %d times, want %d: %q", len(lines), len(want), lines)
 	}
@@ -306,7 +348,7 @@ esac`)
 	if unlock.Err != nil || unlock.Token != "session-token" {
 		t.Errorf("Unlock = %+v, want the token", unlock)
 	}
-	items := FetchItems("session-token", 0)().(ItemsResult)
+	items := FetchItems("session-token", 0, 0)().(ItemsResult)
 	if items.Err != nil || len(items.Items) != 1 {
 		t.Errorf("FetchItems = %+v, want one item", items)
 	}
@@ -401,7 +443,7 @@ func TestTimeoutError(t *testing.T) {
 	fakeBw(t, `exec sleep 1`)
 	setTimeouts(t, 50*time.Millisecond, 100*time.Millisecond)
 
-	err := FetchItems("tok", 0)().(ItemsResult).Err
+	err := FetchItems("tok", 0, 0)().(ItemsResult).Err
 	if !errors.Is(err, context.DeadlineExceeded) {
 		t.Fatalf("err = %v, want context.DeadlineExceeded", err)
 	}
@@ -432,7 +474,7 @@ func TestStackTraceGivesLastLine(t *testing.T) {
 exit 1`)
 	captureLog(t)
 
-	err := FetchItems("tok", 0)().(ItemsResult).Err
+	err := FetchItems("tok", 0, 0)().(ItemsResult).Err
 	if err == nil || err.Error() != "You are not logged in." {
 		t.Fatalf("err = %q, want %q", err, "You are not logged in.")
 	}
@@ -491,7 +533,9 @@ exit 1`)
 	buf := captureLog(t)
 
 	_ = LoginUser("user@example.com", "hunter2", TwoStep{Method: MethodAuthenticator, Code: "424242"})()
-	_ = FetchItems("session-secret", 0)()
+	_ = FetchItems("session-secret", 0, 0)()
+	_ = FetchTrash("session-secret", 0, 1)()
+	_ = RestoreItem("session-secret", 0, "abc")()
 
 	got := buf.String()
 	for _, secret := range []string{"user@example.com", "hunter2", "424242", "session-secret", "PATH="} {
@@ -499,7 +543,7 @@ exit 1`)
 			t.Errorf("debug log contains %q:\n%s", secret, got)
 		}
 	}
-	for _, want := range []string{"bw login failed", "bw list items failed", "Login failed."} {
+	for _, want := range []string{"bw login failed", "bw list items failed", "bw restore item failed", "Login failed."} {
 		if !strings.Contains(got, want) {
 			t.Errorf("debug log has no %q:\n%s", want, got)
 		}

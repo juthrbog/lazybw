@@ -157,6 +157,27 @@ func TestParseItems(t *testing.T) {
 	}
 }
 
+func TestParseItemsDeletedDate(t *testing.T) {
+	input := []byte(`[
+		{"id":"1","type":1,"name":"Old","deletedDate":"2026-11-17T10:20:30.123Z"},
+		{"id":"2","type":1,"name":"Live","deletedDate":null},
+		{"id":"3","type":2,"name":"Note"}
+	]`)
+	items, err := ParseItems(input)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	want := []string{"2026-11-17T10:20:30.123Z", "", ""}
+	if len(items) != len(want) {
+		t.Fatalf("got %d items, want %d", len(items), len(want))
+	}
+	for i, w := range want {
+		if items[i].DeletedDate != w {
+			t.Errorf("item %s: DeletedDate = %q, want %q", items[i].ID, items[i].DeletedDate, w)
+		}
+	}
+}
+
 func TestParseItemsReprompt(t *testing.T) {
 	input := []byte(`[
 		{"id":"1","type":1,"name":"Bank","reprompt":1,"login":{"username":"u","password":"pw"}},

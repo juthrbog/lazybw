@@ -50,5 +50,25 @@ func TestEveryLockPathDropsVault(t *testing.T) {
 				t.Error("the vault items must be scrubbed")
 			}
 		})
+		t.Run(tc.name+" trash", func(t *testing.T) {
+			// D returns a command that runs bw list items --trash. The
+			// test does not run it, and sends the TrashResult itself.
+			m := unlockedVault(t, testItems())
+			m, _ = update(t, m, keyPress("D"))
+			// A separate slice: D already scrubbed the vault items, so a
+			// check on them passes even when the lock scrubs nothing.
+			trash := testItems()
+			m, _ = update(t, m, bwcmd.TrashResult{Items: trash, Epoch: m.sess.Epoch, Seq: 1})
+			if n, _ := m.vault.HeaderInfo(); n != len(trash) {
+				t.Fatalf("the trash list has %d items, want %d", n, len(trash))
+			}
+			m, _ = tc.run(t, m)
+			if !reflect.ValueOf(m.vault).IsZero() {
+				t.Error("the root must drop the vault model")
+			}
+			if trash[0].Login.Password != "" || trash[2].Notes != "" {
+				t.Error("the trash items must be scrubbed")
+			}
+		})
 	}
 }

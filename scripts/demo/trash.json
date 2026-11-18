@@ -1,0 +1,25 @@
+[
+  {
+    "id": "demo-old-forum",
+    "type": 1,
+    "name": "Old Forum",
+    "notes": null,
+    "reprompt": 0,
+    "deletedDate": "2026-11-02T09:14:00.000Z",
+    "login": {
+      "username": "alexdoe",
+      "password": "an-old-forum-password",
+      "totp": null,
+      "uris": [{ "match": null, "uri": "https://forum.example.com" }]
+    }
+  },
+  {
+    "id": "demo-old-wifi",
+    "type": 2,
+    "name": "Old Wi-Fi",
+    "notes": "Network: doe-home-2g\nPassword: not-the-real-one",
+    "reprompt": 0,
+    "deletedDate": "2026-11-10T18:40:00.000Z",
+    "secureNote": { "type": 0 }
+  }
+]
