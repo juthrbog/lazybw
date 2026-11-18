@@ -4,7 +4,7 @@ This page lists each glyph that lazybw draws, and the rules for a new glyph. A g
 
 ## Font
 
-lazybw takes its icons from Nerd Fonts. Use a Nerd Fonts v3 font in its Mono variant, for example "JetBrainsMono Nerd Font Mono". Without a Nerd Font, the icons, the header logo and the unlock spinner show as empty boxes.
+lazybw takes its icons from Nerd Fonts. Use a terminal with Unicode support and a Nerd Fonts v3 font in its Mono variant, for example "JetBrainsMono Nerd Font Mono". In the Mono variant, each icon is one cell wide. lazybw uses Nerd Font icons for the item types, the header logo, the copy message and the lock and unlock spinners. Without a Nerd Font, these icons show as empty boxes. If you cannot use a Nerd Font, use [ASCII mode](#ascii-mode).
 
 The icons are Material Design icons, the nf-md- set of Nerd Fonts. The code points on this page are the Nerd Fonts v3 code points.
 
@@ -123,7 +123,11 @@ The huh forms draw their own glyphs, for example the field border ┃ (U+2503). 
 
 ## ASCII mode
 
+Some terminals draw some symbols 2 cells wide, for example a terminal with a CJK locale, or with the setting that draws "ambiguous width" characters wide. Then the rows, the masks and the line under the header lose their alignment.
+
 With `--ascii` or `LAZYBW_ASCII=1`, lazybw draws each glyph of the table below in its ASCII form. Every terminal draws these characters 1 cell wide, and they need no Nerd Font. Vault text, such as item names, stays as it is.
+
+`LAZYBW_ASCII` takes the values that Go's `strconv.ParseBool` accepts: `1`, `t`, `T`, `TRUE`, `true`, `True`, `0`, `f`, `F`, `FALSE`, `false` and `False`. An empty value turns ASCII mode off. For another value, lazybw prints a warning to stderr and draws the Unicode glyphs. The `--ascii` flag turns ASCII mode on, whatever the value of `LAZYBW_ASCII`.
 
 | Glyph in the Unicode set | ASCII form | Use |
 | --- | --- | --- |
