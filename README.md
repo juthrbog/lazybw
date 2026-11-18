@@ -33,7 +33,7 @@ lazybw does not talk to the Bitwarden servers itself. It runs `bw` for you. The 
 - Choose from 7 color themes, each with colors for a dark and a light terminal.
 - Clear the clipboard 60 seconds after a copy, and lock the vault after 15 minutes with no key press. See [SECURITY.md](SECURITY.md).
 
-lazybw does not do these things yet: organizations and collections, more than one account, and restore from the trash.
+lazybw does not do these things yet: restore from the trash, organizations and collections, more than one account, an SSH agent and Bitwarden Send.
 
 ## Requirements
 

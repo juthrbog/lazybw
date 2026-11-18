@@ -1144,12 +1144,20 @@ lazybw/
 
 ---
 
+## Planned
+
+These features have open issues. lazybw does not have them yet.
+
+- Restore from the trash (#155)
+- Organization and collection navigation (#7)
+- More than one account (#8)
+- SSH agent integration (#9)
+- Bitwarden Send (#11)
+
+---
+
 ## Not in Scope
 
-- Permanent delete, and restore from the trash
-- Organization and collection navigation
-- More than one account
-- SSH agent integration
-- Bitwarden Send
+- Permanent delete
 - Reuse of a `BW_SESSION` that the shell exported
 - A clipboard path other than OSC 52
