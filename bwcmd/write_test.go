@@ -137,6 +137,45 @@ func TestDeleteItemMovesToTrash(t *testing.T) {
 	}
 }
 
+// TestRestoreItemNamesItem checks that RestoreItem names the item with the
+// token in the environment and sends nothing on stdin.
+func TestRestoreItemNamesItem(t *testing.T) {
+	var gotArgs, gotEnv []string
+	useRunner(t, func(_ context.Context, env []string, stdin []byte, args ...string) ([]byte, []byte, error) {
+		gotArgs, gotEnv = args, env
+		if stdin != nil {
+			t.Errorf("stdin = %q, want none", stdin)
+		}
+		return nil, nil, nil
+	})
+	res := RestoreItem("t", 6, "abc")().(RestoreResult)
+	if res.Err != nil || res.ID != "abc" || res.Epoch != 6 {
+		t.Fatalf("RestoreItem = %+v", res)
+	}
+	if want := []string{"restore", "item", "abc"}; !reflect.DeepEqual(gotArgs, want) {
+		t.Errorf("args = %q, want %q", gotArgs, want)
+	}
+	if v, _ := envValue(gotEnv, "BW_SESSION"); v != "t" {
+		t.Errorf("BW_SESSION = %q, want the token", v)
+	}
+}
+
+// TestRestoreItemFailureShowsMessage checks that a failed restore gives
+// the message of bw.
+func TestRestoreItemFailureShowsMessage(t *testing.T) {
+	useRunner(t, func(context.Context, []string, []byte, ...string) ([]byte, []byte, error) {
+		return nil, []byte("Cipher is not in trash.\n"), errors.New("exit status 1")
+	})
+	res := RestoreItem("t", 1, "abc")().(RestoreResult)
+	var bwErr *Error
+	if !errors.As(res.Err, &bwErr) || bwErr.Msg != "Cipher is not in trash." {
+		t.Errorf("err = %#v, want the bw message", res.Err)
+	}
+	if res.ID != "abc" || res.Epoch != 1 {
+		t.Errorf("RestoreItem = %+v, want ID abc and epoch 1", res)
+	}
+}
+
 // TestGetItemKeepsNumbers checks that GetItem keeps each key of the item
 // and keeps the numbers as bw printed them.
 func TestGetItemKeepsNumbers(t *testing.T) {

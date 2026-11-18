@@ -193,6 +193,13 @@ func (m VaultModel) maxDrawerScroll() int {
 func (m VaultModel) renderVaultContent(width, contentHeight int) string {
 	drawer := ui.RenderDrawer(m.drawerProps(width, contentHeight))
 	listView := m.list.View()
+	if len(m.rawItems) == 0 {
+		// The list says "No items." for each empty list. Say instead that
+		// the list loads, that the load failed, or that the trash is empty.
+		if text := m.emptyListText(width); text != "" {
+			listView = ui.CenterInArea(text, width, m.list.Height())
+		}
+	}
 
 	if m.drawerOverlay {
 		return ui.RenderOverlay(listView, drawer, width, contentHeight)

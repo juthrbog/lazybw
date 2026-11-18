@@ -163,7 +163,7 @@ func (m VaultModel) handleSaveResult(id string, err error, epoch uint64) (VaultM
 	m.closeForm()
 	m.selectID = id
 	toast := m.setToast(glyph + verb + ui.Truncate(ui.SanitizeLine(name), maxFilterHintW))
-	return m, tea.Batch(toast, bwcmd.FetchItems(m.sess.Token, m.sess.Epoch))
+	return m, tea.Batch(toast, m.fetchList())
 }
 
 // closeForm closes the item form and drops its values.

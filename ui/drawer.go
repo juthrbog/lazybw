@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"image/color"
 	"strings"
+	"time"
 
 	"charm.land/bubbles/v2/key"
 	"charm.land/lipgloss/v2"
@@ -86,6 +87,7 @@ func RenderDrawer(props DrawerProps) string {
 		sep = RenderGradientLine(props.Width) + "\n" + header
 	}
 	maxFields := bodyRows(props)
+	deleted := deletedDate(props.Item)
 	var fields []string
 
 	switch props.Item.Type {
@@ -94,13 +96,19 @@ func RenderDrawer(props DrawerProps) string {
 	case bwcmd.ItemTypeCard:
 		fields = renderCardFields(props.Item, props.Width)
 	case bwcmd.ItemTypeSecureNote:
-		fields = renderNoteFields(props, maxFields)
+		// With a date row, the note gets one row less. A drawer that
+		// has no row for the note still cuts it to 1 line, because 0
+		// means no limit.
+		fields = renderNoteFields(props, max(noteRows(props), min(maxFields, 1)))
 	case bwcmd.ItemTypeIdentity:
 		fields = renderIdentityFields(props.Item, props.Width)
 	case bwcmd.ItemTypeSSHKey:
 		fields = renderSSHKeyFields(props.Item, props.Width)
 	default:
 		fields = []string{StyleFaint.Render("  (unsupported item type)")}
+	}
+	if deleted != "" {
+		fields = append([]string{fieldRow("Deleted", deleted, "", props.Width)}, fields...)
 	}
 
 	if !props.AutoHeight {
@@ -164,6 +172,30 @@ func bodyRows(props DrawerProps) int {
 	return h - 2
 }
 
+// deletedDate returns the day when item went to the trash, in local time,
+// for example "2026-11-17". It returns "" for an item that is not in the
+// trash, and for a date that does not parse.
+func deletedDate(item *bwcmd.Item) string {
+	if item == nil || item.DeletedDate == "" {
+		return ""
+	}
+	t, err := time.Parse(time.RFC3339Nano, item.DeletedDate)
+	if err != nil {
+		return ""
+	}
+	return t.Local().Format(time.DateOnly)
+}
+
+// noteRows returns the number of drawer rows for the lines of a note: the
+// body rows, less the "Deleted" row of an item in the trash.
+func noteRows(props DrawerProps) int {
+	rows := bodyRows(props)
+	if deletedDate(props.Item) != "" {
+		rows--
+	}
+	return rows
+}
+
 // MaxScrollOffset returns the largest useful ScrollOffset for props: the
 // offset that shows the last full page of a secure note. It returns 0 for
 // other item types, because only notes scroll, and for a drawer with no
@@ -171,7 +203,7 @@ func bodyRows(props DrawerProps) int {
 // matches what the drawer shows.
 func MaxScrollOffset(props DrawerProps) int {
 	item := props.Item
-	rows := bodyRows(props)
+	rows := noteRows(props)
 	if item == nil || item.Type != bwcmd.ItemTypeSecureNote || item.Notes == "" || rows <= 0 || secretsHidden(props) {
 		return 0
 	}

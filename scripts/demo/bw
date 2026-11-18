@@ -1,7 +1,8 @@
 #!/bin/sh
 # A fake bw for the README demo. It answers the bw commands that lazybw
-# runs with the made-up items in items.json, so that the demo needs no
-# Bitwarden account. Any master password unlocks it.
+# runs with the made-up items in items.json, and the trash with the items
+# in trash.json, so that the demo needs no Bitwarden account. Any master
+# password unlocks it. A restore does nothing.
 #
 # Use it only through demo.tape. It does not store changes.
 
@@ -18,7 +19,10 @@ unlock | login)
 	printf 'ZGVtby1zZXNzaW9uLXRva2Vu'
 	;;
 list)
-	cat "$dir/items.json"
+	case " $* " in
+	*" --trash "*) cat "$dir/trash.json" ;;
+	*) cat "$dir/items.json" ;;
+	esac
 	;;
 generate)
 	printf 'vR7#kq2!Lm9@xT4$wZ8p\n'
@@ -27,7 +31,7 @@ get)
 	echo "Not found." >&2
 	exit 1
 	;;
-sync | lock | create | edit | delete)
+sync | lock | create | edit | delete | restore)
 	;;
 *)
 	echo "demo bw: unknown command: $*" >&2

@@ -44,6 +44,7 @@ const (
 	overlayNewItem             // the card that picks the type of a new item
 	overlayDiscard             // the dialog that asks to discard the form
 	overlayDelete              // the dialog that moves an item to the trash
+	overlayRestore             // the dialog that restores an item from the trash
 )
 
 // VaultModel is the main vault browsing screen.
@@ -53,7 +54,20 @@ type VaultModel struct {
 	sess   *session.State
 
 	rawItems []bwcmd.Item
-	groups   groupState
+	// trash is true while the list shows the items in the trash instead of
+	// the vault items. rawItems then holds the trash items.
+	trash bool
+	// listLoading is true while the items of the list that D opened load,
+	// and while r loads the list again after a failed load.
+	// listErr is true when the last load of the list failed. The empty list
+	// then says so, until the next load works.
+	listLoading bool
+	listErr     bool
+	// listSeq numbers the loads of the list, of the vault and of the
+	// trash. Each load raises it, and an ItemsResult or TrashResult with
+	// an older number is dropped. See fetchList.
+	listSeq uint64
+	groups  groupState
 	// grouped holds the groups of rawItems. It is nil until grouping needs
 	// it, and a change of rawItems drops it. See itemGroups.
 	grouped *groupCache
@@ -96,6 +110,7 @@ type VaultModel struct {
 	selectID  string
 	loadingID string
 	del       deleteState
+	res       restoreState
 
 	// Master password re-prompt. verifiedID is the ID of the selected item
 	// after the user entered the master password for it. checking is true
@@ -196,8 +211,12 @@ func (m *VaultModel) Clear() {
 	m.gen.Clear()
 	m.closeForm()
 	m.closeDelete()
+	m.closeRestore()
 	m.closeReprompt()
 	m.verifiedID = ""
+	m.trash = false
+	m.listLoading = false
+	m.listErr = false
 }
 
 func (m VaultModel) Init() tea.Cmd {
@@ -266,6 +285,8 @@ func (m VaultModel) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m.updateDiscard(msg)
 		case overlayDelete:
 			return m.updateDelete(msg)
+		case overlayRestore:
+			return m.updateRestore(msg)
 		}
 		if m.formOpen {
 			return m.updateForm(msg)
@@ -322,23 +343,48 @@ func (m VaultModel) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case bwcmd.SyncResult:
 		m.syncing = false
+		// After a failed load of the list, r loads the list again also when
+		// the sync fails, because bw list works from the local cache. The
+		// content then shows the spinner in place of the error.
+		reload := m.listErr
+		if reload {
+			m.listLoading = true
+		}
 		if msg.Err != nil {
-			return m, m.setErrorToast("Sync failed: " + userError(msg.Err, actionOther))
+			toastCmd := m.setErrorToast("Sync failed: " + userError(msg.Err, actionOther))
+			if !reload {
+				return m, toastCmd
+			}
+			return m, tea.Batch(toastCmd, m.fetchList())
 		}
 		m.sess.LastSync = time.Now()
 		toastCmd := m.setToast(ui.GlyphSuccess + " Vault synced")
-		return m, tea.Batch(toastCmd, bwcmd.FetchItems(m.sess.Token, m.sess.Epoch))
+		return m, tea.Batch(toastCmd, m.fetchList())
 
 	case bwcmd.ItemsResult:
+		if m.trash || msg.Seq != m.listSeq {
+			// A vault list that started before D, or before a newer load.
+			// It does not belong in the trash list, and its data can be
+			// older than the data of the newer load, for example from
+			// before a restore.
+			secutil.ZeroItems(msg.Items)
+			return m, nil
+		}
+		m.listLoading = false
 		if msg.Err != nil {
+			m.listErr = true
 			return m, m.setErrorToast("Load failed: " + userError(msg.Err, actionOther))
 		}
+		m.listErr = false
 		cmd := m.replaceItems(msg.Items)
 		if m.selectID != "" {
 			m.selectKey(rowKey{id: m.selectID})
 			m.selectID = ""
 		}
 		return m, cmd
+
+	case bwcmd.TrashResult:
+		return m.handleTrashResult(msg)
 
 	case bwcmd.CreateResult:
 		return m.handleSaveResult(msg.ID, msg.Err, msg.Epoch)
@@ -352,6 +398,9 @@ func (m VaultModel) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case bwcmd.DeleteResult:
 		return m.handleDeleteResult(msg)
 
+	case bwcmd.RestoreResult:
+		return m.handleRestoreResult(msg)
+
 	case OpenURLResult:
 		if msg.Err != nil {
 			return m, m.setErrorToast("Open URL failed: " + msg.Err.Error())
@@ -363,7 +412,7 @@ func (m VaultModel) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case spinner.TickMsg:
-		if m.syncing || m.form.saving || m.del.running {
+		if m.syncing || m.form.saving || m.del.running || m.res.running || m.listLoading {
 			var cmd tea.Cmd
 			m.syncSpinner, cmd = m.syncSpinner.Update(msg)
 			return m, cmd
@@ -449,8 +498,21 @@ func (m VaultModel) handleActionKeys(msg tea.KeyPressMsg) (tea.Model, tea.Cmd, b
 		return m, func() tea.Msg { return LockMsg{} }, true
 
 	case key.Matches(msg, m.keymap.Help):
-		m.help.Show(m.keymap.HelpBindings(), m.width, m.height-ui.ChromeHeight)
+		m.help.Show(m.helpBindings(), m.width, m.height-ui.ChromeHeight)
 		m.overlay = overlayHelp
+		return m, nil, true
+
+	case key.Matches(msg, m.keymap.ToggleTrash):
+		return m.toggleTrash()
+
+	case key.Matches(msg, m.keymap.Restore):
+		if !m.trash {
+			return m, nil, true
+		}
+		return m.restoreSelected()
+
+	// The trash list does not create, edit or delete items.
+	case m.trash && key.Matches(msg, m.keymap.New, m.keymap.Edit, m.keymap.Delete):
 		return m, nil, true
 
 	case key.Matches(msg, m.keymap.New):
@@ -558,6 +620,8 @@ func (m VaultModel) ViewContent(width, contentHeight int) string {
 		card = renderDiscard()
 	case overlayDelete:
 		card = m.renderDelete(width)
+	case overlayRestore:
+		card = m.renderRestore(width)
 	default:
 		return bg
 	}
@@ -586,6 +650,8 @@ func (m VaultModel) FooterContent() ([]ui.HintBinding, string) {
 		return discardHints(), ""
 	case overlayDelete:
 		return m.deleteHints(), ""
+	case overlayRestore:
+		return m.restoreHints(), ""
 	}
 	if m.formOpen {
 		return m.form.hints(), ""
@@ -606,15 +672,39 @@ func (m VaultModel) FooterContent() ([]ui.HintBinding, string) {
 	case m.list.FilterState() == list.FilterApplied:
 		// Show that the list is filtered, and how to clear the filter. The
 		// filter text takes space, so this list is shorter than the normal
-		// one, and help and quit come right after the filter hints.
+		// one, and help and quit come right after the filter hints. In the
+		// trash, restore and the way back come first.
 		filter := ui.Truncate(ui.SanitizeLine(m.list.FilterValue()), maxFilterHintW)
 		hints = []ui.HintBinding{
 			{Key: "filter:", Desc: filter},
 			ui.Hint(lk.ClearFilter, "clear"),
+		}
+		if m.trash {
+			hints = append(hints, ui.Hint(k.Restore, "restore"), ui.Hint(k.ToggleTrash, "vault"))
+		}
+		hints = append(hints,
 			ui.Hint(k.Help, "help"),
 			ui.Hint(k.Quit, "quit"),
 			ui.Hint(k.Copy, "pwd"),
 			ui.Hint(k.CopyTOTP, "totp"),
+		)
+	case m.trash:
+		// Restore and the way back to the vault are the only new keys of
+		// the trash list. The footer drops hints from the end, so they
+		// come first.
+		hints = []ui.HintBinding{
+			ui.Hint(k.Restore, "restore"),
+			ui.Hint(k.ToggleTrash, "vault"),
+			ui.Hint(k.Navigate, "navigate"),
+			ui.Hint(k.Filter, "search"),
+			ui.Hint(k.Copy, "pwd"),
+			ui.Hint(k.CopyTOTP, "totp"),
+			ui.Hint(k.Help, "help"),
+			ui.Hint(k.Quit, "quit"),
+			ui.Hint(k.ToggleGrouping, "group"),
+			ui.Hint(k.DrawerToggle, "drawer"),
+			ui.Hint(k.Generate, "gen"),
+			ui.Hint(k.ThemePicker, "theme"),
 		}
 	default:
 		// The footer drops hints from the end when they do not fit, so
@@ -629,6 +719,7 @@ func (m VaultModel) FooterContent() ([]ui.HintBinding, string) {
 			ui.Hint(k.New, "new"),
 			ui.Hint(k.Edit, "edit"),
 			ui.Hint(k.Delete, "trash"),
+			ui.Hint(k.ToggleTrash, "show trash"),
 			ui.Hint(k.ToggleGrouping, "group"),
 			ui.Hint(k.DrawerToggle, "drawer"),
 			ui.Hint(k.Generate, "gen"),

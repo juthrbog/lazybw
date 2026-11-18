@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"errors"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
@@ -61,6 +62,115 @@ func TestItemsResultOutsideLoadingAndVaultIsDropped(t *testing.T) {
 	}
 }
 
+// trashItemsForTest returns items as bw list items --trash gives them.
+func trashItemsForTest() []bwcmd.Item {
+	return []bwcmd.Item{
+		{ID: "t1", Type: bwcmd.ItemTypeLogin, Name: "Old", DeletedDate: "2026-11-17T12:00:00Z", Login: &bwcmd.Login{Password: "old-pw"}},
+		{ID: "t2", Type: bwcmd.ItemTypeSecureNote, Name: "Note", DeletedDate: "2026-11-17T12:00:00Z", Notes: "old note"},
+	}
+}
+
+// showTrash presses D in the vault of m. It does not run the command, so
+// no bw list items --trash runs.
+func showTrash(t *testing.T, m RootModel) RootModel {
+	t.Helper()
+	m, _ = update(t, m, keyPress("D"))
+	if !m.vault.ShowsTrash() {
+		t.Fatal("D did not show the trash")
+	}
+	return m
+}
+
+func TestLateTrashResultAfterLockIsDropped(t *testing.T) {
+	m := showTrash(t, unlockedVault(t, testItems()))
+	staleEpoch := m.sess.Epoch
+
+	m, _ = update(t, m, screens.LockMsg{})
+	late := trashItemsForTest()
+	m, cmd := update(t, m, bwcmd.TrashResult{Items: late, Epoch: staleEpoch, Seq: 1})
+	if cmd != nil {
+		t.Error("a stale TrashResult must not return a command")
+	}
+	if late[0].Login.Password != "" || late[1].Notes != "" {
+		t.Error("a dropped TrashResult must be scrubbed")
+	}
+	if !reflect.ValueOf(m.vault).IsZero() {
+		t.Error("a stale TrashResult must not bring the vault back")
+	}
+}
+
+// A new vault screen numbers its loads from 0 again, so a trash load of
+// the old session can have the same Seq as a trash load of the new one.
+// Only the session epoch tells them apart.
+func TestTrashResultOfEndedSessionInNewTrashIsDropped(t *testing.T) {
+	m := showTrash(t, unlockedVault(t, testItems()))
+	staleEpoch := m.sess.Epoch
+
+	m, _ = update(t, m, screens.LockMsg{})
+	m, _ = update(t, m, lockResult(m, nil))
+	m, _ = update(t, m, screens.UnlockedMsg{Token: "tok2"})
+	m, _ = update(t, m, bwcmd.ItemsResult{Items: testItems(), Epoch: m.sess.Epoch})
+	if m.state != stateVault || m.sess.Epoch == staleEpoch {
+		t.Fatalf("state = %d, epoch = %d, want stateVault and a new epoch", m.state, m.sess.Epoch)
+	}
+	m = showTrash(t, m)
+
+	late := trashItemsForTest()
+	m, cmd := update(t, m, bwcmd.TrashResult{Items: late, Epoch: staleEpoch, Seq: 1})
+	if cmd != nil {
+		t.Error("a stale TrashResult must not return a command")
+	}
+	if late[0].Login.Password != "" || late[1].Notes != "" {
+		t.Error("a dropped TrashResult must be scrubbed")
+	}
+	if count, _ := m.vault.HeaderInfo(); count != 0 {
+		t.Errorf("trash list has %d items, want 0", count)
+	}
+}
+
+func TestTrashResultOutsideVaultIsDropped(t *testing.T) {
+	m := NewRootModel(15 * time.Minute)
+	m.sess.SetToken("tok")
+	m.state = stateError
+	items := trashItemsForTest()
+	m, cmd := update(t, m, bwcmd.TrashResult{Items: items, Epoch: m.sess.Epoch, Seq: 1})
+	if m.state != stateError || cmd != nil {
+		t.Errorf("state = %d, cmd = %v, want stateError and no command", m.state, cmd)
+	}
+	if items[0].Login.Password != "" || items[1].Notes != "" {
+		t.Error("a dropped TrashResult must be scrubbed")
+	}
+}
+
+func TestVaultListInTrashIsDropped(t *testing.T) {
+	buf := captureLog(t)
+	m := showTrash(t, unlockedVault(t, testItems()))
+	m, _ = update(t, m, bwcmd.TrashResult{Items: trashItemsForTest(), Epoch: m.sess.Epoch, Seq: 1})
+	vault := testItems()
+	m, _ = update(t, m, bwcmd.ItemsResult{Items: vault, Epoch: m.sess.Epoch})
+	if vault[0].Login.Password != "" {
+		t.Error("a vault list in the trash must be scrubbed")
+	}
+	if n, _ := m.vault.HeaderInfo(); n != 2 {
+		t.Errorf("item count = %d, want the 2 trash items", n)
+	}
+	if !strings.Contains(buf.String(), "dropped the vault list: the trash shows") {
+		t.Errorf("log = %q, want the dropped vault list", buf.String())
+	}
+}
+
+func TestHeaderShowsTrashList(t *testing.T) {
+	m := unlockedVault(t, testItems())
+	if strings.Contains(ansi.Strip(m.View().Content), "Trash") {
+		t.Fatal("the vault header must not say Trash")
+	}
+	m = showTrash(t, m)
+	header := strings.SplitN(ansi.Strip(m.View().Content), "\n", 2)[0]
+	if !strings.Contains(header, "Trash") {
+		t.Errorf("header = %q, want Trash", header)
+	}
+}
+
 func TestSyncRefreshKeepsVaultState(t *testing.T) {
 	items := testItems()
 	m := unlockedVault(t, items)
@@ -70,7 +180,8 @@ func TestSyncRefreshKeepsVaultState(t *testing.T) {
 	}
 
 	m, _ = update(t, m, bwcmd.SyncResult{Epoch: m.sess.Epoch})
-	m, _ = update(t, m, bwcmd.ItemsResult{Items: testItems(), Epoch: m.sess.Epoch})
+	// The sync starts the first numbered load of the vault list.
+	m, _ = update(t, m, bwcmd.ItemsResult{Items: testItems(), Epoch: m.sess.Epoch, Seq: 1})
 	if m.state != stateVault {
 		t.Fatalf("state = %d, want stateVault", m.state)
 	}

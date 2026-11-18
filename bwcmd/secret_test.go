@@ -2,6 +2,7 @@ package bwcmd
 
 import (
 	"bytes"
+	"context"
 	"testing"
 )
 
@@ -33,5 +34,20 @@ func TestItemsResultZerosOutput(t *testing.T) {
 		if !bytes.Equal(out, make([]byte, len(out))) {
 			t.Errorf("output %q was not zeroed", raw)
 		}
+	}
+}
+
+func TestFetchTrashZerosOutput(t *testing.T) {
+	var out []byte
+	useRunner(t, func(context.Context, []string, []byte, ...string) ([]byte, []byte, error) {
+		out = []byte(`[{"id":"1","type":1,"name":"a","login":{"password":"pw"},"passwordHistory":[{"password":"old"}]}]`)
+		return out, nil, nil
+	})
+	res := FetchTrash("tok", 1, 1)().(TrashResult)
+	if res.Err != nil || len(res.Items) != 1 {
+		t.Fatalf("FetchTrash = %+v, want one item", res)
+	}
+	if !bytes.Equal(out, make([]byte, len(out))) {
+		t.Errorf("output %q was not zeroed", out)
 	}
 }

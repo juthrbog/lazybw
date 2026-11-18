@@ -18,9 +18,10 @@ import (
 var (
 	// shortTimeout is the limit for bw status, bw lock and bw generate.
 	shortTimeout = 15 * time.Second
-	// longTimeout is the limit for bw list items, bw sync, bw login and
-	// bw unlock. These commands wait for the network, read the whole
-	// vault or run the key derivation.
+	// longTimeout is the limit for bw list items (also with --trash),
+	// bw sync, bw login, bw unlock and the commands that change an item,
+	// such as bw restore. These commands wait for the network, read the
+	// whole vault or run the key derivation.
 	longTimeout = 2 * time.Minute
 	// waitDelay is how long the pipes of a killed bw can stay open. A
 	// process that the kill does not reach keeps the pipes open. On
@@ -41,12 +42,24 @@ type StatusResult struct {
 	Err    error
 }
 
-// ItemsResult is returned by FetchItems. Epoch is the session epoch that
-// was passed to FetchItems.
+// ItemsResult is returned by FetchItems. Epoch is the session epoch and
+// Seq is the load number that were passed to FetchItems.
 type ItemsResult struct {
 	Items []Item
 	Err   error
 	Epoch uint64
+	Seq   uint64
+}
+
+// TrashResult is returned by FetchTrash. It is a separate type from
+// ItemsResult, so that a trash list never replaces the vault list. Epoch
+// is the session epoch and Seq is the load number that were passed to
+// FetchTrash.
+type TrashResult struct {
+	Items []Item
+	Err   error
+	Epoch uint64
+	Seq   uint64
 }
 
 // UnlockResult is returned by Unlock/Login.
@@ -241,7 +254,7 @@ func subcommand(args []string) string {
 		return ""
 	}
 	switch args[0] {
-	case "list", "create", "get", "edit", "delete":
+	case "list", "create", "get", "edit", "delete", "restore":
 		if len(args) > 1 {
 			return args[0] + " " + args[1]
 		}
@@ -303,14 +316,30 @@ func CheckStatus() tea.Cmd {
 }
 
 // FetchItems runs `bw list items` and returns an ItemsResult tagged with
-// epoch, so the caller can drop a result that belongs to an ended session.
-func FetchItems(token string, epoch uint64) tea.Cmd {
+// epoch and seq, so the caller can drop a result that belongs to an ended
+// session or to an older load.
+func FetchItems(token string, epoch, seq uint64) tea.Cmd {
 	return func() tea.Msg {
 		out, err := execBw(longTimeout, token, "", "list", "items")
 		if err != nil {
-			return ItemsResult{Err: err, Epoch: epoch}
+			return ItemsResult{Err: err, Epoch: epoch, Seq: seq}
 		}
-		return itemsResult(out, epoch)
+		res := itemsResult(out, epoch)
+		res.Seq = seq
+		return res
+	}
+}
+
+// FetchTrash runs `bw list items --trash` and returns a TrashResult tagged
+// with epoch and seq. bw returns only the items in the trash.
+func FetchTrash(token string, epoch, seq uint64) tea.Cmd {
+	return func() tea.Msg {
+		out, err := execBw(longTimeout, token, "", "list", "items", "--trash")
+		if err != nil {
+			return TrashResult{Err: err, Epoch: epoch, Seq: seq}
+		}
+		res := itemsResult(out, epoch)
+		return TrashResult{Items: res.Items, Err: res.Err, Epoch: epoch, Seq: seq}
 	}
 }
 
