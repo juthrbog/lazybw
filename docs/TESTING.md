@@ -430,3 +430,13 @@ When you add a feature, add tests in these places:
 - For a new overlay or screen state, test its size with `assertArea` at small terminal sizes, as `TestOverlaysFitSmallTerminals` does.
 - For a new path that locks or quits, add a case to `TestLockPathsRunBwLock` (`lock_test.go`) and `TestEveryLockPathDropsVault` (`secrets_test.go`).
 - For a new bw result, make sure that the model drops a result with an old epoch, as `TestLateItemsResultAfterLockIsDropped` does. The epoch is a session counter that changes on each unlock and lock.
+
+## README demo
+
+`docs/images/lazybw.gif` is the demo at the top of the README. [VHS](https://github.com/charmbracelet/vhs) records it from `scripts/demo/demo.tape`. The tape runs a fresh build of lazybw against `scripts/demo/bw`, a fake `bw` that returns the made-up items in `scripts/demo/items.json`. The demo needs no Bitwarden account, and any master password unlocks it.
+
+1. Install `vhs` and `ttyd`, for example with `brew install vhs ttyd`. VHS also needs `ffmpeg`.
+2. Install the JetBrainsMono Nerd Font Mono font, which the tape uses.
+3. In the root of the repository, run `task demo`.
+
+If you change the UI or the keys, record the demo again. If lazybw runs a new `bw` command, add it to `scripts/demo/bw`.
