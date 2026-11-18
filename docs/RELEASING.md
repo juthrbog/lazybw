@@ -33,7 +33,7 @@ The builds use `-trimpath`, and the file times come from the commit. Two builds 
 
 After GoReleaser, the job adds a build provenance attestation for each file in `checksums.txt`. Then it writes `Formula/lazybw.rb` with `scripts/formula.sh` and pushes it to [juthrbog/homebrew-tap](https://github.com/juthrbog/homebrew-tap). The formula has the URL and the checksum of the archive for each platform. It has no Windows entry, because Homebrew does not run on Windows.
 
-The README shows how users check an archive with `gh attestation verify` or `cosign verify-blob`.
+[INSTALL.md](INSTALL.md#verify-a-download) shows how users check an archive with `gh attestation verify` or `cosign verify-blob`. If you change the release files, the signing identity or the archive names, update that section too.
 
 ## Test the release setup
 

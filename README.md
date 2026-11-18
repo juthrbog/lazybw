@@ -1,7 +1,8 @@
 <h1 align="center">lazybw</h1>
 
 <p align="center">
-  A keyboard-driven terminal UI for <a href="https://bitwarden.com">Bitwarden</a>, built with Go and the <a href="https://charm.sh">Charm</a> ecosystem.
+  A keyboard-driven terminal UI for your <a href="https://bitwarden.com">Bitwarden</a> vault.<br>
+  It runs on top of the official <a href="https://bitwarden.com/help/cli/">Bitwarden CLI (<code>bw</code>)</a>.
 </p>
 
 <p align="center">
@@ -12,182 +13,165 @@
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-Apache%202.0-blue.svg" alt="License"></a>
 </p>
 
-```
- 󰦝 lazybw  user@example.com  Login
-▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄
-
-  󰌾  Gmail                                                user@gmail.com
-  󰌾  GitHub                                              dev@example.com
-▶ 󰌾  AWS Console                                               aws-admin
-  󰿯  Visa Debit                                                •••• 4242
-  󰎞  Recovery codes                                               (note)
-  󰀄  Passport                                                   Alex Doe
-  󰣀  Deploy key                                          SHA256:k3Yd9QzR
-▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄
-  󰌾  AWS Console                                                  Login
-  Username    aws-admin  [u] copy
-  Password    ••••••••••  [c] copy
-  TOTP        843 291  ██▊░ 21s  [t] copy
-  URL         https://console.aws.amazon.com  [o] open
-  Notes       root account  [m] copy
-
- j/k navigate · / search · c pwd · t totp · ? help        synced 5m ago
-```
+<p align="center"><img src="docs/images/lazybw.gif" alt="lazybw demo: unlock the vault, copy a password and a TOTP code, filter the list, open the new item form and the password generator" width="800"></p>
 
 ## Why lazybw?
 
-The Bitwarden desktop app is not available on every platform. The Bitwarden CLI (`bw`) has many functions, but it was not made for daily use. To get a password, you pipe `bw list items` through `jq`, search for the right entry, and copy the result. If you do that ten times a day, you start to write wrapper scripts.
+lazybw shows your vault in one screen. You type a few letters to find an item, and one key copies the password or the TOTP code. With `bw` alone, you run `bw list items`, filter the output with `jq`, and copy the result yourself.
 
-lazybw shows your vault in a terminal UI that you control with the keyboard. You do not have to leave the terminal. You search, browse, and copy passwords and TOTP codes with a few key presses.
+lazybw does not talk to the Bitwarden servers itself. It runs `bw` for you. The session token stays in memory, and lazybw clears the clipboard 60 seconds after a copy.
 
 ## Features
 
-- You navigate, search and copy with the keyboard. lazybw does not capture the mouse, so the click-and-drag text selection of your terminal works.
-- One key copies a field: `c` copies the password, `t` the TOTP code and `u` the username.
-- The detail panel below the list (the drawer) shows the current TOTP code and a countdown bar. The bar changes from green to yellow to red as the time runs out.
-- lazybw shows logins, secure notes, cards, identities and SSH keys. Each item type has its own detail view.
-- Press `/` to filter the vault with a fuzzy search while you type.
-- Press `n` to create a login or a secure note in a form, and `e` to edit one. The password generator can fill the password field. `d` moves an item to the trash.
-- Press `ctrl+g` to put items with similar names into groups. `enter` expands or collapses a group.
-- For an item with master password re-prompt, lazybw asks for the master password before it copies a protected field.
-- The session token stays in memory only. lazybw clears the clipboard 60 seconds after a copy, and also when you lock or quit. The vault locks after 15 minutes with no key press. See [SECURITY.md](SECURITY.md).
-- lazybw is a single binary. At run time, it needs only `bw`.
+- Find an item fast (`/`). You type a few letters, and the list shows the items whose names have those letters in the same order.
+- Copy the password (`c`), the TOTP code (`t`) or the username (`u`) with one key.
+- See the current TOTP code with a countdown bar that goes from green to yellow to red. lazybw reads base32 keys, `otpauth://` URIs and Steam Guard (`steam://`) keys.
+- Create (`n`), edit (`e`) and move to the trash (`d`) logins and secure notes.
+- Make passwords and passphrases with the generator (`p`). The item form can put a generated password in the password field.
+- Browse logins, secure notes, cards, identities and SSH keys. Each type has its own detail view.
+- Group items with the same base name (`ctrl+g`). For example, "GitHub" and "GitHub (Work)" go in one group.
+- Choose from 7 color themes, each with colors for a dark and a light terminal.
+- Clear the clipboard 60 seconds after a copy, and lock the vault after 15 minutes with no key press. See [SECURITY.md](SECURITY.md).
+
+lazybw does not do these things yet: organizations and collections, more than one account, and restore from the trash.
 
 ## Requirements
 
-- The [Bitwarden CLI (`bw`)](https://bitwarden.com/help/cli/#download-and-install), installed and on your `$PATH`.
-- A terminal with Unicode support, and a [Nerd Font](https://www.nerdfonts.com) v3 as the terminal font. Use a Mono variant of the font, so that each icon is one cell wide. lazybw uses Nerd Font icons for the item types, the header logo, the copy message and the lock and unlock spinners. Without a Nerd Font, these icons show as empty boxes. [docs/GLYPHS.md](docs/GLYPHS.md) lists each icon.
-- A terminal that supports OSC 52, the escape sequence that sets the clipboard. lazybw copies only through OSC 52. The terminal sends no reply, so lazybw cannot tell if a copy worked. If a copy does not reach your clipboard, turn on OSC 52 in the configuration of your terminal.
-- In tmux, add `set -g set-clipboard on` to your tmux configuration. With the default value, tmux does not pass the copy to your terminal. tmux also keeps each copy in a paste buffer, and lazybw does not delete these buffers.
-- Go 1.26.0 or later, to build from source. This is the `go` line in `go.mod`. With an older Go and the default `GOTOOLCHAIN=auto`, the `go` command downloads a newer Go first. A build in a clone of the repository also follows the `toolchain go1.27.2` line in `go.mod`, so it uses Go 1.27.2 or later.
+- The [Bitwarden CLI (`bw`)](https://bitwarden.com/help/cli/#download-and-install) on your `$PATH`. lazybw is one binary, and at run time it needs only `bw`.
+- A [Nerd Font](https://www.nerdfonts.com) v3 Mono in your terminal, for the icons. Without one, run lazybw with `--ascii`.
+- A terminal that supports OSC 52, the escape sequence that sets the clipboard. Most current terminals support it, but some turn it off by default. In tmux, add `set -g set-clipboard on` to your tmux configuration.
 
 ## Installation
 
 ### Homebrew
 
-On macOS or Linux:
+On macOS or Linux, this command installs `bw` and lazybw:
 
 ```sh
-brew install juthrbog/tap/lazybw
+brew install bitwarden-cli juthrbog/tap/lazybw
 ```
-
-The formula installs the release binary. It does not install `bw`. Install `bw` with `brew install bitwarden-cli`, or see [Requirements](#requirements).
 
 ### Download a binary
 
-Download the archive for your system from the [releases page](https://github.com/juthrbog/lazybw/releases/latest). Releases have binaries for Linux, macOS and Windows, on amd64 and arm64. The Windows archives are zip files, and the others are tar.gz files. Extract the archive, and put `lazybw` (`lazybw.exe` on Windows) in a directory on your `$PATH`, for example `/usr/local/bin`.
+Download the archive for your system from the [releases page](https://github.com/juthrbog/lazybw/releases/latest). Releases have binaries for Linux, macOS and Windows, on amd64 and arm64. Extract the archive, and put `lazybw` (`lazybw.exe` on Windows) in a directory on your `$PATH`. Then [install `bw`](https://bitwarden.com/help/cli/#download-and-install).
 
-Each release also has these files:
+Each release is signed and has an SBOM (a list of the modules in the binary) for each archive. To make sure that a download is genuine, see [Verify a download](docs/INSTALL.md#verify-a-download).
 
-- `checksums.txt`: the SHA-256 checksum of each archive and each SBOM.
-- `checksums.txt.sigstore.json`: a cosign signature of `checksums.txt`.
-- One SBOM for each archive, in SPDX JSON. An SBOM (software bill of materials) lists the Go modules in the binary.
+### With Go
 
-To make sure that an archive comes from the release workflow of this repository, use one of these commands:
-
-```sh
-# A build provenance attestation of GitHub.
-gh attestation verify lazybw_0.3.0_linux_amd64.tar.gz --repo juthrbog/lazybw
-
-# The cosign signature. Then compare the checksum of the archive.
-cosign verify-blob checksums.txt \
-  --bundle checksums.txt.sigstore.json \
-  --certificate-identity-regexp '^https://github\.com/juthrbog/lazybw/\.github/workflows/release\.yml@refs/tags/v' \
-  --certificate-oidc-issuer https://token.actions.githubusercontent.com
-sha256sum --ignore-missing -c checksums.txt
-```
-
-Replace `0.3.0` and `linux_amd64` with the version and the platform of your archive.
-
-### From source
+This needs Go 1.26 or later. It does not install `bw`.
 
 ```sh
 go install github.com/juthrbog/lazybw@latest
 ```
 
-### Build locally
+For a build from a clone, see [docs/INSTALL.md](docs/INSTALL.md#build-from-a-clone).
 
-```sh
-git clone https://github.com/juthrbog/lazybw.git
-cd lazybw
-go build -o lazybw .
-```
+## Quick start
 
-## Usage
+1. If your account is on the EU cloud, run `bw config server https://vault.bitwarden.eu`. If your account is on a self-hosted server, run `bw config server <url>` with the URL of your server. Do this before you start lazybw, because lazybw has no server setting.
+2. Run `lazybw`.
+3. If you are not logged in, enter your email and master password. If your account uses two-step login, lazybw then asks for the method and the code. If Bitwarden asks for a new-device code, see [Bitwarden asks for a new-device code](#bitwarden-asks-for-a-new-device-code). If you are logged in, enter your master password to unlock.
+4. Type `/` and a few letters of an item name. Press `enter` to keep the filter.
+5. Press `c` to copy the password, or `t` to copy the TOTP code.
+6. Press `q` and then `y` to lock the vault and quit.
 
-```sh
-lazybw
-```
+lazybw supports two-step login with an authenticator app, email and YubiKey OTP. It does not support SSO or login with an API key. For those, log in with `bw login` first, then start lazybw and unlock with your master password. lazybw cannot unlock an account that has no master password.
 
-At start, lazybw runs `bw status`. If you are not logged in, lazybw shows the login form. Otherwise, it shows the unlock form, which asks for your master password.
+## Keybindings
 
-### Two-step login and new-device verification
-
-If your account uses two-step login, lazybw asks for the method and then for the code after you enter your email and master password. lazybw supports an authenticator app, email and YubiKey OTP. If you use email, Bitwarden sends the code to your email address.
-
-Bitwarden can also ask for a new-device code. It does this when an account without two-step login logs in from a new device, for example a new install of `bw`. Bitwarden sends this code by email, but `bw` has no option that takes it, so lazybw cannot pass it to `bw`. To finish the new-device verification, run `bw login` once in a terminal and enter the code from the email. Then start lazybw again.
-
-### Flags
-
-| Flag | Default | Description |
-|---|---|---|
-| `--idle-timeout` | `15m` | Lock the vault after this time with no key press. The value is a Go duration, for example `10m` or `1h30m`. The minimum is `30s`. For a smaller value, lazybw prints a warning and uses `30s`. |
-| `--theme` | `catppuccin-mocha` | The color theme. See [Themes](#themes). |
-| `--debug` | `false` | Write a debug log. See [Debug log](#debug-log). |
-| `--ascii` | `false` | Draw only ASCII characters. See [ASCII mode](#ascii-mode). |
-| `--version` | | Print the version and exit. |
-
-You can also set the theme with the `LAZYBW_THEME` environment variable. The `--theme` flag overrides it. For a name that is not a theme, lazybw prints a warning with the list of themes and uses `catppuccin-mocha`.
-
-### ASCII mode
-
-Some terminals draw some symbols 2 cells wide, for example a terminal with a CJK locale, or with the setting that draws "ambiguous width" characters wide. Then the rows, the masks and the line under the header lose their alignment. With `--ascii`, or with `LAZYBW_ASCII=1`, lazybw draws only ASCII characters. It needs no Nerd Font then. Examples: `>` is the cursor, `*` masks a value, `-` draws the line under the header, `...` ends a cut text, and the cards have a `+--+` border. `LAZYBW_ASCII` takes the values of `strconv.ParseBool`, such as `1`, `true`, `0` and `false`. For another value, lazybw prints a warning and draws the Unicode glyphs. [docs/GLYPHS.md](docs/GLYPHS.md#ascii-mode) lists each ASCII glyph.
-
-A release binary prints its release version for `--version`. A `go install` build prints its module version, for example `lazybw v0.3.0`. A build with no version information prints `lazybw dev`.
-
-### Debug log
-
-With `--debug`, lazybw adds log lines to `$XDG_CACHE_HOME/lazybw/debug.log`. If `XDG_CACHE_HOME` is not set, the file is `~/.cache/lazybw/debug.log`. lazybw creates the file with mode 0600.
-
-The log has a line for each state change. Examples are the `bw status` result, an unlock, the item count after a load, each lock, the `bw lock` result, sync results and errors. These lines do not contain the session token, the master password, the email, item names or field values. For a failed `bw` command, the log also has the stderr of `bw`, with the token, the password, the two-step code and the email hidden. See [SECURITY.md](SECURITY.md#debug-log).
-
-### Themes
-
-Available themes: `catppuccin-mocha` (default), `catppuccin-frappe`, `catppuccin-macchiato`, `catppuccin-latte`, `dracula`, `charm`, `base16`.
-
-Each theme has colors for a dark and for a light terminal background. lazybw asks the terminal for its background color and uses the matching colors. In the vault, press `T` to open the theme picker. The theme that you choose stays until lazybw exits.
-
-### Keybindings
+These are the keys that you use most in the vault:
 
 | Key | Action |
 |---|---|
 | `j` / `k` | Move down / up |
-| `/` | Filter the list. `enter` accepts the filter, and `esc` clears it. |
-| `c` | Copy the password. For a card, copy the number. For an identity, copy the SSN. For an SSH key, copy the private key. |
+| `/` | Filter the list. `esc` clears the filter. |
+| `c` | Copy the password (or the card number, SSN or SSH private key) |
 | `t` | Copy the TOTP code |
-| `u` | Copy the username. For an identity, copy the email. For an SSH key, copy the public key. |
+| `u` | Copy the username (or the identity email or SSH public key) |
 | `m` | Copy the note |
 | `v` | Copy the card security code |
-| `o` | Open the URL in the browser |
-| `n` | Create a login (`l`) or a secure note (`s`). In the form, `tab` goes to the next field, `ctrl+s` saves and `esc` cancels. |
-| `e` | Edit the selected login or secure note in the same form |
-| `d` / `delete` | Move the selected item to the trash. lazybw asks for confirmation first: `y` moves it, and `n` or `esc` cancels. |
+| `o` | Open the first URL of the item in the browser |
+| `n` | Create a login (`l`) or a secure note (`s`) |
+| `e` | Edit the selected login or secure note |
+| `d` | Move the selected item to the trash, after you press `y` to confirm |
 | `p` | Open the password generator |
+| `ctrl+g` | Turn grouping on or off. `enter` expands or collapses a group. |
 | `r` | Sync the vault |
 | `l` | Lock the vault |
-| `?` | Show the help overlay |
-| `q` | Quit. lazybw asks for confirmation first: `y` locks the vault and quits, and `n` or `esc` cancels. |
-| `ctrl+c` | Lock the vault and quit at once, with no confirmation |
+| `T` | Open the theme picker |
+| `?` | Show the vault keys |
+| `q` | Lock the vault and quit, after you press `y` to confirm |
+| `ctrl+c` | Lock the vault and quit at once |
+
+In the item form, `tab` goes to the next field, `ctrl+s` saves and `esc` closes the form. If you changed a field, lazybw asks before it discards the changes. `ctrl+g` puts a generated password in the password field, and `ctrl+r` shows or hides the password.
+
+Create and edit work only for logins and secure notes. lazybw shows cards, identities and SSH keys, but you cannot change them in lazybw.
+
+`d` does not delete an item permanently. You can restore the item from the trash in the Bitwarden web vault or app for 30 days.
 
 On the unlock screen, `ctrl+q` quits, because `q` types into the password field.
 
-For an item with master password re-prompt, `c`, `t`, `v`, `m`, `e` and `d` ask for the master password first. `enter` submits the password, and `esc` cancels. After the correct password, lazybw does the copy, or opens the edit form or the trash dialog. It does not ask again while the item stays selected.
+Press `?` in lazybw for the vault keys. The footer shows the keys of the other screens. For every key, see [docs/KEYBINDINGS.md](docs/KEYBINDINGS.md).
 
-The help overlay (`?`) shows the vault keys in four groups: Copy, Navigation, Vault and UI. Press `/` in the overlay to filter it. The overlay does not show the keys of the password generator, the item form, the filter input or the theme picker. The footer shows these keys while each one is open. See [docs/KEYBINDINGS.md](docs/KEYBINDINGS.md) for the full reference.
+## Themes
+
+The themes are `catppuccin-mocha` (default), `catppuccin-frappe`, `catppuccin-macchiato`, `catppuccin-latte`, `dracula`, `charm` and `base16`. lazybw asks the terminal for its background color and uses the dark or the light colors of the theme.
+
+In the vault, press `T` to try the themes. lazybw forgets this choice when it exits. To keep a theme, set `LAZYBW_THEME` in your shell profile, for example `export LAZYBW_THEME=dracula`.
+
+## Configuration
+
+| Flag | Environment variable | Default | Description |
+|---|---|---|---|
+| `--idle-timeout` | | `15m` | Lock the vault after this time with no key press. The value is a Go duration, for example `10m` or `1h30m`. The minimum is `30s`. |
+| `--theme` | `LAZYBW_THEME` | `catppuccin-mocha` | The color theme. The flag overrides the variable. |
+| `--ascii` | `LAZYBW_ASCII` | `false` | Draw only ASCII characters. Use it if you have no Nerd Font, or if icons or rows do not line up. See [docs/GLYPHS.md](docs/GLYPHS.md#ascii-mode). |
+| `--debug` | | `false` | Write a debug log. See [Troubleshooting](#troubleshooting). |
+| `--version` | | | Print the version and exit. |
+
+If the theme name does not exist, lazybw uses `catppuccin-mocha`. It also prints a warning with the list of themes.
+
+If the idle timeout is over, the next key press locks the vault. lazybw does not do the action of that key.
+
+## Troubleshooting
+
+### A copy does not reach the clipboard
+
+lazybw copies only through OSC 52, and the terminal sends no reply. So lazybw cannot tell if a copy worked.
+
+1. Turn on OSC 52 clipboard access in the configuration of your terminal.
+2. If you use tmux, add `set -g set-clipboard on` to your tmux configuration. With the default value, tmux does not pass the copy to your terminal.
+
+### Bitwarden asks for a new-device code
+
+Bitwarden asks for this code when an account without two-step login logs in from a new device. A new install of `bw` counts as a new device. `bw` has no option that takes the code, so lazybw cannot pass it.
+
+1. Run `bw login` once in a terminal, and enter the code from the email.
+2. Start lazybw again.
+
+### Icons show as empty boxes
+
+Set a Nerd Font v3 Mono as your terminal font, or run `lazybw --ascii`.
+
+### `o` does not open the URL
+
+lazybw opens only http and https URLs. On Linux, it uses `xdg-open`, so make sure that `xdg-open` is installed.
+
+### Debug log
+
+Run `lazybw --debug`. lazybw writes the log to `~/.cache/lazybw/debug.log`, or to `$XDG_CACHE_HOME/lazybw/debug.log` if that variable is set. The log holds no passwords, session tokens or field values. See [SECURITY.md](SECURITY.md#debug-log).
+
+## Documentation
+
+- [Keybindings](docs/KEYBINDINGS.md): every key on every screen
+- [Install](docs/INSTALL.md): each install method, and how to make sure that a download is genuine
+- [ASCII mode](docs/GLYPHS.md#ascii-mode): what lazybw draws when you use `--ascii`
+- [Security](SECURITY.md): how lazybw handles your session, master password and clipboard
 
 ## Contributing
 
-lazybw is in early development. It does not accept contributions yet. To report a security problem, see [SECURITY.md](SECURITY.md#reporting-a-vulnerability).
+lazybw does not accept pull requests yet. Bug reports and feature requests are welcome in [GitHub Issues](https://github.com/juthrbog/lazybw/issues). To report a security problem, see [SECURITY.md](SECURITY.md#reporting-a-vulnerability).
 
 ## License
 

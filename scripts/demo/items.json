@@ -1,0 +1,142 @@
+[
+  {
+    "id": "demo-gmail",
+    "type": 1,
+    "name": "Gmail",
+    "notes": null,
+    "reprompt": 0,
+    "login": {
+      "username": "alex.doe@gmail.com",
+      "password": "correct-horse-battery-staple",
+      "totp": "JBSWY3DPEHPK3PXP",
+      "uris": [{ "match": null, "uri": "https://mail.google.com" }]
+    }
+  },
+  {
+    "id": "demo-github",
+    "type": 1,
+    "name": "GitHub",
+    "notes": "Personal account. Recovery codes are in the secure note.",
+    "reprompt": 0,
+    "login": {
+      "username": "alexdoe",
+      "password": "not-my-github-password",
+      "totp": "KRSXG5CTMVRXEZLUKN2XAZLSKNSWG4TFOQ",
+      "uris": [{ "match": null, "uri": "https://github.com/login" }]
+    }
+  },
+  {
+    "id": "demo-github-work",
+    "type": 1,
+    "name": "GitHub (work)",
+    "notes": null,
+    "reprompt": 0,
+    "login": {
+      "username": "alex@example.com",
+      "password": "not-my-work-password",
+      "totp": "GEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQ",
+      "uris": [{ "match": null, "uri": "https://github.com/login" }]
+    }
+  },
+  {
+    "id": "demo-aws",
+    "type": 1,
+    "name": "AWS Console",
+    "notes": "Root account. Use only for billing.",
+    "reprompt": 0,
+    "login": {
+      "username": "aws-admin@example.com",
+      "password": "not-my-aws-password",
+      "totp": "MFRGGZDFMZTWQ2LKNNWG23TPOBYXE43U",
+      "uris": [{ "match": null, "uri": "https://console.aws.amazon.com" }]
+    }
+  },
+  {
+    "id": "demo-netflix",
+    "type": 1,
+    "name": "Netflix",
+    "notes": null,
+    "reprompt": 0,
+    "login": {
+      "username": "alex.doe@gmail.com",
+      "password": "popcorn-Night-42",
+      "totp": null,
+      "uris": [{ "match": null, "uri": "https://www.netflix.com" }]
+    }
+  },
+  {
+    "id": "demo-bank",
+    "type": 1,
+    "name": "Bank of Example",
+    "notes": null,
+    "reprompt": 1,
+    "login": {
+      "username": "alexdoe1987",
+      "password": "not-my-bank-password",
+      "totp": null,
+      "uris": [{ "match": null, "uri": "https://bank.example.com" }]
+    }
+  },
+  {
+    "id": "demo-visa",
+    "type": 3,
+    "name": "Visa Debit",
+    "notes": null,
+    "reprompt": 0,
+    "card": {
+      "cardholderName": "Alex Doe",
+      "brand": "Visa",
+      "number": "4111111111114242",
+      "expMonth": "08",
+      "expYear": "2029",
+      "code": "123"
+    }
+  },
+  {
+    "id": "demo-recovery",
+    "type": 2,
+    "name": "Recovery codes",
+    "notes": "GitHub: 1a2b3-c4d5e 6f7g8-h9i0j\nGmail: 4821 9930 1177",
+    "reprompt": 0,
+    "secureNote": { "type": 0 }
+  },
+  {
+    "id": "demo-passport",
+    "type": 4,
+    "name": "Passport",
+    "notes": null,
+    "reprompt": 0,
+    "identity": {
+      "title": "Mx",
+      "firstName": "Alex",
+      "middleName": null,
+      "lastName": "Doe",
+      "username": null,
+      "company": null,
+      "ssn": null,
+      "passportNumber": "X12345678",
+      "licenseNumber": null,
+      "email": "alex.doe@gmail.com",
+      "phone": "+1 555 0100",
+      "address1": "1 Example Street",
+      "address2": null,
+      "address3": null,
+      "city": "Springfield",
+      "state": "IL",
+      "postalCode": "62701",
+      "country": "US"
+    }
+  },
+  {
+    "id": "demo-deploy",
+    "type": 5,
+    "name": "Deploy key",
+    "notes": null,
+    "reprompt": 0,
+    "sshKey": {
+      "privateKey": "not a real key",
+      "publicKey": "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIDemoKeyNotReal deploy@example.com",
+      "keyFingerprint": "SHA256:k3Yd9QzRb2Lw8VxN"
+    }
+  }
+]
