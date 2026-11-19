@@ -34,6 +34,8 @@ type VaultKeyMap struct {
 	New            key.Binding
 	Edit           key.Binding
 	Delete         key.Binding
+	ToggleTrash    key.Binding
+	Restore        key.Binding
 	Generate       key.Binding
 	Sync           key.Binding
 	Lock           key.Binding
@@ -72,6 +74,8 @@ func (k VaultKeyMap) categorized() []categorizedBinding {
 		{k.New, CategoryVault},
 		{k.Edit, CategoryVault},
 		{k.Delete, CategoryVault},
+		{k.ToggleTrash, CategoryVault},
+		{k.Restore, CategoryVault},
 		{k.Generate, CategoryVault},
 		{k.Sync, CategoryVault},
 		{k.Lock, CategoryVault},
@@ -169,6 +173,14 @@ func DefaultVaultKeyMap() VaultKeyMap {
 		Delete: key.NewBinding(
 			key.WithKeys("d", "delete"),
 			key.WithHelp("d", "move item to trash"),
+		),
+		ToggleTrash: key.NewBinding(
+			key.WithKeys("D"),
+			key.WithHelp("D", "show the vault or the trash"),
+		),
+		Restore: key.NewBinding(
+			key.WithKeys("U"),
+			key.WithHelp("U", "restore item from trash"),
 		),
 		Generate: key.NewBinding(
 			key.WithKeys("p"),

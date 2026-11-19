@@ -18,7 +18,11 @@ type HeaderData struct {
 	ItemCount    int
 	SelectedType string
 	Width        int
+	Trash        bool // the vault screen shows the trash list
 }
+
+// trashLabel is the header label of the trash list.
+const trashLabel = "Trash"
 
 // minHeaderEmailW is the narrowest email that the header shows. A narrower
 // space drops the email badge.
@@ -31,11 +35,19 @@ func RenderHeader(data HeaderData) string {
 
 	// Build components left-to-right.
 	bar := title
+	if data.Trash {
+		// The label comes right after the title, so the email is cut
+		// first. A space separates it from the title.
+		label := " " + StyleTitle.Render(trashLabel)
+		if lipgloss.Width(bar)+lipgloss.Width(label) <= data.Width {
+			bar += label
+		}
+	}
 	if data.Email != "" {
 		// The badge adds 1 cell of padding on each side, and a space
 		// separates it from the title.
 		const badgeChrome = 3
-		emailW := data.Width - lipgloss.Width(title) - badgeChrome
+		emailW := data.Width - lipgloss.Width(bar) - badgeChrome
 		if emailW >= minHeaderEmailW {
 			email := Truncate(SanitizeLine(data.Email), emailW)
 			bar += " " + StyleHeaderBadge.Render(email)

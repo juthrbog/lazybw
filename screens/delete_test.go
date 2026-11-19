@@ -91,7 +91,7 @@ func TestDeleteMovesToTrash(t *testing.T) {
 			left = append(left, it)
 		}
 	}
-	m, _ = send(m, bwcmd.ItemsResult{Items: left, Epoch: m.sess.Epoch})
+	m, _ = send(m, bwcmd.ItemsResult{Items: left, Epoch: m.sess.Epoch, Seq: m.listSeq})
 	if item := m.selectedItem(); item == nil || item.ID != "note" {
 		t.Errorf("selected = %v, want the next item, note", item)
 	}
@@ -104,7 +104,7 @@ func TestDeleteLastItemSelectsPrevious(t *testing.T) {
 	m, _ = send(m, keyMsg("d"))
 	m, _ = send(m, keyMsg("y"))
 	m, _ = send(m, bwcmd.DeleteResult{ID: "bank", Epoch: m.sess.Epoch})
-	m, _ = send(m, bwcmd.ItemsResult{Items: editItems()[:3], Epoch: m.sess.Epoch})
+	m, _ = send(m, bwcmd.ItemsResult{Items: editItems()[:3], Epoch: m.sess.Epoch, Seq: m.listSeq})
 	if item := m.selectedItem(); item == nil || item.ID != "note" {
 		t.Errorf("selected = %v, want the previous item, note", item)
 	}

@@ -54,6 +54,8 @@ These are the action bindings of `DefaultVaultKeyMap` in `ui/keymap.go`. The hel
 | `n` | Create an item. See [New item](#new-item). |
 | `e` | Edit the selected login or secure note. See [Item form](#item-form). |
 | `d` / `delete` | Move the selected item to the trash. See [Move to trash](#move-to-trash). |
+| `D` | Switch the list between the vault and the trash. See [Trash list](#trash-list). |
+| `U` | Restore the selected item from the trash. See [Restore](#restore). |
 | `p` | Open the password generator |
 | `r` | Sync the vault with `bw sync`, and then load the items again. While a sync runs, `r` does nothing. |
 | `l` | Lock the vault and show the unlock screen |
@@ -69,9 +71,11 @@ A copy key copies nothing when the selected item does not have that field. When 
 
 The drawer keys `+`, `-` and `=` do nothing in overlay mode. The drawer height stays between 3 rows and half of the terminal height.
 
-When an item has master password re-prompt, `c`, `t`, `v`, `m`, `e` and `d` first ask for the master password. See [Master password re-prompt](#master-password-re-prompt).
+In the trash list, `n`, `e` and `d` / `delete` do nothing. In the vault list, `U` does nothing.
 
-While an overlay shows (help, generator, theme picker, re-prompt, new item, move to trash or quit confirmation), the vault keys do nothing. The overlay gets the keys.
+When an item has master password re-prompt, `c`, `t`, `v`, `m`, `e`, `d` and `U` first ask for the master password. See [Master password re-prompt](#master-password-re-prompt).
+
+While an overlay shows (help, generator, theme picker, re-prompt, new item, move to trash, restore or quit confirmation), the vault keys do nothing. The overlay gets the keys.
 
 ## Filter mode
 
@@ -222,18 +226,43 @@ If the vault locks while the form shows, lazybw discards the form and its values
 
 | Key | Action |
 |---|---|
-| `y` | Move the item to the trash with `bw delete item`. lazybw has no permanent delete. You can restore the item from the trash for 30 days. |
+| `y` | Move the item to the trash with `bw delete item`. lazybw has no permanent delete. You can restore the item from the trash for 30 days: press `D`, then `U`. |
 | `n` / `esc` | Close the dialog and delete nothing |
 
 While `bw delete item` runs, the dialog ignores all keys. If `bw` fails, the dialog shows the error, and `y` tries again. If `bw` succeeds, the dialog closes, lazybw loads the items again, selects the next item and shows the toast "Moved <name> to trash".
 
-## Master password re-prompt
+## Trash list
 
-A Bitwarden item can have master password re-prompt. For such an item, `c`, `t`, `v`, `m`, `e` and `d` open a prompt that asks for the master password. `u` and `o` do not ask.
+`D` switches the list between the vault and the trash. lazybw loads the trash with `bw list items --trash` each time it opens. When you go back to the vault, lazybw loads the vault items again with `bw list items`, so a restored item shows there at once.
+
+`D` clears an applied filter. While the trash shows, the header shows the label `Trash` after the title, and the item count counts the items in the trash. The drawer shows the row "Deleted" with the day when the item went to the trash.
+
+These keys work in the trash list as in the vault list: the list keys, the filter, the copy keys, `o`, the drawer keys, `ctrl+g`, `enter`, `r`, `l`, `p`, `T`, `?` and `q`. In the trash, `r` loads the trash again after the sync.
+
+These keys do nothing in the trash list: `n`, `e` and `d` / `delete`. The help overlay leaves them out while the trash shows.
+
+While a list loads after `D`, the list area shows "Loading trash…" or "Loading vault…". When the trash has no items, it shows "The trash is empty.". When a load fails, the footer shows the error, and the list area shows a text that stays until the next load works. In the trash, press `r` to try again, or `D` to go back. In the vault, press `r` to try again. After a failed load, `r` loads the list again also when the sync fails.
+
+## Restore
+
+`U` in the trash list opens a dialog that asks `Restore "<name>"?`. It works for each item type.
 
 | Key | Action |
 |---|---|
-| `enter` | Submit the master password. lazybw runs `bw unlock` with it. If `bw unlock` accepts the password, lazybw copies the field, or opens the edit form or the trash dialog. |
+| `y` | Restore the item with `bw restore item`. The item goes back to the vault. |
+| `n` / `esc` | Close the dialog and restore nothing |
+
+While `bw restore item` runs, the dialog shows "Restoring…" and ignores all keys. If `bw` fails, the dialog shows the error, and `y` tries again. If `bw` succeeds, the dialog closes, the item leaves the trash list, lazybw selects the next item, loads the trash again and shows the toast "Restored <name>".
+
+lazybw has no permanent delete. An item stays in the trash until you restore it, or until Bitwarden deletes it after 30 days.
+
+## Master password re-prompt
+
+A Bitwarden item can have master password re-prompt. For such an item, `c`, `t`, `v`, `m`, `e`, `d` and `U` open a prompt that asks for the master password. `u` and `o` do not ask.
+
+| Key | Action |
+|---|---|
+| `enter` | Submit the master password. lazybw runs `bw unlock` with it. If `bw unlock` accepts the password, lazybw copies the field, or opens the edit form, the trash dialog or the restore dialog. |
 | `esc` | Close the prompt and copy nothing. `esc` also works while `bw unlock` runs. |
 
 While `bw unlock` runs, the prompt ignores all other keys. The prompt does not accept an empty password.

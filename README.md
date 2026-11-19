@@ -27,13 +27,14 @@ lazybw does not talk to the Bitwarden servers itself. It runs `bw` for you. The 
 - Copy the password (`c`), the TOTP code (`t`) or the username (`u`) with one key.
 - See the current TOTP code with a countdown bar that goes from green to yellow to red. lazybw reads base32 keys, `otpauth://` URIs and Steam Guard (`steam://`) keys.
 - Create (`n`), edit (`e`) and move to the trash (`d`) logins and secure notes.
+- Show the trash (`D`) and restore an item from it (`U`).
 - Make passwords and passphrases with the generator (`p`). The item form can put a generated password in the password field.
 - Browse logins, secure notes, cards, identities and SSH keys. Each type has its own detail view.
 - Group items with the same base name (`ctrl+g`). For example, "GitHub" and "GitHub (Work)" go in one group.
 - Choose from 7 color themes, each with colors for a dark and a light terminal.
 - Clear the clipboard 60 seconds after a copy, and lock the vault after 15 minutes with no key press. See [SECURITY.md](SECURITY.md).
 
-lazybw does not do these things yet: restore from the trash, organizations and collections, more than one account, an SSH agent and Bitwarden Send.
+lazybw does not do these things yet: organizations and collections, more than one account, an SSH agent and Bitwarden Send.
 
 ## Requirements
 
@@ -95,6 +96,8 @@ These are the keys that you use most in the vault:
 | `n` | Create a login (`l`) or a secure note (`s`) |
 | `e` | Edit the selected login or secure note |
 | `d` | Move the selected item to the trash, after you press `y` to confirm |
+| `D` | Show the vault or the trash |
+| `U` | Restore the selected item from the trash, after you press `y` to confirm |
 | `p` | Open the password generator |
 | `ctrl+g` | Turn grouping on or off. `enter` expands or collapses a group. |
 | `r` | Sync the vault |
@@ -108,7 +111,7 @@ In the item form, `tab` goes to the next field, `ctrl+s` saves and `esc` closes 
 
 Create and edit work only for logins and secure notes. lazybw shows cards, identities and SSH keys, but you cannot change them in lazybw.
 
-`d` does not delete an item permanently. You can restore the item from the trash in the Bitwarden web vault or app for 30 days.
+`d` does not delete an item permanently. You can restore the item from the trash for 30 days, in lazybw (`D` shows the trash, `U` restores the selected item) or in the Bitwarden web vault or app. lazybw has no permanent delete.
 
 On the unlock screen, `ctrl+q` quits, because `q` types into the password field.
 

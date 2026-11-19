@@ -54,6 +54,33 @@ func TestRenderHeaderMediumHidesItemCount(t *testing.T) {
 	}
 }
 
+// TestHeaderShowsTrash checks that the header names the trash list, with
+// the Unicode and the ASCII glyphs, and that both lines stay Width cells.
+func TestHeaderShowsTrash(t *testing.T) {
+	t.Cleanup(func() { UseASCII(false) })
+	email := "a-very-long-user-name@example-company.com"
+	for _, ascii := range []bool{false, true} {
+		UseASCII(ascii)
+		for _, width := range []int{30, 60, 80} {
+			for _, trash := range []bool{false, true} {
+				out := RenderHeader(HeaderData{Email: email, ItemCount: 3, Width: width, Trash: trash})
+				lines := strings.Split(out, "\n")
+				if len(lines) != 2 {
+					t.Fatalf("ascii %v, width %d: header has %d lines, want 2", ascii, width, len(lines))
+				}
+				for i, l := range lines {
+					if w := lipgloss.Width(l); w != width {
+						t.Errorf("ascii %v, width %d, trash %v: line %d is %d cells", ascii, width, trash, i, w)
+					}
+				}
+				if got := strings.Contains(ansi.Strip(lines[0]), "Trash"); got != trash {
+					t.Errorf("ascii %v, width %d: header has Trash = %v, want %v: %q", ascii, width, got, trash, ansi.Strip(lines[0]))
+				}
+			}
+		}
+	}
+}
+
 func TestRenderFooterWithContent(t *testing.T) {
 	hints := []HintBinding{{Key: "j/k", Desc: "navigate"}}
 	out := RenderFooter(hints, "synced 2m ago", 60)

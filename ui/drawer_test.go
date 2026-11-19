@@ -5,6 +5,7 @@ import (
 	"regexp"
 	"strings"
 	"testing"
+	"time"
 	"unicode/utf8"
 
 	"charm.land/lipgloss/v2"
@@ -523,6 +524,82 @@ func TestRenderDrawerHeaderOnly(t *testing.T) {
 	}
 	if got := MaxScrollOffset(props); got != 0 {
 		t.Errorf("MaxScrollOffset with no note rows = %d, want 0", got)
+	}
+}
+
+// TestDrawerShowsDeletedDate checks that an item in the trash shows the
+// day when it went to the trash. A mid-day time gives the same day in each
+// time zone near UTC, and the wanted text uses the same local zone.
+func TestDrawerShowsDeletedDate(t *testing.T) {
+	const deleted = "2026-11-17T12:00:00Z"
+	when, err := time.Parse(time.RFC3339Nano, deleted)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := when.Local().Format(time.DateOnly)
+	item := &bwcmd.Item{Type: bwcmd.ItemTypeLogin, Name: "Old", DeletedDate: deleted, Login: &bwcmd.Login{Username: "u"}}
+	out := ansi.Strip(RenderDrawer(DrawerProps{Item: item, Width: 60}))
+	if !strings.Contains(out, "Deleted") || !strings.Contains(out, want) {
+		t.Errorf("drawer must show the delete date %s:\n%s", want, out)
+	}
+}
+
+func TestDrawerHidesBadDeletedDate(t *testing.T) {
+	for _, date := range []string{"", "yesterday", "2026-13-40"} {
+		item := &bwcmd.Item{Type: bwcmd.ItemTypeLogin, Name: "Old", DeletedDate: date, Login: &bwcmd.Login{Username: "u"}}
+		if out := ansi.Strip(RenderDrawer(DrawerProps{Item: item, Width: 60})); strings.Contains(out, "Deleted") {
+			t.Errorf("date %q: drawer must show no Deleted row:\n%s", date, out)
+		}
+	}
+}
+
+// trashNote returns a secure note in the trash with n lines.
+func trashNote(n int) *bwcmd.Item {
+	var lines []string
+	for i := range n {
+		lines = append(lines, fmt.Sprintf("line%02d", i))
+	}
+	return &bwcmd.Item{Type: bwcmd.ItemTypeSecureNote, Name: "Keys", Notes: strings.Join(lines, "\n"), DeletedDate: "2026-11-17T12:00:00Z"}
+}
+
+func TestDrawerTrashNoteFits(t *testing.T) {
+	props := DrawerProps{Width: 60, Height: 8}
+	rows := bodyRows(props) - 1
+	props.Item = trashNote(rows)
+	out := ansi.Strip(RenderDrawer(props))
+	for i := range rows {
+		if line := fmt.Sprintf("line%02d", i); !strings.Contains(out, line) {
+			t.Errorf("drawer must show %s:\n%s", line, out)
+		}
+	}
+	if strings.Contains(out, "more") {
+		t.Errorf("a note that fits must have no more marker:\n%s", out)
+	}
+	if got := MaxScrollOffset(props); got != 0 {
+		t.Errorf("MaxScrollOffset = %d, want 0", got)
+	}
+}
+
+func TestDrawerTrashNoteScroll(t *testing.T) {
+	const n = 12
+	for _, auto := range []bool{false, true} {
+		props := DrawerProps{Item: trashNote(n), Width: 60, Height: 8, AutoHeight: auto}
+		want := n - (bodyRows(props) - 1)
+		if got := MaxScrollOffset(props); got != want {
+			t.Fatalf("auto %v: MaxScrollOffset = %d, want %d", auto, got, want)
+		}
+		props.ScrollOffset = want
+		out := ansi.Strip(RenderDrawer(props))
+		last := fmt.Sprintf("line%02d", n-1)
+		if !strings.Contains(out, last) || strings.Contains(out, "more") {
+			t.Errorf("auto %v: the last page must show %s and no more marker:\n%s", auto, last, out)
+		}
+		if !strings.Contains(out, "Deleted") {
+			t.Errorf("auto %v: drawer must show the Deleted row:\n%s", auto, out)
+		}
+		if lines := strings.Split(out, "\n"); len(lines) != props.Height {
+			t.Errorf("auto %v: drawer has %d lines, want %d:\n%s", auto, len(lines), props.Height, out)
+		}
 	}
 }
 

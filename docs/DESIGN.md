@@ -21,6 +21,7 @@ documents give more detail:
 - Copy with OSC 52, the terminal escape sequence that sets the clipboard.
 - Keep the session token in memory only, clear the clipboard after 60 seconds, and lock the vault after 15 minutes with no key press.
 - Create and edit logins and secure notes in a form, and move items to the trash. The item goes to `bw` on stdin, never in an argument.
+- Show the trash and restore an item from it.
 
 ## Stack
 
@@ -92,7 +93,7 @@ columns:
 
 Key observations:
 
-- The header shows the logo glyph and `lazybw` in a color gradient. The email shows in a badge. The item count shows at 80 columns or more, and the type of the selected item shows at 60 columns or more.
+- The header shows the logo glyph and `lazybw` in a color gradient. The email shows in a badge. The item count shows at 80 columns or more, and the type of the selected item shows at 60 columns or more. While the trash list shows, the label `Trash` follows the title, and the count counts the items in the trash.
 - The list has no border. Its first row holds the filter input, and it is empty while no filter is open.
 - `▶` marks the selected row.
 - The drawer header card shows the item glyph, the item name and a type badge.
@@ -493,7 +494,7 @@ A Bitwarden item can have "Master password re-prompt" turned on.
 that the clients ask for the master password. bw does not enforce it, so
 lazybw does.
 
-- For such an item, `c`, `t`, `v`, `m`, `e` and `d` open the card `Master password re-prompt` with a password input. After the check, `e` opens the edit form and `d` opens the trash dialog. `u` and `o` do not ask.
+- For such an item, `c`, `t`, `v`, `m`, `e`, `d` and `U` open the card `Master password re-prompt` with a password input. After the check, `e` opens the edit form, `d` opens the trash dialog and `U` opens the restore dialog. `u` and `o` do not ask.
 - Enter submits the password. Esc cancels and closes the card. The footer shows `enter submit · esc cancel`.
 - lazybw runs `bw unlock --passwordenv BW_PASSWORD --raw` with the typed password. While bw runs, the card shows `Checking the master password…`, and only Esc works.
 - If bw accepts the password, it returns a new session key, and the old key stops working. lazybw stores the new key with `session.State.ReplaceToken`. The session epoch does not change, so the bw commands that started in this session still belong to it. Then lazybw runs the copy that the user asked for.
@@ -623,13 +624,74 @@ A lock drops the vault model and the form with it. lazybw keeps no draft.
 item of any type (`screens/delete.go`). For an item with master password
 re-prompt, the password check comes first. `y` runs `bw delete item <id>`
 with no `--permanent`, so the item goes to the trash, where the user can
-restore it for 30 days. `n` and Esc close the card.
+restore it for 30 days, with `D` and `U` in lazybw. `n` and Esc close the
+card.
 
 While `bw` runs, the card shows "Moving to trash…" and ignores keys. If
 `bw` fails, the card shows the error and `y` tries again. If `bw`
 succeeds, the card closes, lazybw runs `bw list items`, selects the item
 in the next row (or in the row before, for the last row) and shows the
 toast "Moved <name> to trash".
+
+---
+
+## Trash List and Restore
+
+`D` switches the vault list between the vault and the trash
+(`screens/trash.go`). The vault screen keeps one item slice, `rawItems`.
+It holds the items of the list that shows. `D` scrubs the old items and
+empties the list at once, so that no key acts on an item of the other
+list while the new list loads. Then lazybw runs `bw list items --trash`,
+or `bw list items` on the way back. `D` also clears an applied filter, a
+pending select, an edit load and the re-prompt state of the item.
+
+lazybw keeps no copy of the vault list while the trash shows. After `D`,
+it loads the vault list again. On a large vault this takes some seconds,
+and the list area shows "Loading vault…" while it runs. In return, a
+restored item shows at once, and no second list of decrypted items stays
+in memory. A copy would be a second slice that the lock, each switch and
+the secrets tests must track.
+
+The trash result is its own type, `bwcmd.TrashResult`, so that a trash
+list never replaces the vault list. It carries the session epoch and a
+load number, `Seq`. `bwcmd.ItemsResult` carries a load number too. Each
+load of the vault screen raises the number, for the vault list and for
+the trash list: after `D`, a sync, a save, a delete and a restore. The
+vault screen drops and scrubs a result with an older number. So a trash
+load that started before a restore cannot bring the restored item back.
+And a vault load that started before `D`, for example after a delete,
+cannot replace the vault list after a switch to the trash and back. A
+vault list that arrives while the trash shows is dropped and scrubbed
+too. The first load after an unlock has the number 0, and the root model
+handles it before the vault screen exists.
+
+While a list loads, fails or is empty, the list area shows a centered
+text in place of "No items.": "Loading trash…", "Loading vault…", "Could
+not load the trash. Press r to try again, or D to go back.", "Could not
+load the vault. Press r to try again." or "The trash is empty.". The
+text stays until the next load works.
+
+In the trash, `n`, `e` and `d` do nothing, and the help overlay leaves
+them out. `r` syncs and then loads the list that shows. After a failed
+load, `r` loads the list also when the sync fails, because `bw list
+items` works from the local cache. The drawer shows the row "Deleted"
+with the day from `deletedDate`.
+
+`U` opens the card `Restore "<name>"?` (`screens/restore.go`). For an
+item with master password re-prompt, the password check comes first. `y`
+runs `bw restore item <id>`. Only the ID goes in the arguments. While `bw`
+runs, the card shows "Restoring…" and ignores keys. If `bw` fails, the
+card shows the error and `y` tries again. If `bw` succeeds, the card
+closes and the item leaves the list at once. Then `U` cannot run
+`bw restore` a second time for it before the reload. lazybw selects the
+next item, shows the toast "Restored <name>" and loads the trash again.
+
+A restore while a sync runs is allowed, as a delete is. Two bw processes
+then write the local bw data at the same time. In rare cases, the sync
+writes back the old state, and the next trash list still shows the item.
+A second restore then shows the bw error in the card.
+
+lazybw has no permanent delete.
 
 ---
 
@@ -658,6 +720,8 @@ each overlay and of the unlock screen. These are the vault keys:
 | `n` | Create an item (see [Item Form](#item-form)) |
 | `e` | Edit the selected login or secure note |
 | `d` / Delete | Move the selected item to the trash (see [Move to Trash](#move-to-trash)) |
+| `D` | Show the vault or the trash (see [Trash List and Restore](#trash-list-and-restore)) |
+| `U` | Restore the selected item from the trash |
 | `p` | Open the password generator |
 | `T` | Open the theme picker |
 | `ctrl+g` | Turn grouping on or off |
@@ -690,7 +754,8 @@ the sync age when no toast shows, is on the right.
  j/k navigate · / search · c pwd   󰆏 Password sent to clipboard · clears in 60s
 ```
 
-The normal hints are `j/k navigate · / search · c pwd · t totp · ? help · q quit · n new · e edit · d trash · ctrl+g group · z drawer · p gen · T theme`.
+The normal hints are `j/k navigate · / search · c pwd · t totp · ? help · q quit · n new · e edit · d trash · D show trash · ctrl+g group · z drawer · p gen · T theme`.
+In the trash list, the hints are `U restore · D vault · j/k navigate · / search · c pwd · t totp · ? help · q quit · ctrl+g group · z drawer · p gen · T theme`.
 lazybw drops hints from the end when they do not fit. Each overlay, the
 filter input and the quit confirmation show their own hints.
 
@@ -702,7 +767,9 @@ A toast shows one message in the footer. A new toast replaces the old one.
 - The timer of an older toast does not end a newer toast.
 
 While a sync runs, the footer shows a spinner and `Syncing…`. After a
-successful sync, it shows `✓ Vault synced` until the new items load. With
+successful `bw sync`, the list loads again, and the footer shows `Syncing…`
+until that load ends. Until then the list holds the data from before the
+sync. Then the footer shows `✓ Vault synced` for 4 seconds. With
 no toast, the footer shows the age of the last sync: `synced just now`,
 `synced 3m ago` or `synced 2h ago`. lazybw reads the time of the last sync
 from `bw status` at start, and it sets the time again after each sync in
@@ -726,7 +793,8 @@ the output of bw.
 | `bw status` | At start, and on retry | 15 s | None |
 | `bw unlock --passwordenv BW_PASSWORD --raw` | Unlock form, master password re-prompt | 2 min | `BW_PASSWORD` |
 | `bw login --passwordenv BW_PASSWORD --raw [--method N] [--code=CODE] -- EMAIL` | Login form | 2 min | `BW_PASSWORD` |
-| `bw list items` | After an unlock, after a sync, on retry | 2 min | `BW_SESSION` |
+| `bw list items` | After an unlock, after a sync, on retry, `D` back to the vault | 2 min | `BW_SESSION` |
+| `bw list items --trash` | `D` to the trash, after a sync in the trash, after a restore | 2 min | `BW_SESSION` |
 | `bw sync` | `r` | 2 min | `BW_SESSION` |
 | `bw lock` | Lock key, idle lock, quit, a second failed item load, exit cleanup | 15 s | `BW_SESSION` |
 | `bw generate [options]` | Password generator | 15 s | None |
@@ -734,6 +802,7 @@ the output of bw.
 | `bw get item <id>` | `e` | 2 min | `BW_SESSION` |
 | `bw edit item <id>` | `ctrl+s` in the edit form | 2 min | `BW_SESSION` |
 | `bw delete item <id>` | `y` in the trash dialog | 2 min | `BW_SESSION` |
+| `bw restore item <id>` | `y` in the restore dialog | 2 min | `BW_SESSION` |
 
 `bw create item` and `bw edit item` get the item as base64-encoded JSON on
 stdin, not as an argument, because any local user can read the arguments
@@ -747,8 +816,8 @@ then zeros the output. lazybw also zeros the output of `bw get item` and
 session key counts as a failure: `bw did not return a session key`.
 `bw list items` returns the whole vault as JSON. Passwords, usernames, TOTP
 keys and card numbers are all in that output, so lazybw needs no command
-for each field. lazybw zeros the output of `bw list items`, `bw unlock`
-and `bw login` after it reads it.
+for each field. lazybw zeros the output of `bw list items` (also with
+`--trash`), `bw unlock` and `bw login` after it reads it.
 
 ### Item fields
 
@@ -767,6 +836,7 @@ lazybw reads these fields:
 | `name` | The list row, the filter and the grouping |
 | `notes` | The drawer and `m` |
 | `reprompt` | The master password re-prompt |
+| `deletedDate` | The "Deleted" row of the drawer in the trash list |
 | `login.username`, `login.password`, `login.totp`, `login.uris[].uri` | The drawer, `c`, `u`, `t` and `o` |
 | `card.cardholderName`, `card.number`, `card.expMonth`, `card.expYear`, `card.code` | The drawer, `c` and `v` |
 | `identity.title`, `identity.firstName`, `identity.middleName`, `identity.lastName`, `identity.company`, `identity.email`, `identity.phone`, `identity.ssn`, `identity.passportNumber`, `identity.licenseNumber`, `identity.address1`, `identity.address2`, `identity.address3`, `identity.city`, `identity.state`, `identity.postalCode`, `identity.country` | The drawer, `c` and `u` |
@@ -785,7 +855,7 @@ lazybw skips these fields on purpose:
 | `login.fido2Credentials` | Passkeys. lazybw cannot use them, and each one holds a private key. |
 | `favorite` | lazybw has no favorites view. |
 | `attachments` | lazybw cannot download an attachment. |
-| `collectionIds`, `revisionDate`, `creationDate`, `deletedDate`, `login.passwordRevisionDate`, `card.brand` | No screen shows them. |
+| `collectionIds`, `revisionDate`, `creationDate`, `login.passwordRevisionDate`, `card.brand` | No screen shows them. |
 
 To show a new field, add it to `bwcmd.Item`. If the field is a secret,
 also zero it in `secutil.ZeroItem`.
@@ -830,7 +900,10 @@ After a successful unlock or login, lazybw stores the token, starts a new
 session epoch and runs `bw list items`. The session epoch is a counter
 that changes on each unlock and each lock. Each `bw list items` and
 `bw sync` result carries the epoch of the session that started it. lazybw
-drops and scrubs a result that belongs to an ended session.
+drops and scrubs a result that belongs to an ended session. The root also
+drops and scrubs a `TrashResult` of an ended session, or one that arrives
+outside the vault. The vault screen drops a `RestoreResult` of an ended
+session.
 
 ### Two-step login
 
@@ -853,8 +926,9 @@ the known bw messages, and the screens show plain texts for them. With
 `--debug`, the full stderr goes to the debug log, with the session token,
 the password, the two-step code and the email replaced by `[hidden]`.
 
-`bw status`, `bw lock` and `bw generate` have 15 seconds. `bw list items`,
-`bw sync`, `bw login` and `bw unlock` have 2 minutes. These commands wait
+`bw status`, `bw lock` and `bw generate` have 15 seconds. `bw list items`
+(also with `--trash`), `bw sync`, `bw login`, `bw unlock` and the commands
+that change an item, such as `bw restore item`, have 2 minutes. These commands wait
 for the network, read the whole vault or run the key derivation. After the
 time limit, lazybw kills bw. On Unix, it kills the whole process group, so
 that a wrapper script cannot leave bw running with `BW_PASSWORD` in its
@@ -998,6 +1072,7 @@ wheel, so the wheel moves the selection in the list.
 - A lock drops the vault data, zeros the decoded TOTP secret, drops the session token and runs `bw lock`.
 - lazybw asks for the master password before it copies or shows a protected field of an item with master password re-prompt.
 - A new or changed item goes to `bw` on stdin, never in an argument. A lock discards an open item form.
+- lazybw has no permanent delete. A restore passes only the item ID to `bw`. A lock also drops the trash list.
 
 ### Exit cleanup
 
@@ -1050,7 +1125,8 @@ target is stderr, which draws over the TUI.
 - Errors. `logReason` in `model.go` gives only the kind of error, for example `timed out` or `bw error (exit status 1)`. The line does not repeat the message of bw, because that message is a line of the bw output.
 
 A failed bw command also writes its subcommand, its error and its stderr,
-with the private values replaced by `[hidden]`. For `bw create item` and
+with the private values replaced by `[hidden]`. A failed restore shows as `bw restore item failed`, and
+the item ID is not on that line. For `bw create item` and
 `bw edit item`, the private values also include the encoded input and each
 value of the item form. The lines of `RootModel`
 never hold the session token, the master password, the email, item names
@@ -1100,6 +1176,8 @@ lazybw/
 │   ├── itemform.go       # Item form: fields, checks and the item JSON
 │   ├── itemform_vault.go # New item card, edit, save, discard dialog
 │   ├── delete.go         # Move to trash dialog
+│   ├── trash.go          # Switch between the vault and the trash list
+│   ├── restore.go        # Restore dialog
 │   ├── themepicker.go    # ThemePickerModel: the theme picker card
 │   ├── quitconfirm.go    # Quit confirmation card
 │   ├── grouping.go       # Group keys and the grouping algorithm
@@ -1125,7 +1203,7 @@ lazybw/
 │   ├── kill_unix.go      # Kill the process group after a time limit
 │   ├── kill_other.go     # Default kill on other systems
 │   ├── parser.go         # Parse bw status and bw list items
-│   ├── write.go          # bw create, get, edit and delete item, and the JSON of a new item
+│   ├── write.go          # bw create, get, edit, delete and restore item, and the JSON of a new item
 │   └── types.go          # Item types
 ├── session/
 │   ├── manager.go        # Session state, epoch, idle test
@@ -1148,7 +1226,6 @@ lazybw/
 
 These features have open issues. lazybw does not have them yet.
 
-- Restore from the trash (#155)
 - Organization and collection navigation (#7)
 - More than one account (#8)
 - SSH agent integration (#9)

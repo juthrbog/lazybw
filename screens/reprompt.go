@@ -27,12 +27,13 @@ var errNoSessionKey = errors.New("bw did not return a session key")
 type secretAction int
 
 const (
-	secretMain   secretAction = iota // c: the password, card number, SSN or SSH private key
-	secretTOTP                       // t: the TOTP code
-	secretCVV                        // v: the card security code
-	secretNote                       // m: the note
-	secretEdit                       // e: the edit form, which shows each field
-	secretDelete                     // d: the dialog that moves the item to the trash
+	secretMain    secretAction = iota // c: the password, card number, SSN or SSH private key
+	secretTOTP                        // t: the TOTP code
+	secretCVV                         // v: the card security code
+	secretNote                        // m: the note
+	secretEdit                        // e: the edit form, which shows each field
+	secretDelete                      // d: the dialog that moves the item to the trash
+	secretRestore                     // U: the dialog that restores the item from the trash
 )
 
 // repromptState is the master password prompt of the vault screen. The
@@ -298,6 +299,9 @@ func (m VaultModel) handleRepromptResult(msg repromptResultMsg) (tea.Model, tea.
 		return m, m.startEdit()
 	case secretDelete:
 		m.openDelete()
+		return m, nil
+	case secretRestore:
+		m.openRestore()
 		return m, nil
 	}
 	value, field, ok := m.secretFor(act)

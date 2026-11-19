@@ -92,7 +92,7 @@ func (m VaultModel) handleDeleteResult(msg bwcmd.DeleteResult) (VaultModel, tea.
 	m.closeDelete()
 	m.selectID = m.nextItemID(msg.ID)
 	toast := m.setToast(ui.GlyphDelete + " Moved " + ui.Truncate(ui.SanitizeLine(name), maxFilterHintW) + " to trash")
-	return m, tea.Batch(toast, bwcmd.FetchItems(m.sess.Token, m.sess.Epoch))
+	return m, tea.Batch(toast, m.fetchList())
 }
 
 // nextItemID returns the ID of the item in the row after the item id, or
@@ -138,7 +138,7 @@ func (m VaultModel) renderDelete(width int) string {
 	case m.del.errText != "":
 		b.WriteString(errorBlock(m.del.errText, textW+4, textW))
 	default:
-		b.WriteString(ansi.Wrap("You can restore the item from the trash for 30 days.", textW, ""))
+		b.WriteString(ansi.Wrap("You can restore the item from the trash for 30 days. Press D, then U.", textW, ""))
 	}
 	b.WriteString("\n\n")
 	b.WriteString(renderChoiceKeys(

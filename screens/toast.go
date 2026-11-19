@@ -60,12 +60,13 @@ func (m *VaultModel) expireToast(d time.Duration) tea.Cmd {
 }
 
 // footerStatus returns the status text on the right of the footer: the
-// toast, the sync spinner, or the time since the last sync.
+// toast, the spinner of a sync or a list load, or the time since the last
+// sync.
 func (m VaultModel) footerStatus() string {
 	toast := m.toast
-	if m.syncing {
+	if m.syncing || m.listLoading {
 		if toast == "" {
-			toast = "Syncing" + ui.Glyphs.Ellipsis
+			toast = m.loadText()
 		}
 		toast = m.syncSpinner.View() + " " + toast
 	}

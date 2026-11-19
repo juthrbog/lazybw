@@ -185,7 +185,7 @@ func (m RootModel) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.locked = screens.LockedModel{}
 		m.state = stateLoading
 		m.spinner.Spinner = ui.SpinnerLoad
-		return m, tea.Batch(bwcmd.FetchItems(m.sess.Token, m.sess.Epoch), m.spinner.Tick)
+		return m, tea.Batch(bwcmd.FetchItems(m.sess.Token, m.sess.Epoch, 0), m.spinner.Tick)
 
 	case bwcmd.ItemsResult:
 		// A fetch that started before a lock (or before an earlier unlock)
@@ -195,6 +195,14 @@ func (m RootModel) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			log.Print("dropped the items of an ended session")
 			secutil.ZeroItems(msg.Items)
 			return m, nil
+		}
+		if m.state == stateVault && m.vault.ShowsTrash() {
+			// The vault drops and scrubs a vault list while the trash
+			// shows.
+			log.Print("dropped the vault list: the trash shows")
+			updated, cmd := m.vault.Update(msg)
+			m.vault = updated.(screens.VaultModel)
+			return m, cmd
 		}
 		if msg.Err != nil {
 			log.Printf("loading the items failed: %s", logReason(msg.Err))
@@ -228,6 +236,23 @@ func (m RootModel) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		secutil.ZeroItems(msg.Items)
 		return m, nil
+
+	case bwcmd.TrashResult:
+		// The trash list holds decrypted items too. Drop and scrub a result
+		// of an ended session, or one that arrives outside the vault.
+		if msg.Epoch != m.sess.Epoch || m.state != stateVault {
+			log.Print("dropped the trash list of an ended session")
+			secutil.ZeroItems(msg.Items)
+			return m, nil
+		}
+		if msg.Err != nil {
+			log.Printf("loading the trash failed: %s", logReason(msg.Err))
+		} else {
+			log.Printf("loaded %d trash items", len(msg.Items))
+		}
+		updated, cmd := m.vault.Update(msg)
+		m.vault = updated.(screens.VaultModel)
+		return m, cmd
 
 	case bwcmd.SyncResult:
 		if msg.Epoch != m.sess.Epoch || m.state != stateVault {
@@ -313,7 +338,7 @@ func (m RootModel) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			// The vault is unlocked, but loading the items failed.
 			log.Print("retry: loading the items again")
 			m.retried = true
-			return m, tea.Batch(bwcmd.FetchItems(m.sess.Token, m.sess.Epoch), m.spinner.Tick)
+			return m, tea.Batch(bwcmd.FetchItems(m.sess.Token, m.sess.Epoch, 0), m.spinner.Tick)
 		}
 		log.Print("retry: running bw status again")
 		return m, tea.Batch(bwcmd.CheckStatus(), m.spinner.Tick)
@@ -575,6 +600,7 @@ func (m RootModel) View() tea.View {
 	}
 	if m.state == stateVault {
 		hd.ItemCount, hd.SelectedType = m.vault.HeaderInfo()
+		hd.Trash = m.vault.ShowsTrash()
 	}
 	header := ui.RenderHeader(hd)
 	contentHeight := m.height - ui.ChromeHeight

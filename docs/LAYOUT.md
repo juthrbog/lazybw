@@ -34,14 +34,15 @@ The view uses the alternate screen (`AltScreen`). It turns on no mouse mode, bec
 func RenderHeader(data HeaderData) string
 ```
 
-`ui.RenderHeader` in `ui/frame.go` draws the header. `ui.HeaderData` has the fields `Email`, `ItemCount`, `SelectedType` and `Width`. Both rows are exactly `Width` cells wide.
+`ui.RenderHeader` in `ui/frame.go` draws the header. `ui.HeaderData` has the fields `Email`, `ItemCount`, `SelectedType`, `Width` and `Trash`. Both rows are exactly `Width` cells wide.
 
 Row 1 has these parts, from left to right:
 
 1. The title " 󰦝 lazybw". It has a color gradient from `GradientFrom` to `GradientTo`.
-2. The email of the account, in a badge (`StyleHeaderBadge`: bold text on `ColorHighlight`). lazybw gets the email from `bw status`, or from the login form after a login. The badge shows on every screen when lazybw knows the email. The header cuts a long email. When less than 6 cells are free for the email, the badge does not show.
-3. The item count, for example "9 items", in `ColorFaint`. It shows only on the vault screen and only when the terminal is 80 cells wide or more. The count is the number of vault items, not the number of list rows. So group headers and collapsed groups do not change it.
-4. The type of the selected item (Login, Card, Note, Identity or SSH Key), in `ColorFaint`. It shows only on the vault screen, only when the terminal is 60 cells wide or more, and only when an item is selected. A group header is not an item.
+2. The label "Trash" in `StyleTitle`, when the vault screen shows the trash list. It comes right after the title, so the header cuts the email first. It is a plain word, so the ASCII glyphs need nothing new.
+3. The email of the account, in a badge (`StyleHeaderBadge`: bold text on `ColorHighlight`). lazybw gets the email from `bw status`, or from the login form after a login. The badge shows on every screen when lazybw knows the email. The header cuts a long email. When less than 6 cells are free for the email, the badge does not show.
+4. The item count, for example "9 items", in `ColorFaint`. It shows only on the vault screen and only when the terminal is 80 cells wide or more. The count is the number of vault items, not the number of list rows. So group headers and collapsed groups do not change it. In the trash list, it is the number of items in the trash.
+5. The type of the selected item (Login, Card, Note, Identity or SSH Key), in `ColorFaint`. It shows only on the vault screen, only when the terminal is 60 cells wide or more, and only when an item is selected. A group header is not an item.
 
 The email comes first. An item count or a type that does not fit next to the email does not show.
 
@@ -68,9 +69,13 @@ The status gets its space first, but it leaves room for the first hint. The foot
 | Unlocking or logging in | | |
 | Two-step login, method | `enter submit · ↑/↓ navigate · esc back · ctrl+q quit` | |
 | Two-step login, code | `enter submit · esc back · ctrl+q quit` | |
-| Vault | `j/k navigate · / search · c pwd · t totp · ? help · q quit · n new · e edit · d trash · ctrl+g group · z drawer · p gen · T theme` | Toast or sync age |
-| Vault, filter input open | `esc clear · enter confirm · ↑/↓ navigate` | Toast or sync age |
-| Vault, filter applied | `filter: <text> · esc clear · ? help · q quit · c pwd · t totp` | Toast or sync age |
+| Vault | `j/k navigate · / search · c pwd · t totp · ? help · q quit · n new · e edit · d trash · D show trash · ctrl+g group · z drawer · p gen · T theme` | Toast, load text or sync age |
+| Vault, filter input open | `esc clear · enter confirm · ↑/↓ navigate` | Toast, load text or sync age |
+| Vault, filter applied | `filter: <text> · esc clear · ? help · q quit · c pwd · t totp` | Toast, load text or sync age |
+| Vault, trash list | `U restore · D vault · j/k navigate · / search · c pwd · t totp · ? help · q quit · ctrl+g group · z drawer · p gen · T theme` | Toast, load text or sync age |
+| Vault, trash list, filter applied | `filter: <text> · esc clear · U restore · D vault · ? help · q quit · c pwd · t totp` | Toast, load text or sync age |
+| Move-to-trash dialog | `y move to trash · n cancel` | |
+| Restore dialog | `y restore · n cancel` | |
 | Quit confirmation | `y yes · n no` | |
 | Help | `esc close · j/k scroll · / filter` | |
 | Help, filter input open | `enter done · esc clear` | |
@@ -82,7 +87,7 @@ The status gets its space first, but it leaves room for the first hint. The foot
 | Error | `r retry · q quit` | |
 | Quitting | | |
 
-The vault hints put `? help` and `q quit` right after the copy keys. So a narrow terminal drops the other hints first. In the filter applied row, the footer cuts the filter text to 20 cells.
+The vault hints put `? help` and `q quit` right after the copy keys. So a narrow terminal drops the other hints first. In the trash list, `U restore` and `D vault` come first, because they are the only new keys and the only way back to the vault. While `bw` runs in the move-to-trash or the restore dialog, the footer shows no hints. In the filter applied row, the footer cuts the filter text to 20 cells.
 
 The huh forms (the unlock, login and two-step forms, the master password prompt and the theme picker) show no help line. The footer shows their keys.
 
@@ -92,12 +97,12 @@ While an overlay shows on the vault screen, the footer shows only the keys of th
 
 The status of the vault footer is a toast, when one shows. Otherwise it is the sync age in `ColorFaint`: "synced just now", "synced 2m ago" or "synced 3h ago". lazybw reads the time of the last sync from `bw status` at start and on retry, and the footer shows it after the unlock. lazybw sets it again after each sync. When lazybw knows no sync time, the status is empty.
 
-While a sync runs, the status shows the `SpinnerLoad` spinner and "Syncing…". If a toast shows during the sync, the spinner shows before the toast.
+While a sync runs, the status shows the `SpinnerLoad` spinner and "Syncing…". The sync includes the load of the list after `bw sync`. While a list loads after `D`, it shows the spinner and "Loading trash…" or "Loading vault…". If a toast shows during the sync or the load, the spinner shows before the toast.
 
 | Toast | Kind | Ends |
 |---|---|---|
 | `󰆏 <Field> sent to clipboard · clears in 60s` | Copy | At the clipboard clear, after 60s |
-| `✓ Vault synced` | Info | After 4s, or when the new items load |
+| `✓ Vault synced` | Info | After 4s. It shows when the list has loaded after the sync |
 | `No username to copy` | Info | After 4s |
 | `Drawer: overlay` or `Drawer: inline` | Info | After 4s |
 | `Grouping enabled` or `Grouping disabled` | Info | After 4s |
@@ -192,6 +197,10 @@ The list is a list from bubbles. Its first row is its title row. The title row i
 Each list row has the cursor (`▶` on the selected row), the glyph of the item type, the name, and a description on the right. The name gets its space first, so that a long description cannot hide it.
 
 The description depends on the item type. A login shows its username. A card shows `••••` and its last 4 digits. A secure note shows "(note)". An identity shows its name or its email. An SSH key shows its fingerprint.
+
+When the list has no items, it shows a centered text in place of "No items.". While a list loads after `D`, the text is the spinner and "Loading trash…" or "Loading vault…". After a failed load, the text is "Could not load the trash. Press r to try again, or D to go back." or "Could not load the vault. Press r to try again.", in `StyleError`. It stays until the next load works. An empty trash shows "The trash is empty." in `ColorFaint`. An empty vault list that loaded shows "No items." as before.
+
+In the trash list (`D`), the rows are the items in the trash. The drawer shows one more row as the first field row, "Deleted", with the day when the item went to the trash, for example `2026-11-17`. For a note, this row takes one of the note rows.
 
 The list gets the rows of the content area that the drawer does not use. That is `height - ui.ChromeHeight - drawerHeight` rows in inline mode, and `height - ui.ChromeHeight` rows in overlay mode. The view draws the list at this size. So a page of the list is the page that shows, and `pgdown` moves by exactly the rows on the screen.
 
@@ -308,7 +317,9 @@ The vault shows one of these overlays at a time. The drawer in overlay mode stay
 | Help | `?` | The title "Keybindings" and the filter state, then the keys in the groups Copy, Navigation, Vault and UI. The last row of the card shows `?/esc close · ↑/↓ scroll`, and `· ↓ more` when more rows are below. While you type a filter, it shows `enter done · esc clear`. |
 | Theme picker | `T` | The huh select "Choose theme" with the 7 themes. On a short terminal, the select gets fewer rows and scrolls. |
 | Generator | `p` | The title "Password Generator", the mode, the options and the generated value |
-| Master password re-prompt | `c`, `t`, `v`, `m`, `e` or `d` on an item with re-prompt | The title "Master password re-prompt", the text "Enter your master password to continue." and the password field |
+| Move to trash | `d` or `delete` | The title `Move "<name>" to trash?`, a text that says how to restore the item, and the keys `y move to trash · n cancel`. While `bw` runs, "Moving to trash…". |
+| Restore | `U` in the trash list | The title `Restore "<name>"?`, the text "The item goes back to the vault." and the keys `y restore · n cancel`. While `bw` runs, "Restoring…". An error shows in place of the text. |
+| Master password re-prompt | `c`, `t`, `v`, `m`, `e`, `d` or `U` on an item with re-prompt | The title "Master password re-prompt", the text "Enter your master password to continue." and the password field |
 
 The content of the help card is 3/4 of the terminal width, and at most 70 cells. The theme picker is 40 cells wide. The password field of the re-prompt card is 40 cells wide, or less on a narrow terminal.
 
@@ -379,4 +390,7 @@ In `View`, the root model gives `m.width` and `m.height - ui.ChromeHeight` to `V
 | `screens/themepicker.go` | `ThemePickerModel`: the theme picker card and its hints |
 | `screens/quitconfirm.go` | The quit confirmation card and its hints |
 | `screens/reprompt.go` | The master password re-prompt card and its hints |
+| `screens/delete.go` | The move-to-trash card and its hints |
+| `screens/restore.go` | The restore card and its hints |
+| `screens/trash.go` | The texts of an empty list while it loads, fails or is empty, and the help of the trash list |
 | `screens/error.go` | `ErrorModel.ViewContent` and `FooterHints`: the error screen |
