@@ -80,7 +80,11 @@ type VaultModel struct {
 	toastIsCopy  bool   // a copy toast stays until the clipboard clear
 	toastGen     uint64 // the number of the latest toast, see toastExpiredMsg
 	syncing      bool
-	syncSpinner  spinner.Model
+	// syncReload is true from a successful sync until the list load that
+	// follows it ends. Until then the list holds the data from before the
+	// sync, so the footer still shows "Syncing…".
+	syncReload  bool
+	syncSpinner spinner.Model
 
 	totpCode     string
 	totpSecsLeft int
@@ -342,7 +346,6 @@ func (m VaultModel) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, tickTOTP()
 
 	case bwcmd.SyncResult:
-		m.syncing = false
 		// After a failed load of the list, r loads the list again also when
 		// the sync fails, because bw list works from the local cache. The
 		// content then shows the spinner in place of the error.
@@ -351,15 +354,19 @@ func (m VaultModel) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.listLoading = true
 		}
 		if msg.Err != nil {
+			m.syncing = false
 			toastCmd := m.setErrorToast("Sync failed: " + userError(msg.Err, actionOther))
 			if !reload {
 				return m, toastCmd
 			}
 			return m, tea.Batch(toastCmd, m.fetchList())
 		}
+		// The sync ends when the list has loaded again, in applyListResult.
+		// Until then the list holds the old data, for example an old master
+		// password re-prompt setting, so the footer keeps showing "Syncing…".
 		m.sess.LastSync = time.Now()
-		toastCmd := m.setToast(ui.GlyphSuccess + " Vault synced")
-		return m, tea.Batch(toastCmd, m.fetchList())
+		m.syncReload = true
+		return m, m.fetchList()
 
 	case bwcmd.ItemsResult:
 		if m.trash || msg.Seq != m.listSeq {
@@ -370,18 +377,7 @@ func (m VaultModel) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			secutil.ZeroItems(msg.Items)
 			return m, nil
 		}
-		m.listLoading = false
-		if msg.Err != nil {
-			m.listErr = true
-			return m, m.setErrorToast("Load failed: " + userError(msg.Err, actionOther))
-		}
-		m.listErr = false
-		cmd := m.replaceItems(msg.Items)
-		if m.selectID != "" {
-			m.selectKey(rowKey{id: m.selectID})
-			m.selectID = ""
-		}
-		return m, cmd
+		return m.applyListResult(msg.Items, msg.Err)
 
 	case bwcmd.TrashResult:
 		return m.handleTrashResult(msg)

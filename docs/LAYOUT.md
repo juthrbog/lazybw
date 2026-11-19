@@ -97,12 +97,12 @@ While an overlay shows on the vault screen, the footer shows only the keys of th
 
 The status of the vault footer is a toast, when one shows. Otherwise it is the sync age in `ColorFaint`: "synced just now", "synced 2m ago" or "synced 3h ago". lazybw reads the time of the last sync from `bw status` at start and on retry, and the footer shows it after the unlock. lazybw sets it again after each sync. When lazybw knows no sync time, the status is empty.
 
-While a sync runs, the status shows the `SpinnerLoad` spinner and "Syncing…". While a list loads after `D`, it shows the spinner and "Loading trash…" or "Loading vault…". If a toast shows during the sync or the load, the spinner shows before the toast.
+While a sync runs, the status shows the `SpinnerLoad` spinner and "Syncing…". The sync includes the load of the list after `bw sync`. While a list loads after `D`, it shows the spinner and "Loading trash…" or "Loading vault…". If a toast shows during the sync or the load, the spinner shows before the toast.
 
 | Toast | Kind | Ends |
 |---|---|---|
 | `󰆏 <Field> sent to clipboard · clears in 60s` | Copy | At the clipboard clear, after 60s |
-| `✓ Vault synced` | Info | After 4s, or when the new items load |
+| `✓ Vault synced` | Info | After 4s. It shows when the list has loaded after the sync |
 | `No username to copy` | Info | After 4s |
 | `Drawer: overlay` or `Drawer: inline` | Info | After 4s |
 | `Grouping enabled` or `Grouping disabled` | Info | After 4s |
