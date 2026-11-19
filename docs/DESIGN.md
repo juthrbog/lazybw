@@ -767,7 +767,9 @@ A toast shows one message in the footer. A new toast replaces the old one.
 - The timer of an older toast does not end a newer toast.
 
 While a sync runs, the footer shows a spinner and `Syncing…`. After a
-successful sync, it shows `✓ Vault synced` until the new items load. With
+successful `bw sync`, the list loads again, and the footer shows `Syncing…`
+until that load ends. Until then the list holds the data from before the
+sync. Then the footer shows `✓ Vault synced` for 4 seconds. With
 no toast, the footer shows the age of the last sync: `synced just now`,
 `synced 3m ago` or `synced 2h ago`. lazybw reads the time of the last sync
 from `bw status` at start, and it sets the time again after each sync in

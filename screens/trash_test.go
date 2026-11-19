@@ -462,8 +462,8 @@ func TestSyncInTrashLoadsTrash(t *testing.T) {
 	m := trashVault(t, trashItems())
 	before := len(*loads)
 	m, _ = send(m, keyMsg("r"))
-	m, cmd := send(m, bwcmd.SyncResult{Epoch: m.sess.Epoch})
-	if cmd == nil || len(*loads) != before+1 || (*loads)[before].seq != m.listSeq {
+	m, _ = send(m, bwcmd.SyncResult{Epoch: m.sess.Epoch})
+	if len(*loads) != before+1 || (*loads)[before].seq != m.listSeq {
 		t.Errorf("a sync in the trash must load the trash with a new seq: loads = %v", *loads)
 	}
 }
@@ -567,5 +567,19 @@ func TestClearDropsTrashState(t *testing.T) {
 	}
 	if m.overlay != overlayNone || m.res != (restoreState{}) || m.trash || m.listLoading || m.listErr {
 		t.Errorf("Clear: overlay = %v, res = %+v, trash = %v, listLoading = %v", m.overlay, m.res, m.trash, m.listLoading)
+	}
+}
+
+func TestSyncInTrashEndsWithTrashLoad(t *testing.T) {
+	fakeFetchTrash(t)
+	m := trashVault(t, trashItems())
+	m, _ = send(m, keyMsg("r"))
+	m, _ = send(m, bwcmd.SyncResult{Epoch: m.sess.Epoch})
+	if !m.syncing {
+		t.Fatal("the sync must last until the trash has loaded again")
+	}
+	m, _ = send(m, bwcmd.TrashResult{Items: trashItems(), Epoch: m.sess.Epoch, Seq: m.listSeq})
+	if m.syncing || !strings.Contains(m.toast, "Vault synced") {
+		t.Errorf("after the trash load: syncing = %v, toast = %q", m.syncing, m.toast)
 	}
 }

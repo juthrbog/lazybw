@@ -3,7 +3,6 @@ package screens
 import (
 	"fmt"
 	"io"
-	"strings"
 
 	"charm.land/bubbles/v2/list"
 	tea "charm.land/bubbletea/v2"
@@ -280,11 +279,6 @@ func (m *VaultModel) replaceItems(items []bwcmd.Item) tea.Cmd {
 		m.onCursorChange()
 	}
 	secutil.ZeroItems(old)
-	// The sync is complete. Drop its toast, so that the footer shows the
-	// time of the last sync again.
-	if strings.HasSuffix(m.toast, " Vault synced") {
-		m.clearToast()
-	}
 	return cmd
 }
 

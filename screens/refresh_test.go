@@ -1,6 +1,7 @@
 package screens
 
 import (
+	"errors"
 	"strings"
 	"testing"
 	"time"
@@ -110,17 +111,68 @@ func TestRefreshShorterListClampsCursor(t *testing.T) {
 	}
 }
 
-func TestRefreshDropsSyncToast(t *testing.T) {
+func TestSyncLastsUntilListLoads(t *testing.T) {
 	m := newTestVault(testItems())
-	updated, _ := m.Update(bwcmd.SyncResult{})
-	m = updated.(VaultModel)
-	if !strings.Contains(m.toast, "Vault synced") {
-		t.Fatalf("toast = %q, want the sync toast", m.toast)
+	m, _ = send(m, keyMsg("r"))
+	m, _ = send(m, bwcmd.SyncResult{})
+	if !m.syncing || m.toast != "" {
+		t.Fatalf("after the sync: syncing = %v, toast = %q, want the sync to go on", m.syncing, m.toast)
 	}
-	updated, _ = m.Update(bwcmd.ItemsResult{Items: testItems(), Seq: m.listSeq})
-	m = updated.(VaultModel)
-	if m.toast != "" {
-		t.Errorf("toast = %q, want none after the refresh", m.toast)
+	if got := m.footerStatus(); !strings.Contains(got, "Syncing") {
+		t.Errorf("footer = %q, want Syncing until the list loads", got)
+	}
+	m, _ = send(m, bwcmd.ItemsResult{Items: testItems(), Seq: m.listSeq})
+	if m.syncing || !strings.Contains(m.toast, "Vault synced") {
+		t.Errorf("after the load: syncing = %v, toast = %q, want the sync toast", m.syncing, m.toast)
+	}
+}
+
+func TestSyncUsesNewRepromptSetting(t *testing.T) {
+	m := newTestVault(testItems())
+	id := m.selectedItem().ID
+	m, _ = send(m, keyMsg("r"))
+	m, _ = send(m, bwcmd.SyncResult{})
+	items := testItems()
+	for i := range items {
+		if items[i].ID == id {
+			items[i].Reprompt = bwcmd.RepromptPassword
+		}
+	}
+	m, _ = send(m, bwcmd.ItemsResult{Items: items, Seq: m.listSeq})
+	m, _ = send(m, keyMsg("d"))
+	if m.overlay != overlayReprompt {
+		t.Errorf("overlay = %v, want the password prompt after the synced list", m.overlay)
+	}
+}
+
+func TestSyncEndsOnFailedListLoad(t *testing.T) {
+	m := newTestVault(testItems())
+	m, _ = send(m, keyMsg("r"))
+	m, _ = send(m, bwcmd.SyncResult{})
+	m, _ = send(m, bwcmd.ItemsResult{Err: errors.New("boom"), Seq: m.listSeq})
+	if m.syncing || !m.toastIsError || strings.Contains(m.toast, "Vault synced") {
+		t.Errorf("syncing = %v, toast = %q, want the load error", m.syncing, m.toast)
+	}
+}
+
+func TestSyncIgnoresStaleListLoad(t *testing.T) {
+	m := newTestVault(testItems())
+	stale := m.listSeq
+	m, _ = send(m, keyMsg("r"))
+	m, _ = send(m, bwcmd.SyncResult{})
+	m, _ = send(m, bwcmd.ItemsResult{Items: testItems(), Seq: stale})
+	if !m.syncing {
+		t.Error("a load from before the sync must not end the sync")
+	}
+}
+
+func TestListLoadDuringSyncDoesNotEndIt(t *testing.T) {
+	m := newTestVault(testItems())
+	m, _ = send(m, keyMsg("r"))
+	// A list load ends while bw sync still runs.
+	m, _ = send(m, bwcmd.ItemsResult{Items: testItems(), Seq: m.listSeq})
+	if !m.syncing || m.toast != "" {
+		t.Errorf("syncing = %v, toast = %q, want the sync to go on", m.syncing, m.toast)
 	}
 }
 

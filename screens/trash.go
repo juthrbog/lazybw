@@ -80,16 +80,31 @@ func (m VaultModel) handleTrashResult(msg bwcmd.TrashResult) (VaultModel, tea.Cm
 		secutil.ZeroItems(msg.Items)
 		return m, nil
 	}
+	return m.applyListResult(msg.Items, msg.Err)
+}
+
+// applyListResult fills the list with the result of a list load that is
+// still current, of the vault or of the trash. A load that follows a
+// successful sync also ends the sync.
+func (m VaultModel) applyListResult(items []bwcmd.Item, err error) (VaultModel, tea.Cmd) {
 	m.listLoading = false
-	if msg.Err != nil {
+	synced := m.syncReload
+	if synced {
+		m.syncReload = false
+		m.syncing = false
+	}
+	if err != nil {
 		m.listErr = true
-		return m, m.setErrorToast("Load failed: " + userError(msg.Err, actionOther))
+		return m, m.setErrorToast("Load failed: " + userError(err, actionOther))
 	}
 	m.listErr = false
-	cmd := m.replaceItems(msg.Items)
+	cmd := m.replaceItems(items)
 	if m.selectID != "" {
 		m.selectKey(rowKey{id: m.selectID})
 		m.selectID = ""
+	}
+	if synced {
+		cmd = tea.Batch(cmd, m.setToast(ui.GlyphSuccess+" Vault synced"))
 	}
 	return m, cmd
 }
